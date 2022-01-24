@@ -16,7 +16,6 @@
 package io.arenadata.dtm.query.execution.plugin.adqm.mppw.kafka.service;
 
 import io.arenadata.dtm.common.model.ddl.EntityFieldUtils;
-import io.arenadata.dtm.common.reader.QueryResult;
 import io.arenadata.dtm.query.execution.plugin.adqm.base.utils.AdqmDdlUtil;
 import io.arenadata.dtm.query.execution.plugin.adqm.ddl.configuration.properties.DdlProperties;
 import io.arenadata.dtm.query.execution.plugin.adqm.factory.AdqmTablesSqlFactory;
@@ -39,7 +38,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.EnumMap;
 import java.util.Map;
 
 import static io.arenadata.dtm.query.execution.plugin.adqm.base.utils.AdqmDdlUtil.sequenceAll;
@@ -53,7 +52,7 @@ public class MppwStartRequestHandler extends AbstractMppwRequestHandler {
 
     private final AdqmMppwProperties mppwProperties;
     private final StatusReporter statusReporter;
-    private final Map<LoadType, ExtTableCreator> extTableCreators = new HashMap<>();
+    private final Map<LoadType, ExtTableCreator> extTableCreators = new EnumMap<>(LoadType.class);
     private final RestLoadClient restLoadClient;
     private final AdqmRestMppwKafkaRequestFactory restMppwKafkaRequestFactory;
     private final AdqmTablesSqlFactory adqmTablesSqlFactory;
@@ -78,7 +77,7 @@ public class MppwStartRequestHandler extends AbstractMppwRequestHandler {
     }
 
     @Override
-    public Future<QueryResult> execute(MppwKafkaRequest request) {
+    public Future<String> execute(MppwKafkaRequest request) {
         val err = AdqmDdlUtil.validateRequest(request);
         if (err.isPresent()) {
             return Future.failedFuture(new DataSourceException(err.get()));
@@ -110,7 +109,7 @@ public class MppwStartRequestHandler extends AbstractMppwRequestHandler {
                 .compose(v -> createBufferLoaderShardTable(request))
                 .compose(v -> createActualLoaderShardTable(request))
                 .compose(v -> createRestInitiator(request))
-                .map(v -> QueryResult.emptyResult())
+                .map(v -> getConsumerGroupName(fullName))
                 .onSuccess(Future::succeededFuture)
                 .onFailure(fail -> {
                     reportError(request.getTopic());
@@ -121,7 +120,7 @@ public class MppwStartRequestHandler extends AbstractMppwRequestHandler {
     @NonNull
     private String getConsumerGroupName(@NonNull String tableName) {
         return mppwProperties.getLoadType() == KAFKA ?
-                mppwProperties.getConsumerGroup() + tableName :
+                mppwProperties.getConsumerGroup() + "_" + tableName :
                 mppwProperties.getRestLoadConsumerGroup();
     }
 

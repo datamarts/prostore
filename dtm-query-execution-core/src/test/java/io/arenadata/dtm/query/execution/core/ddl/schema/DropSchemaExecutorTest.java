@@ -18,24 +18,21 @@ package io.arenadata.dtm.query.execution.core.ddl.schema;
 import io.arenadata.dtm.cache.service.CacheService;
 import io.arenadata.dtm.cache.service.CaffeineCacheService;
 import io.arenadata.dtm.cache.service.EvictQueryTemplateCacheService;
-import io.arenadata.dtm.cache.service.EvictQueryTemplateCacheServiceImpl;
 import io.arenadata.dtm.common.exception.DtmException;
 import io.arenadata.dtm.common.model.ddl.Entity;
 import io.arenadata.dtm.common.reader.QueryRequest;
 import io.arenadata.dtm.common.reader.QueryResult;
 import io.arenadata.dtm.common.request.DatamartRequest;
 import io.arenadata.dtm.query.calcite.core.configuration.CalciteCoreConfiguration;
-import io.arenadata.dtm.query.calcite.core.extension.eddl.DropDatabase;
 import io.arenadata.dtm.query.calcite.core.framework.DtmCalciteFramework;
 import io.arenadata.dtm.query.execution.core.base.dto.cache.EntityKey;
 import io.arenadata.dtm.query.execution.core.base.dto.cache.MaterializedViewCacheValue;
 import io.arenadata.dtm.query.execution.core.base.repository.ServiceDbFacade;
 import io.arenadata.dtm.query.execution.core.base.repository.ServiceDbFacadeImpl;
-import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.ChangelogDao;
 import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.DatamartDao;
 import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.ServiceDbDao;
+import io.arenadata.dtm.query.execution.core.base.service.hsql.HSQLClient;
 import io.arenadata.dtm.query.execution.core.base.service.metadata.MetadataExecutor;
-import io.arenadata.dtm.query.execution.core.base.service.metadata.impl.MetadataExecutorImpl;
 import io.arenadata.dtm.query.execution.core.calcite.configuration.CalciteConfiguration;
 import io.arenadata.dtm.query.execution.core.ddl.dto.DdlRequestContext;
 import io.arenadata.dtm.query.execution.core.ddl.service.impl.schema.DropSchemaExecutor;
@@ -44,7 +41,8 @@ import io.arenadata.dtm.query.execution.core.delta.dto.OkDelta;
 import io.arenadata.dtm.query.execution.core.utils.TestUtils;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
-import org.apache.calcite.sql.SqlIdentifier;
+import io.vertx.core.json.JsonArray;
+import io.vertx.ext.sql.ResultSet;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParseException;
 import org.apache.calcite.sql.parser.SqlParser;
@@ -53,8 +51,11 @@ import org.apache.calcite.tools.Planner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -64,22 +65,19 @@ class DropSchemaExecutorTest {
     private final CalciteConfiguration calciteConfiguration = new CalciteConfiguration();
     private final CalciteCoreConfiguration calciteCoreConfiguration = new CalciteCoreConfiguration();
     private final SqlParser.Config parserConfig = calciteConfiguration.configEddlParser(calciteCoreConfiguration.eddlParserImplFactory());
-    private final MetadataExecutor<DdlRequestContext> metadataExecutor = mock(MetadataExecutorImpl.class);
+    private final MetadataExecutor metadataExecutor = mock(MetadataExecutor.class);
     private final CacheService<String, HotDelta> hotDeltaCacheService = mock(CaffeineCacheService.class);
     private final CacheService<String, OkDelta> okDeltaCacheService = mock(CaffeineCacheService.class);
     private final ServiceDbFacade serviceDbFacade = mock(ServiceDbFacadeImpl.class);
     private final ServiceDbDao serviceDbDao = mock(ServiceDbDao.class);
-    private final ChangelogDao changelogDao = mock(ChangelogDao.class);
     private final DatamartDao datamartDao = mock(DatamartDao.class);
     private final CacheService<EntityKey, Entity> entityCacheService = mock(CaffeineCacheService.class);
     private final EvictQueryTemplateCacheService evictQueryTemplateCacheService =
-            mock(EvictQueryTemplateCacheServiceImpl.class);
+            mock(EvictQueryTemplateCacheService.class);
     private final CacheService<EntityKey, MaterializedViewCacheValue> materializedViewCacheService = mock(CaffeineCacheService.class);
-    private final DropDatabase mockDropNode = mock(DropDatabase.class);
-    private final SqlIdentifier mockIdentifier = mock(SqlIdentifier.class);
+    private final HSQLClient hsqlClient = mock(HSQLClient.class);
     private DropSchemaExecutor dropSchemaExecutor;
     private DdlRequestContext context;
-    private DdlRequestContext informationSchemaContext;
     private String schema;
 
     @BeforeEach
@@ -93,7 +91,8 @@ class DropSchemaExecutorTest {
                 okDeltaCacheService,
                 entityCacheService,
                 materializedViewCacheService,
-                evictQueryTemplateCacheService);
+                evictQueryTemplateCacheService,
+                hsqlClient);
         doNothing().when(evictQueryTemplateCacheService).evictByDatamartName(anyString());
         prepareContext(false);
     }
@@ -117,17 +116,14 @@ class DropSchemaExecutorTest {
         SqlNode sqlNode = planner.parse(queryRequest.getSql());
         context = new DdlRequestContext(null, new DatamartRequest(queryRequest), sqlNode, null, null);
         context.setDatamartName(schema);
-
-        informationSchemaContext = new DdlRequestContext(null,
-                new DatamartRequest(queryRequest),
-                mockDropNode,
-                null,
-                null);
     }
 
     @Test
     void executeSuccess() {
         Promise<QueryResult> promise = Promise.promise();
+        ResultSet resultSet = new ResultSet();
+        resultSet.setResults(new ArrayList<>());
+        when(hsqlClient.getQueryResult(anyString())).thenReturn(Future.succeededFuture(resultSet));
         when(datamartDao.existsDatamart(schema))
                 .thenReturn(Future.succeededFuture(true));
 
@@ -153,6 +149,9 @@ class DropSchemaExecutorTest {
         prepareContext(true);
 
         Promise<QueryResult> promise = Promise.promise();
+        ResultSet resultSet = new ResultSet();
+        resultSet.setResults(new ArrayList<>());
+        when(hsqlClient.getQueryResult(anyString())).thenReturn(Future.succeededFuture(resultSet));
         when(datamartDao.existsDatamart(schema))
                 .thenReturn(Future.succeededFuture(true));
 
@@ -174,6 +173,9 @@ class DropSchemaExecutorTest {
     @Test
     void executeWithDropSchemaError() {
         Promise<QueryResult> promise = Promise.promise();
+        ResultSet resultSet = new ResultSet();
+        resultSet.setResults(new ArrayList<>());
+        when(hsqlClient.getQueryResult(anyString())).thenReturn(Future.succeededFuture(resultSet));
         when(datamartDao.existsDatamart(schema))
                 .thenReturn(Future.succeededFuture(true));
 
@@ -193,6 +195,9 @@ class DropSchemaExecutorTest {
     @Test
     void executeWithDropDatamartError() {
         Promise<QueryResult> promise = Promise.promise();
+        ResultSet resultSet = new ResultSet();
+        resultSet.setResults(new ArrayList<>());
+        when(hsqlClient.getQueryResult(anyString())).thenReturn(Future.succeededFuture(resultSet));
         when(datamartDao.existsDatamart(schema))
                 .thenReturn(Future.succeededFuture(true));
 
@@ -206,6 +211,28 @@ class DropSchemaExecutorTest {
                 .onComplete(promise);
         assertTrue(promise.future().failed());
         verify(evictQueryTemplateCacheService).evictByDatamartName(any());
+        verify(materializedViewCacheService).forEach(any());
+        verify(entityCacheService).removeIf(any());
+        verify(hotDeltaCacheService).remove(anyString());
+        verify(okDeltaCacheService).remove(anyString());
+    }
+
+    @Test
+    void executeRelatedViewExistsError() {
+        Promise<QueryResult> promise = Promise.promise();
+        ResultSet resultSet = new ResultSet();
+        List<JsonArray> result = new ArrayList<>();
+        JsonArray jsonArray = new JsonArray();
+        jsonArray.add("schema_name");
+        jsonArray.add("view_name");
+        result.add(jsonArray);
+        resultSet.setResults(result);
+        when(hsqlClient.getQueryResult(anyString())).thenReturn(Future.succeededFuture(resultSet));
+
+        dropSchemaExecutor.execute(context, null)
+                .onComplete(promise);
+        assertTrue(promise.future().failed());
+        assertEquals("Views [schema_name.view_name] using the 'SHARES' must be dropped first", promise.future().cause().getMessage());
         verify(materializedViewCacheService).forEach(any());
         verify(entityCacheService).removeIf(any());
         verify(hotDeltaCacheService).remove(anyString());

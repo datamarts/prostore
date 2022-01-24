@@ -15,11 +15,61 @@
  */
 package io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.factory;
 
-import io.arenadata.dtm.query.execution.plugin.adb.mppw.configuration.properties.MppwProperties;
+import io.arenadata.dtm.common.dto.KafkaBrokerInfo;
+import io.arenadata.dtm.query.execution.plugin.adb.mppw.configuration.properties.AdbMppwProperties;
 import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.dto.MppwKafkaLoadRequest;
 import io.arenadata.dtm.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
+import io.arenadata.dtm.query.execution.plugin.api.mppw.kafka.UploadExternalEntityMetadata;
+import lombok.val;
+import org.apache.avro.Schema;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
-public interface MppwKafkaLoadRequestFactory {
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
-    MppwKafkaLoadRequest create(MppwKafkaRequest request, String server, MppwProperties mppwProperties);
+import static io.arenadata.dtm.query.execution.plugin.adb.base.factory.Constants.SYS_FROM_ATTR;
+import static io.arenadata.dtm.query.execution.plugin.adb.base.factory.Constants.SYS_TO_ATTR;
+
+@Component
+public class MppwKafkaLoadRequestFactory {
+
+    private final List<String> excludeSystemFields = Arrays.asList(SYS_FROM_ATTR, SYS_TO_ATTR);
+    private final KafkaMppwSqlFactory kafkaMppwSqlFactory;
+
+    @Autowired
+    public MppwKafkaLoadRequestFactory(KafkaMppwSqlFactory kafkaMppwSqlFactory) {
+        this.kafkaMppwSqlFactory = kafkaMppwSqlFactory;
+    }
+
+    public MppwKafkaLoadRequest create(MppwKafkaRequest request, String server, AdbMppwProperties adbMppwProperties) {
+        val uploadMeta = (UploadExternalEntityMetadata) request.getUploadMetadata();
+        val schema = new Schema.Parser().parse(uploadMeta.getExternalSchema());
+        val reqId = request.getRequestId().toString();
+        return MppwKafkaLoadRequest.builder()
+            .requestId(reqId)
+            .datamart(request.getDatamartMnemonic())
+            .tableName(request.getDestinationEntity().getName())
+            .writableExtTableName(kafkaMppwSqlFactory.getTableName(reqId))
+            .columns(getColumns(schema))
+            .schema(schema)
+            .brokers(request.getBrokers().stream()
+                    .map(KafkaBrokerInfo::getAddress)
+                    .collect(Collectors.joining(",")))
+            .consumerGroup(adbMppwProperties.getConsumerGroup())
+            .timeout(adbMppwProperties.getStopTimeoutMs())
+            .topic(request.getTopic())
+            .uploadMessageLimit(adbMppwProperties.getDefaultMessageLimit())
+            .server(server)
+            .build();
+    }
+
+    private List<String> getColumns(Schema schema) {
+        return schema.getFields().stream()
+            .map(Schema.Field::name)
+            .filter(field -> excludeSystemFields.stream()
+                .noneMatch(sysName -> sysName.equals(field)))
+            .collect(Collectors.toList());
+    }
 }

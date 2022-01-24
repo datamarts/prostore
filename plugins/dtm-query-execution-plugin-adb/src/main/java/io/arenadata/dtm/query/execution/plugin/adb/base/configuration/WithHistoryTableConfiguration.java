@@ -19,7 +19,6 @@ import io.arenadata.dtm.query.execution.plugin.adb.check.service.AdbCheckDataSer
 import io.arenadata.dtm.query.execution.plugin.adb.ddl.factory.TruncateQueryFactory;
 import io.arenadata.dtm.query.execution.plugin.adb.ddl.factory.impl.TruncateQueryWithHistoryFactory;
 import io.arenadata.dtm.query.execution.plugin.adb.enrichment.service.AdbDmlQueryExtendWithHistoryService;
-import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.dto.AdbKafkaMppwTransferRequest;
 import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.factory.MppwRequestFactory;
 import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.factory.impl.MppwWithHistoryTableRequestFactory;
 import io.arenadata.dtm.query.execution.plugin.adb.rollback.dto.AdbRollbackRequest;
@@ -49,7 +48,7 @@ public class WithHistoryTableConfiguration {
     }
 
     @Bean
-    public MppwRequestFactory<AdbKafkaMppwTransferRequest> adbMppwRequestFactory() {
+    public MppwRequestFactory adbMppwRequestFactory() {
         return new MppwWithHistoryTableRequestFactory();
     }
 

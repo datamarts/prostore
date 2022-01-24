@@ -15,7 +15,6 @@
  */
 package io.arenadata.dtm.query.execution.plugin.adp.mppw.kafka.service.impl;
 
-import io.arenadata.dtm.common.reader.QueryResult;
 import io.arenadata.dtm.query.execution.plugin.adp.base.Constants;
 import io.arenadata.dtm.query.execution.plugin.adp.base.properties.AdpMppwProperties;
 import io.arenadata.dtm.query.execution.plugin.adp.connector.dto.AdpConnectorMppwStartRequest;
@@ -42,7 +41,7 @@ public class AdpStartMppwRequestExecutor implements AdpMppwRequestExecutor {
     }
 
     @Override
-    public Future<QueryResult> execute(MppwKafkaRequest request) {
+    public Future<String> execute(MppwKafkaRequest request) {
         return Future.future(promise -> {
             log.info("[ADP] Trying to start MPPW, request: [{}]", request);
             val connectorRequest = AdpConnectorMppwStartRequest.builder()
@@ -58,7 +57,7 @@ public class AdpStartMppwRequestExecutor implements AdpMppwRequestExecutor {
             connectorClient.startMppw(connectorRequest)
                     .onSuccess(v -> {
                         log.info("[ADP] Mppw started successfully");
-                        promise.complete(QueryResult.emptyResult());
+                        promise.complete(adpMppwProperties.getKafkaConsumerGroup());
                     })
                     .onFailure(t -> {
                         log.error("[ADP] Mppw failed to start", t);

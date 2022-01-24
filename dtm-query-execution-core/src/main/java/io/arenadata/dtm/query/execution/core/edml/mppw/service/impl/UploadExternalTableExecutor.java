@@ -26,7 +26,7 @@ import io.arenadata.dtm.query.execution.core.delta.dto.DeltaWriteOpRequest;
 import io.arenadata.dtm.query.execution.core.edml.dto.EdmlAction;
 import io.arenadata.dtm.query.execution.core.edml.dto.EdmlRequestContext;
 import io.arenadata.dtm.query.execution.core.edml.mppw.service.EdmlUploadExecutor;
-import io.arenadata.dtm.query.execution.core.edml.mppw.service.EdmlUploadFailedExecutor;
+import io.arenadata.dtm.query.execution.core.edml.mppw.service.UploadFailedExecutor;
 import io.arenadata.dtm.query.execution.core.plugin.service.DataSourcePluginService;
 import io.arenadata.dtm.query.execution.core.edml.service.EdmlExecutor;
 import io.arenadata.dtm.query.execution.core.base.service.metadata.LogicalSchemaProvider;
@@ -52,14 +52,14 @@ public class UploadExternalTableExecutor implements EdmlExecutor {
     private static final SqlDialect SQL_DIALECT = new SqlDialect(SqlDialect.EMPTY_CONTEXT);
     private final DeltaServiceDao deltaServiceDao;
     private final Map<ExternalTableLocationType, EdmlUploadExecutor> executors;
-    private final EdmlUploadFailedExecutor uploadFailedExecutor;
+    private final UploadFailedExecutor uploadFailedExecutor;
     private final DataSourcePluginService pluginService;
     private final LogicalSchemaProvider logicalSchemaProvider;
     private final EvictQueryTemplateCacheService evictQueryTemplateCacheService;
 
     @Autowired
     public UploadExternalTableExecutor(DeltaServiceDao deltaServiceDao,
-                                       EdmlUploadFailedExecutor uploadFailedExecutor,
+                                       UploadFailedExecutor uploadFailedExecutor,
                                        List<EdmlUploadExecutor> uploadExecutors,
                                        DataSourcePluginService pluginService,
                                        LogicalSchemaProvider logicalSchemaProvider,

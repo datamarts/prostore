@@ -15,9 +15,32 @@
  */
 package io.arenadata.dtm.query.execution.core.metrics.service;
 
+import io.arenadata.dtm.common.metrics.MetricsEventCode;
+import io.arenadata.dtm.common.metrics.MetricsHeader;
 import io.arenadata.dtm.common.metrics.MetricsTopic;
+import io.vertx.core.Vertx;
+import io.vertx.core.eventbus.DeliveryOptions;
+import io.vertx.core.json.jackson.DatabindCodec;
+import lombok.SneakyThrows;
+import lombok.val;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
-public interface MetricsProducer {
+@Service
+public class MetricsProducer {
 
-    void publish(MetricsTopic metricsTopic, Object value);
+    private final Vertx vertx;
+
+    @Autowired
+    public MetricsProducer(Vertx vertx) {
+        this.vertx = vertx;
+    }
+
+    @SneakyThrows
+    public void publish(MetricsTopic metricsTopic, Object value) {
+        val message = DatabindCodec.mapper().writeValueAsString(value);
+        val options = new DeliveryOptions();
+        options.addHeader(MetricsHeader.METRICS_EVENT_CODE.getValue(), MetricsEventCode.ALL.getValue());
+        vertx.eventBus().request(metricsTopic.getValue(), message, options);
+    }
 }

@@ -27,7 +27,6 @@ import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.DatamartD
 import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.EntityDao;
 import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.ServiceDbDao;
 import io.arenadata.dtm.query.execution.core.base.service.avro.AvroSchemaGenerator;
-import io.arenadata.dtm.query.execution.core.base.service.avro.impl.AvroSchemaGeneratorImpl;
 import io.arenadata.dtm.query.execution.core.eddl.dto.CreateDownloadExternalTableQuery;
 import io.arenadata.dtm.query.execution.core.eddl.service.EddlExecutor;
 import io.arenadata.dtm.query.execution.core.eddl.service.download.CreateDownloadExternalTableExecutor;
@@ -55,7 +54,7 @@ public class CreateDownloadExternalTableExecutorTest {
     private final DatamartDao datamartDao = mock(DatamartDao.class);
     private final EntityDao entityDao = mock(EntityDao.class);
     private final EdmlProperties edmlProperties = mock(EdmlProperties.class);
-    private final AvroSchemaGenerator avroSchemaGenerator = new AvroSchemaGeneratorImpl();
+    private final AvroSchemaGenerator avroSchemaGenerator = new AvroSchemaGenerator();
     private EddlExecutor createDownloadExteranlTableExecutor;
     private CreateDownloadExternalTableQuery query;
     private String schema;

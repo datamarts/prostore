@@ -60,13 +60,13 @@ public class DataSourcePluginServiceImpl implements DataSourcePluginService {
     private final TaskVerticleExecutor taskVerticleExecutor;
     private final Set<SourceType> sourceTypes;
     private final Set<String> activeCaches;
-    private final MetricsService<RequestMetrics> metricsService;
+    private final MetricsService metricsService;
 
     @Autowired
     public DataSourcePluginServiceImpl(
             PluginRegistry<DtmDataSourcePlugin, SourceType> pluginRegistry,
             TaskVerticleExecutor taskVerticleExecutor,
-            @Qualifier("coreMetricsService") MetricsService<RequestMetrics> metricsService) {
+            @Qualifier("coreMetricsService") MetricsService metricsService) {
         this.taskVerticleExecutor = taskVerticleExecutor;
         this.pluginRegistry = pluginRegistry;
         this.sourceTypes = pluginRegistry.getPlugins().stream()
@@ -146,7 +146,7 @@ public class DataSourcePluginServiceImpl implements DataSourcePluginService {
     }
 
     @Override
-    public Future<QueryResult> mppw(SourceType sourceType, RequestMetrics metrics, MppwRequest request) {
+    public Future<String> mppw(SourceType sourceType, RequestMetrics metrics, MppwRequest request) {
         return executeWithMetrics(sourceType,
                 SqlProcessingType.MPPW,
                 metrics,
@@ -154,11 +154,11 @@ public class DataSourcePluginServiceImpl implements DataSourcePluginService {
     }
 
     @Override
-    public Future<StatusQueryResult> status(SourceType sourceType, RequestMetrics metrics, String topic) {
+    public Future<StatusQueryResult> status(SourceType sourceType, RequestMetrics metrics, String topic, String consumerGroup) {
         return executeWithMetrics(sourceType,
                 SqlProcessingType.STATUS,
                 metrics,
-                plugin -> plugin.status(topic));
+                plugin -> plugin.status(topic, consumerGroup));
     }
 
     @Override

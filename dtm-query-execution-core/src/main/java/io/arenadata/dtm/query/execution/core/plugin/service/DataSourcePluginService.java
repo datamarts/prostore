@@ -128,9 +128,9 @@ public interface DataSourcePluginService {
      *
      * @param sourceType Data source type
      * @param request    MPPW plugin request
-     * @return future object
+     * @return Consumer group if it's start load request, null otherwise
      */
-    Future<QueryResult> mppw(SourceType sourceType, RequestMetrics metrics, MppwRequest request);
+    Future<String> mppw(SourceType sourceType, RequestMetrics metrics, MppwRequest request);
 
     /**
      * <p>Get plugin status information</p>
@@ -139,7 +139,7 @@ public interface DataSourcePluginService {
      * @param topic      Topic
      * @return future object
      */
-    Future<StatusQueryResult> status(SourceType sourceType, RequestMetrics metrics, String topic);
+    Future<StatusQueryResult> status(SourceType sourceType, RequestMetrics metrics, String topic, String consumerGroup);
 
     /**
      * @param sourceType Data source type

@@ -16,8 +16,22 @@
 package io.arenadata.dtm.status.monitor.version;
 
 import io.arenadata.dtm.common.version.VersionInfo;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.info.BuildProperties;
+import org.springframework.stereotype.Component;
 
-public interface VersionService {
+@Component
+public class VersionService {
 
-    VersionInfo getVersionInfo();
+    private static final String STATUS_MONITOR_COMPONENT_NAME = "status-monitor";
+    private final BuildProperties buildProperties;
+
+    @Autowired
+    public VersionService(BuildProperties buildProperties) {
+        this.buildProperties = buildProperties;
+    }
+
+    public VersionInfo getVersionInfo() {
+        return new VersionInfo(STATUS_MONITOR_COMPONENT_NAME, buildProperties.getVersion());
+    }
 }

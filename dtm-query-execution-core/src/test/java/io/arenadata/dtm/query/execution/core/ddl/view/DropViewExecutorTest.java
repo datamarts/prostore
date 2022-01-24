@@ -72,7 +72,7 @@ class DropViewExecutorTest {
             .build();
 
     @Mock
-    private MetadataExecutor<DdlRequestContext> metadataExecutor;
+    private MetadataExecutor metadataExecutor;
     @Mock
     private CacheService<EntityKey, Entity> cacheService;
     @Mock

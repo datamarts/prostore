@@ -23,13 +23,17 @@ import io.arenadata.dtm.query.calcite.core.framework.DtmCalciteFramework;
 import io.arenadata.dtm.query.calcite.core.service.QueryParserService;
 import io.arenadata.dtm.query.execution.core.base.service.column.CheckColumnTypesService;
 import io.arenadata.dtm.query.execution.core.calcite.configuration.CalciteConfiguration;
+import io.arenadata.dtm.query.execution.core.dml.dto.PluginDeterminationRequest;
 import io.arenadata.dtm.query.execution.core.dml.service.ColumnMetadataService;
+import io.arenadata.dtm.query.execution.core.dml.service.PluginDeterminationService;
 import io.arenadata.dtm.query.execution.core.edml.configuration.EdmlProperties;
 import io.arenadata.dtm.query.execution.core.edml.dto.EdmlRequestContext;
 import io.arenadata.dtm.query.execution.core.edml.mppr.factory.MpprKafkaRequestFactory;
 import io.arenadata.dtm.query.execution.core.edml.mppr.service.impl.DownloadKafkaExecutor;
 import io.arenadata.dtm.query.execution.core.plugin.service.DataSourcePluginService;
+import io.arenadata.dtm.query.execution.core.query.exception.QueriedEntityIsMissingException;
 import io.arenadata.dtm.query.execution.model.metadata.Datamart;
+import io.vertx.core.Future;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
 import lombok.val;
@@ -40,11 +44,13 @@ import org.apache.calcite.tools.Planner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 
 import java.util.Collections;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static io.arenadata.dtm.query.execution.core.utils.TestUtils.SQL_DIALECT;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -55,10 +61,12 @@ class DownloadKafkaExecutorTest {
 
     private final DataSourcePluginService pluginService = mock(DataSourcePluginService.class);
     private final MpprKafkaRequestFactory mpprKafkaRequestFactory = mock(MpprKafkaRequestFactory.class);
-    private final EdmlProperties edmlProperties = mock(EdmlProperties.class);
     private final CheckColumnTypesService checkColumnTypesService = mock(CheckColumnTypesService.class);
     private final ColumnMetadataService metadataService = mock(ColumnMetadataService.class);
     private final QueryParserService queryParserService = mock(QueryParserService.class);
+    private final PluginDeterminationService pluginDeterminationService = mock(PluginDeterminationService.class);
+
+    private final ArgumentCaptor<PluginDeterminationRequest> determinationRequestCaptor = ArgumentCaptor.forClass(PluginDeterminationRequest.class);
 
     private CalciteConfiguration calciteConfiguration = new CalciteConfiguration();
     private CalciteCoreConfiguration calciteCoreConfiguration = new CalciteCoreConfiguration();
@@ -79,56 +87,87 @@ class DownloadKafkaExecutorTest {
 
     @BeforeEach
     void setUp() {
-        downloadKafkaExecutor = new DownloadKafkaExecutor(edmlProperties, queryParserService, checkColumnTypesService, mpprKafkaRequestFactory, metadataService, pluginService);
+        downloadKafkaExecutor = new DownloadKafkaExecutor(queryParserService, checkColumnTypesService, mpprKafkaRequestFactory, metadataService, pluginService, SQL_DIALECT, pluginDeterminationService);
         planner = DtmCalciteFramework.getPlanner(frameworkConfig);
     }
 
     @Test
     void failMismatchQueryDatasource(VertxTestContext testContext) throws SqlParseException {
+        //arrange
         val sqlNode = planner.parse("INSERT INTO dtm.accounts_ext_download SELECT * FROM dtm.accounts DATASOURCE_TYPE = 'ADB'");
         context = new EdmlRequestContext(null, null, sqlNode, "env");
         context.setLogicalSchema(logicalSchema);
+        when(pluginDeterminationService.determine(determinationRequestCaptor.capture()))
+                .thenReturn(Future.failedFuture(new QueriedEntityIsMissingException(SourceType.ADB)));
 
-        downloadKafkaExecutor.execute(context).onComplete(testContext.failing(error ->
-                testContext.verify(() ->
-                                assertEquals("Queried entity is missing for the specified DATASOURCE_TYPE ADB", error.getMessage()))
-                        .completeNow()));
+        //act
+        downloadKafkaExecutor.execute(context)
+                .onComplete(testContext.failing(error -> testContext.verify(() -> {
+                    //assert
+                    assertTrue(error instanceof QueriedEntityIsMissingException);
+                    assertEquals("Queried entity is missing for the specified DATASOURCE_TYPE ADB", error.getMessage());
+                    assertEquals(SourceType.ADB, determinationRequestCaptor.getValue().getPreferredSourceType());
+
+                }).completeNow()));
     }
 
     @Test
     void failMismatchQueryDatasourceWhenLimit(VertxTestContext testContext) throws SqlParseException {
+        //arrange
         val sqlNode = planner.parse("INSERT INTO dtm.accounts_ext_download SELECT * FROM dtm.accounts LIMIT 1 DATASOURCE_TYPE = 'ADB'");
         context = new EdmlRequestContext(null, null, sqlNode, "env");
         context.setLogicalSchema(logicalSchema);
+        when(pluginDeterminationService.determine(determinationRequestCaptor.capture()))
+                .thenReturn(Future.failedFuture(new QueriedEntityIsMissingException(SourceType.ADB)));
 
-        downloadKafkaExecutor.execute(context).onComplete(testContext.failing(error ->
-                testContext.verify(() ->
-                                assertEquals("Queried entity is missing for the specified DATASOURCE_TYPE ADB", error.getMessage()))
-                        .completeNow()));
+        //act
+        downloadKafkaExecutor.execute(context)
+                .onComplete(testContext.failing(error -> testContext.verify(() -> {
+                    //assert
+                    assertTrue(error instanceof QueriedEntityIsMissingException);
+                    assertEquals("Queried entity is missing for the specified DATASOURCE_TYPE ADB", error.getMessage());
+                    assertEquals(SourceType.ADB, determinationRequestCaptor.getValue().getPreferredSourceType());
+
+                }).completeNow()));
     }
 
     @Test
     void failMismatchQueryDatasourceWhenGroupBy(VertxTestContext testContext) throws SqlParseException {
+        //arrange
         val sqlNode = planner.parse("INSERT INTO dtm.accounts_ext_download SELECT * FROM dtm.accounts GROUP BY id DATASOURCE_TYPE = 'ADB'");
         context = new EdmlRequestContext(null, null, sqlNode, "env");
         context.setLogicalSchema(logicalSchema);
+        when(pluginDeterminationService.determine(determinationRequestCaptor.capture()))
+                .thenReturn(Future.failedFuture(new QueriedEntityIsMissingException(SourceType.ADB)));
 
-        downloadKafkaExecutor.execute(context).onComplete(testContext.failing(error ->
-                testContext.verify(() ->
-                                assertEquals("Queried entity is missing for the specified DATASOURCE_TYPE ADB", error.getMessage()))
-                        .completeNow()));
+        //act
+        downloadKafkaExecutor.execute(context)
+                .onComplete(testContext.failing(error -> testContext.verify(() -> {
+                    //assert
+                    assertTrue(error instanceof QueriedEntityIsMissingException);
+                    assertEquals("Queried entity is missing for the specified DATASOURCE_TYPE ADB", error.getMessage());
+                    assertEquals(SourceType.ADB, determinationRequestCaptor.getValue().getPreferredSourceType());
+
+                }).completeNow()));
     }
 
     @Test
     void failMismatchDefaultDatasource(VertxTestContext testContext) throws SqlParseException {
+        //arrange
         val sqlNode = planner.parse("INSERT INTO dtm.accounts_ext_download SELECT * FROM dtm.accounts");
         context = new EdmlRequestContext(null, null, sqlNode, "env");
         context.setLogicalSchema(logicalSchema);
-        when(edmlProperties.getSourceType()).thenReturn(SourceType.ADG);
+        when(pluginDeterminationService.determine(determinationRequestCaptor.capture()))
+                .thenReturn(Future.failedFuture(new QueriedEntityIsMissingException(SourceType.ADG)));
 
-        downloadKafkaExecutor.execute(context).onComplete(testContext.failing(error ->
-                testContext.verify(() ->
-                        assertEquals("Queried entity is missing for the specified DATASOURCE_TYPE ADG", error.getMessage()))
-                        .completeNow()));
+        //act
+        downloadKafkaExecutor.execute(context)
+                .onComplete(testContext.failing(error -> testContext.verify(() -> {
+                    //assert
+                    assertTrue(error instanceof QueriedEntityIsMissingException);
+                    assertEquals("Queried entity is missing for the specified DATASOURCE_TYPE ADG", error.getMessage());
+                    assertNull(determinationRequestCaptor.getValue().getPreferredSourceType());
+
+                }).completeNow()));
     }
 }

@@ -32,9 +32,8 @@ import io.arenadata.dtm.query.execution.core.delta.dto.DeltaWriteOp;
 import io.arenadata.dtm.query.execution.core.delta.repository.zookeeper.DeltaServiceDao;
 import io.arenadata.dtm.query.execution.core.delta.repository.zookeeper.impl.DeltaServiceDaoImpl;
 import io.arenadata.dtm.query.execution.core.edml.dto.EraseWriteOpResult;
-import io.arenadata.dtm.query.execution.core.edml.mppw.service.EdmlUploadFailedExecutor;
+import io.arenadata.dtm.query.execution.core.edml.mppw.service.UploadFailedExecutor;
 import io.arenadata.dtm.query.execution.core.edml.mppw.service.impl.UploadExternalTableExecutor;
-import io.arenadata.dtm.query.execution.core.edml.mppw.service.impl.UploadFailedExecutorImpl;
 import io.arenadata.dtm.query.execution.core.rollback.service.RestoreStateService;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -57,7 +56,7 @@ class RestoreStateServiceTest {
     private final EntityDao entityDao = mock(EntityDao.class);
     private final DatamartDao datamartDao = mock(DatamartDao.class);
     private final DeltaServiceDao deltaServiceDao = mock(DeltaServiceDaoImpl.class);
-    private final EdmlUploadFailedExecutor edmlUploadFailedExecutor = mock(UploadFailedExecutorImpl.class);
+    private final UploadFailedExecutor uploadFailedExecutor = mock(UploadFailedExecutor.class);
     private final UploadExternalTableExecutor uploadExternalTableExecutor = mock(UploadExternalTableExecutor.class);
     private final RestorationProperties restorationProperties = mock(RestorationProperties.class);
     private CalciteConfiguration config = new CalciteConfiguration();
@@ -75,7 +74,7 @@ class RestoreStateServiceTest {
         when(serviceDbFacade.getDeltaServiceDao()).thenReturn(deltaServiceDao);
 
         restoreStateService = new RestoreStateService(serviceDbFacade,
-                edmlUploadFailedExecutor,
+                uploadFailedExecutor,
                 uploadExternalTableExecutor,
                 definitionService,
                 envName,
@@ -154,7 +153,7 @@ class RestoreStateServiceTest {
 
         when(uploadExternalTableExecutor.execute(any())).thenReturn(Future.succeededFuture(QueryResult.emptyResult()));
 
-        when(edmlUploadFailedExecutor.execute(any())).thenReturn(Future.succeededFuture());
+        when(uploadFailedExecutor.execute(any())).thenReturn(Future.succeededFuture());
 
         restoreStateService.restoreState()
                 .onComplete(promise);
@@ -219,7 +218,7 @@ class RestoreStateServiceTest {
 
         when(uploadExternalTableExecutor.execute(any())).thenReturn(Future.succeededFuture(QueryResult.emptyResult()));
 
-        when(edmlUploadFailedExecutor.execute(any())).thenReturn(Future.succeededFuture());
+        when(uploadFailedExecutor.execute(any())).thenReturn(Future.succeededFuture());
 
         restoreStateService.restoreState()
                 .onComplete(promise);
@@ -271,7 +270,7 @@ class RestoreStateServiceTest {
 
         when(uploadExternalTableExecutor.execute(any())).thenReturn(Future.failedFuture(new DtmException("")));
 
-        when(edmlUploadFailedExecutor.execute(any())).thenReturn(Future.succeededFuture());
+        when(uploadFailedExecutor.execute(any())).thenReturn(Future.succeededFuture());
 
         // act
         Future<Void> result = restoreStateService.restoreState();
@@ -319,7 +318,7 @@ class RestoreStateServiceTest {
 
         when(uploadExternalTableExecutor.execute(any())).thenReturn(Future.succeededFuture(QueryResult.emptyResult()));
 
-        when(edmlUploadFailedExecutor.execute(any())).thenReturn(Future.failedFuture(new DtmException("")));
+        when(uploadFailedExecutor.execute(any())).thenReturn(Future.failedFuture(new DtmException("")));
 
         // act
         Future<Void> result = restoreStateService.restoreState();
@@ -366,7 +365,7 @@ class RestoreStateServiceTest {
             return Future.succeededFuture(Entity.builder().name(tableName).schema(schema).build());
         }).when(entityDao).getEntity(any(), any());
 
-        when(edmlUploadFailedExecutor.execute(any())).thenReturn(Future.succeededFuture());
+        when(uploadFailedExecutor.execute(any())).thenReturn(Future.succeededFuture());
 
         restoreStateService.restoreErase(datamart)
                 .onComplete(promise);
@@ -410,7 +409,7 @@ class RestoreStateServiceTest {
             return Future.succeededFuture(Entity.builder().name(tableName).schema(schema).build());
         }).when(entityDao).getEntity(any(), any());
 
-        when(edmlUploadFailedExecutor.execute(any())).thenReturn(Future.succeededFuture());
+        when(uploadFailedExecutor.execute(any())).thenReturn(Future.succeededFuture());
 
         restoreStateService.restoreErase(datamart)
                 .onComplete(promise);
@@ -432,7 +431,7 @@ class RestoreStateServiceTest {
             return Future.succeededFuture(Entity.builder().name(tableName).schema(schema).build());
         }).when(entityDao).getEntity(any(), any());
 
-        when(edmlUploadFailedExecutor.execute(any())).thenReturn(Future.succeededFuture());
+        when(uploadFailedExecutor.execute(any())).thenReturn(Future.succeededFuture());
 
         restoreStateService.restoreErase(datamart)
                 .onComplete(promise);
@@ -476,7 +475,7 @@ class RestoreStateServiceTest {
             return Future.succeededFuture(Entity.builder().name(tableName).schema(schema).build());
         }).when(entityDao).getEntity(any(), any());
 
-        when(edmlUploadFailedExecutor.execute(any())).thenReturn(Future.failedFuture(new DtmException("")));
+        when(uploadFailedExecutor.execute(any())).thenReturn(Future.failedFuture(new DtmException("")));
 
         restoreStateService.restoreErase(datamart)
                 .onComplete(promise);
@@ -620,7 +619,7 @@ class RestoreStateServiceTest {
             return Future.succeededFuture(Entity.builder().name(tableName).schema(schema).build());
         }).when(entityDao).getEntity(any(), any());
 
-        when(edmlUploadFailedExecutor.execute(any())).thenReturn(Future.succeededFuture());
+        when(uploadFailedExecutor.execute(any())).thenReturn(Future.succeededFuture());
 
         restoreStateService.restoreErase(datamart, 1L)
                 .onComplete(promise);

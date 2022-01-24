@@ -16,12 +16,26 @@
 package io.arenadata.dtm.query.execution.plugin.adqm.mppr.kafka.factory;
 
 import io.arenadata.dtm.query.execution.plugin.adqm.mppr.kafka.dto.MpprKafkaConnectorRequest;
+import io.arenadata.dtm.query.execution.plugin.api.mppr.kafka.DownloadExternalEntityMetadata;
 import io.arenadata.dtm.query.execution.plugin.api.mppr.kafka.MpprKafkaRequest;
+import lombok.val;
+import org.springframework.stereotype.Component;
 
-/**
- * Factory for making requests to  mpprConnector
- */
-public interface MpprKafkaConnectorRequestFactory {
+@Component
+public class MpprKafkaConnectorRequestFactory {
 
-    MpprKafkaConnectorRequest create(MpprKafkaRequest mpprRequest, String enrichedQuery);
+    public MpprKafkaConnectorRequest create(MpprKafkaRequest request,
+                                            String enrichedQuery) {
+        val downloadMetadata =
+                (DownloadExternalEntityMetadata) request.getDownloadMetadata();
+        return MpprKafkaConnectorRequest.builder()
+                .table(request.getSql())
+                .sql(enrichedQuery)
+                .datamart(request.getDatamartMnemonic())
+                .kafkaBrokers(request.getBrokers())
+                .kafkaTopic(request.getTopic())
+                .chunkSize(downloadMetadata.getChunkSize())
+                .avroSchema(downloadMetadata.getExternalSchema())
+                .build();
+    }
 }

@@ -23,7 +23,7 @@ import io.arenadata.dtm.query.execution.plugin.adg.base.factory.AdgHelperTableNa
 import io.arenadata.dtm.query.execution.plugin.adg.base.model.cartridge.response.AdgCartridgeError;
 import io.arenadata.dtm.query.execution.plugin.adg.base.model.cartridge.response.TtLoadDataKafkaResponse;
 import io.arenadata.dtm.query.execution.plugin.adg.base.service.client.AdgCartridgeClient;
-import io.arenadata.dtm.query.execution.plugin.adg.mppw.configuration.properties.AdgMppwKafkaProperties;
+import io.arenadata.dtm.query.execution.plugin.adg.mppw.configuration.properties.AdgMppwProperties;
 import io.arenadata.dtm.query.execution.plugin.adg.mppw.kafka.factory.AdgMppwKafkaContextFactory;
 import io.arenadata.dtm.query.execution.plugin.api.exception.DataSourceException;
 import io.arenadata.dtm.query.execution.plugin.api.mppw.MppwRequest;
@@ -44,6 +44,7 @@ import static org.mockito.Mockito.*;
 
 class AdgMppwKafkaServiceTest {
 
+    private static final String CONSUMER_GROUP = "consumerGroup";
     private final AdgCartridgeClient client = mock(AdgCartridgeClient.class);
     private final AdgMppwKafkaService service = getAdgMppwKafkaService();
 
@@ -93,11 +94,12 @@ class AdgMppwKafkaServiceTest {
     @Test
     void allGoodCancelTest() {
         val context = getRequestContext();
-        context.setIsLoadStart(false);
+        context.setLoadStart(false);
         allGoodApiMock();
         service.execute(context)
                 .onComplete(ar -> {
                     assertTrue(ar.succeeded());
+                    assertNull(ar.result());
                     verify(client, VerificationModeFactory.times(0)).subscribe(any());
                     verify(client, VerificationModeFactory.times(0)).loadData(any());
                     verify(client, VerificationModeFactory.times(1)).cancelSubscription(any());
@@ -139,7 +141,7 @@ class AdgMppwKafkaServiceTest {
         badLoadDataApiMock();
         service.execute(context)
                 .onComplete(ar -> {
-                    assertEquals(ar.result(), QueryResult.emptyResult());
+                    assertEquals(CONSUMER_GROUP, ar.result());
                     verify(client, VerificationModeFactory.times(1)).subscribe(any());
                     verify(client, VerificationModeFactory.times(0)).transferDataToScdTable(any());
                 });
@@ -151,7 +153,7 @@ class AdgMppwKafkaServiceTest {
         badTransferDataApiMock();
         service.execute(context)
                 .onComplete(ar -> {
-                    assertEquals(ar.result(), QueryResult.emptyResult());
+                    assertEquals(CONSUMER_GROUP, ar.result());
                     verify(client, VerificationModeFactory.times(1)).subscribe(any());
                 });
     }
@@ -159,7 +161,7 @@ class AdgMppwKafkaServiceTest {
     @Test
     void badCancelTest() {
         val context = getRequestContext();
-        context.setIsLoadStart(false);
+        context.setLoadStart(false);
         badCancelApiMock();
         service.execute(context)
                 .onComplete(ar -> {
@@ -200,8 +202,9 @@ class AdgMppwKafkaServiceTest {
 
     private AdgMppwKafkaService getAdgMppwKafkaService() {
         val tableNamesFactory = new AdgHelperTableNamesFactory();
-        val mppwKafkaProperties = new AdgMppwKafkaProperties();
+        val mppwKafkaProperties = new AdgMppwProperties();
         mppwKafkaProperties.setMaxNumberOfMessagesPerPartition(200);
+        mppwKafkaProperties.setConsumerGroup(CONSUMER_GROUP);
         return new AdgMppwKafkaService(
                 new AdgMppwKafkaContextFactory(tableNamesFactory),
                 client,
@@ -213,7 +216,7 @@ class AdgMppwKafkaServiceTest {
         return MppwKafkaRequest.builder()
                 .envName("env1")
                 .datamartMnemonic("test")
-                .isLoadStart(true)
+                .loadStart(true)
                 .sysCn(1L)
                 .sourceEntity(Entity.builder()
                         .build())

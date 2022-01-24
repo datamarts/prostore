@@ -19,7 +19,6 @@ import io.arenadata.dtm.async.AsyncUtils;
 import io.arenadata.dtm.cache.service.CacheService;
 import io.arenadata.dtm.common.cache.QueryTemplateKey;
 import io.arenadata.dtm.common.cache.SourceQueryTemplateValue;
-import io.arenadata.dtm.common.metrics.RequestMetrics;
 import io.arenadata.dtm.common.model.SqlProcessingType;
 import io.arenadata.dtm.common.reader.QueryRequest;
 import io.arenadata.dtm.common.reader.QueryResult;
@@ -59,7 +58,7 @@ public class LlrDmlExecutor implements DmlExecutor {
     private final ViewReplacerService viewReplacerService;
     private final InformationSchemaExecutor infoSchemaExecutor;
     private final InformationSchemaDefinitionService infoSchemaDefService;
-    private final MetricsService<RequestMetrics> metricsService;
+    private final MetricsService metricsService;
     private final QueryTemplateExtractor templateExtractor;
     private final CacheService<QueryTemplateKey, SourceQueryTemplateValue> queryCacheService;
     private final LlrRequestContextFactory llrRequestContextFactory;
@@ -73,7 +72,7 @@ public class LlrDmlExecutor implements DmlExecutor {
                           ViewReplacerService viewReplacerService,
                           InformationSchemaExecutor infoSchemaExecutor,
                           InformationSchemaDefinitionService infoSchemaDefService,
-                          MetricsService<RequestMetrics> metricsService,
+                          MetricsService metricsService,
                           @Qualifier("coreQueryTmplateExtractor") QueryTemplateExtractor templateExtractor,
                           @Qualifier("coreQueryTemplateCacheService") CacheService<QueryTemplateKey, SourceQueryTemplateValue> queryCacheService,
                           LlrRequestContextFactory llrRequestContextFactory,

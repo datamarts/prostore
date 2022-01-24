@@ -27,7 +27,9 @@ import io.arenadata.dtm.query.execution.core.base.dto.cache.MaterializedViewCach
 import io.arenadata.dtm.query.execution.core.base.exception.datamart.DatamartNotExistsException;
 import io.arenadata.dtm.query.execution.core.base.repository.ServiceDbFacade;
 import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.DatamartDao;
+import io.arenadata.dtm.query.execution.core.base.service.hsql.HSQLClient;
 import io.arenadata.dtm.query.execution.core.base.service.metadata.MetadataExecutor;
+import io.arenadata.dtm.query.execution.core.base.utils.InformationSchemaUtils;
 import io.arenadata.dtm.query.execution.core.ddl.dto.DdlRequestContext;
 import io.arenadata.dtm.query.execution.core.ddl.service.QueryResultDdlExecutor;
 import io.arenadata.dtm.query.execution.core.delta.dto.HotDelta;
@@ -39,27 +41,34 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 import static io.arenadata.dtm.query.execution.core.ddl.dto.DdlType.DROP_SCHEMA;
 
 @Slf4j
 @Component
 public class DropSchemaExecutor extends QueryResultDdlExecutor {
+
+    private static final String MATERIALIZED_VIEW_PREFIX = "SYS_";
+
     private final CacheService<String, HotDelta> hotDeltaCacheService;
     private final CacheService<String, OkDelta> okDeltaCacheService;
     private final CacheService<EntityKey, Entity> entityCacheService;
     private final CacheService<EntityKey, MaterializedViewCacheValue> materializedViewCacheService;
     private final DatamartDao datamartDao;
     private final EvictQueryTemplateCacheService evictQueryTemplateCacheService;
+    private final HSQLClient hsqlClient;
 
     @Autowired
-    public DropSchemaExecutor(MetadataExecutor<DdlRequestContext> metadataExecutor,
+    public DropSchemaExecutor(MetadataExecutor metadataExecutor,
                               ServiceDbFacade serviceDbFacade,
                               @Qualifier("coreSqlDialect") SqlDialect sqlDialect,
                               @Qualifier("hotDeltaCacheService") CacheService<String, HotDelta> hotDeltaCacheService,
                               @Qualifier("okDeltaCacheService") CacheService<String, OkDelta> okDeltaCacheService,
                               @Qualifier("entityCacheService") CacheService<EntityKey, Entity> entityCacheService,
                               @Qualifier("materializedViewCacheService") CacheService<EntityKey, MaterializedViewCacheValue> materializedViewCacheService,
-                              EvictQueryTemplateCacheService evictQueryTemplateCacheService) {
+                              EvictQueryTemplateCacheService evictQueryTemplateCacheService, HSQLClient hsqlClient) {
         super(metadataExecutor, serviceDbFacade, sqlDialect);
         this.hotDeltaCacheService = hotDeltaCacheService;
         this.okDeltaCacheService = okDeltaCacheService;
@@ -67,6 +76,7 @@ public class DropSchemaExecutor extends QueryResultDdlExecutor {
         this.materializedViewCacheService = materializedViewCacheService;
         datamartDao = serviceDbFacade.getServiceDbDao().getDatamartDao();
         this.evictQueryTemplateCacheService = evictQueryTemplateCacheService;
+        this.hsqlClient = hsqlClient;
     }
 
     @Override
@@ -76,7 +86,8 @@ public class DropSchemaExecutor extends QueryResultDdlExecutor {
             clearCacheByDatamartName(datamartName);
             context.getRequest().getQueryRequest().setDatamartMnemonic(datamartName);
             context.setDatamartName(datamartName);
-            datamartDao.existsDatamart(datamartName)
+            checkRelatedView(datamartName)
+                    .compose(ignore -> datamartDao.existsDatamart(datamartName))
                     .compose(isExists -> {
                         if (isExists) {
                             try {
@@ -97,19 +108,41 @@ public class DropSchemaExecutor extends QueryResultDdlExecutor {
         });
     }
 
-    private void clearCacheByDatamartName(String schemaName) {
-        entityCacheService.removeIf(ek -> ek.getDatamartName().equals(schemaName));
+    private Future<Void> checkRelatedView(String datamartName) {
+        return Future.future(promise -> hsqlClient.getQueryResult(String.format(InformationSchemaUtils.CHECK_VIEW_BY_TABLE_SCHEMA, datamartName.toUpperCase(), datamartName.toUpperCase()))
+                .onSuccess(resultSet -> {
+                    if (resultSet.getResults().isEmpty()) {
+                        promise.complete();
+                    } else {
+                        List<String> viewNames = resultSet.getResults().stream()
+                                .map(array -> {
+                                    String datamart = array.getString(0);
+                                    String view = array.getString(1);
+                                    if (view.startsWith(MATERIALIZED_VIEW_PREFIX)) {
+                                        view = view.substring(MATERIALIZED_VIEW_PREFIX.length());
+                                    }
+                                    return datamart + "." + view;
+                                })
+                                .collect(Collectors.toList());
+                        promise.fail(new DtmException(String.format("Views %s using the '%s' must be dropped first", viewNames, datamartName.toUpperCase())));
+                    }
+                })
+                .onFailure(promise::fail));
+    }
+
+    private void clearCacheByDatamartName(String datamartName) {
+        entityCacheService.removeIf(ek -> ek.getDatamartName().equals(datamartName));
         materializedViewCacheService.forEach(((entityKey, cacheValue) -> {
-            if (entityKey.getDatamartName().equals(schemaName)) {
+            if (entityKey.getDatamartName().equals(datamartName)) {
                 cacheValue.markForDeletion();
             }
         }));
-        hotDeltaCacheService.remove(schemaName);
-        okDeltaCacheService.remove(schemaName);
+        hotDeltaCacheService.remove(datamartName);
+        okDeltaCacheService.remove(datamartName);
     }
 
-    private Future<Void> getNotExistsDatamartFuture(String schemaName) {
-        return Future.failedFuture(new DatamartNotExistsException(schemaName));
+    private Future<Void> getNotExistsDatamartFuture(String datamartName) {
+        return Future.failedFuture(new DatamartNotExistsException(datamartName));
     }
 
     private Future<Void> dropDatamart(String datamartName) {

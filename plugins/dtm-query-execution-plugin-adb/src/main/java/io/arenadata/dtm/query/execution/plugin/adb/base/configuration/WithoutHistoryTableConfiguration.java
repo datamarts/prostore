@@ -20,7 +20,6 @@ import io.arenadata.dtm.query.execution.plugin.adb.check.service.AdbCheckDataSer
 import io.arenadata.dtm.query.execution.plugin.adb.ddl.factory.TruncateQueryFactory;
 import io.arenadata.dtm.query.execution.plugin.adb.ddl.factory.impl.TruncateQueryWithoutHistoryFactory;
 import io.arenadata.dtm.query.execution.plugin.adb.enrichment.service.AdbDmlQueryExtendWithoutHistoryService;
-import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.dto.AdbKafkaMppwTransferRequest;
 import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.factory.MppwRequestFactory;
 import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.factory.impl.MppwWithoutHistoryTableRequestFactory;
 import io.arenadata.dtm.query.execution.plugin.adb.query.service.DatabaseExecutor;
@@ -51,7 +50,7 @@ public class WithoutHistoryTableConfiguration {
     }
 
     @Bean
-    public MppwRequestFactory<AdbKafkaMppwTransferRequest> adbMppwRequestFactory() {
+    public MppwRequestFactory adbMppwRequestFactory() {
         return new MppwWithoutHistoryTableRequestFactory();
     }
 

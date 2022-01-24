@@ -33,7 +33,8 @@ public class DropTableExecutor implements DdlExecutor<Void> {
     private final DdlSqlFactory sqlFactory;
 
     @Autowired
-    public DropTableExecutor(@Qualifier("adbQueryExecutor") DatabaseExecutor adbQueryExecutor, DdlSqlFactory sqlFactory) {
+    public DropTableExecutor(@Qualifier("adbQueryExecutor") DatabaseExecutor adbQueryExecutor,
+                             DdlSqlFactory sqlFactory) {
         this.adbQueryExecutor = adbQueryExecutor;
         this.sqlFactory = sqlFactory;
     }

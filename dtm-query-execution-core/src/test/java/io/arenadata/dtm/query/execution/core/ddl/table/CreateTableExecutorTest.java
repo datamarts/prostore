@@ -16,9 +16,7 @@
 package io.arenadata.dtm.query.execution.core.ddl.table;
 
 import io.arenadata.dtm.common.exception.DtmException;
-import io.arenadata.dtm.common.model.ddl.ColumnType;
-import io.arenadata.dtm.common.model.ddl.Entity;
-import io.arenadata.dtm.common.model.ddl.EntityField;
+import io.arenadata.dtm.common.model.ddl.*;
 import io.arenadata.dtm.common.reader.QueryRequest;
 import io.arenadata.dtm.common.reader.QueryResult;
 import io.arenadata.dtm.common.reader.SourceType;
@@ -34,8 +32,6 @@ import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.EntityDao
 import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.ServiceDbDao;
 import io.arenadata.dtm.query.execution.core.base.service.metadata.MetadataCalciteGenerator;
 import io.arenadata.dtm.query.execution.core.base.service.metadata.MetadataExecutor;
-import io.arenadata.dtm.query.execution.core.base.service.metadata.impl.MetadataCalciteGeneratorImpl;
-import io.arenadata.dtm.query.execution.core.base.service.metadata.impl.MetadataExecutorImpl;
 import io.arenadata.dtm.query.execution.core.calcite.configuration.CalciteConfiguration;
 import io.arenadata.dtm.query.execution.core.ddl.dto.DdlRequestContext;
 import io.arenadata.dtm.query.execution.core.ddl.service.QueryResultDdlExecutor;
@@ -46,6 +42,7 @@ import io.arenadata.dtm.query.execution.core.plugin.service.DataSourcePluginServ
 import io.arenadata.dtm.query.execution.core.plugin.service.impl.DataSourcePluginServiceImpl;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
+import lombok.val;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParseException;
 import org.apache.calcite.sql.parser.SqlParser;
@@ -67,11 +64,12 @@ import static org.mockito.Mockito.*;
 class CreateTableExecutorTest {
 
     private static final String DATAMART = "shares";
+    private static final String SQL_NODE_NAME = "accounts";
     private final CalciteConfiguration calciteConfiguration = new CalciteConfiguration();
     private final CalciteCoreConfiguration calciteCoreConfiguration = new CalciteCoreConfiguration();
     private final SqlParser.Config parserConfig = calciteConfiguration.configEddlParser(calciteCoreConfiguration.eddlParserImplFactory());
-    private final MetadataCalciteGenerator metadataCalciteGenerator = mock(MetadataCalciteGeneratorImpl.class);
-    private final MetadataExecutor<DdlRequestContext> metadataExecutor = mock(MetadataExecutorImpl.class);
+    private final MetadataCalciteGenerator metadataCalciteGenerator = mock(MetadataCalciteGenerator.class);
+    private final MetadataExecutor metadataExecutor = mock(MetadataExecutor.class);
     private final ServiceDbFacade serviceDbFacade = mock(ServiceDbFacadeImpl.class);
     private final ChangelogDao changelogDao = mock(ChangelogDao.class);
     private final ServiceDbDao serviceDbDao = mock(ServiceDbDao.class);
@@ -106,8 +104,7 @@ class CreateTableExecutorTest {
         f1.setShardingOrder(1);
         EntityField f2 = new EntityField(1, "name", ColumnType.VARCHAR, true);
         f2.setSize(100);
-        String sqlNodeName = "accounts";
-        entity = new Entity(sqlNodeName, DATAMART, Arrays.asList(f1, f2));
+        entity = new Entity(SQL_NODE_NAME, DATAMART, Arrays.asList(f1, f2));
     }
 
     private void prepareContext(String sql, boolean isLogicalOnly) throws SqlParseException {
@@ -259,8 +256,7 @@ class CreateTableExecutorTest {
         f1.setPrimaryOrder(1);
         f1.setShardingOrder(1);
         EntityField f2 = new EntityField(1, "id", ColumnType.INT, false);
-        String sqlNodeName = "accounts";
-        entity = new Entity(sqlNodeName, DATAMART, Arrays.asList(f1, f2));
+        entity = new Entity(SQL_NODE_NAME, DATAMART, Arrays.asList(f1, f2));
 
         Promise<QueryResult> promise = Promise.promise();
         when(metadataCalciteGenerator.generateTableMetadata(any())).thenReturn(entity);
@@ -269,6 +265,80 @@ class CreateTableExecutorTest {
                 .onComplete(promise);
         assertTrue(promise.future().failed());
         assertEquals("Entity has duplication fields names", promise.future().cause().getMessage());
+    }
+
+    @Test
+    void executeWithCharTypesZeroSizeError() throws SqlParseException {
+        prepareContext("CREATE TABLE ACCOUNTS (ID INTEGER, NAME1 CHAR(0), NAME2 VARCHAR(0))", false);
+
+        val f1 = EntityField.builder()
+                .ordinalPosition(0)
+                .name("ID")
+                .type(ColumnType.INT)
+                .nullable(false)
+                .primaryOrder(1)
+                .shardingOrder(1)
+                .build();
+        val f2 = EntityField.builder()
+                .ordinalPosition(1)
+                .name("NAME1")
+                .type(ColumnType.CHAR)
+                .size(0)
+                .nullable(false)
+                .build();
+        val f3 = EntityField.builder()
+                .ordinalPosition(2)
+                .name("NAME2")
+                .type(ColumnType.VARCHAR)
+                .size(0)
+                .nullable(false)
+                .build();
+
+        entity = new Entity(SQL_NODE_NAME, DATAMART, Arrays.asList(f1, f2, f3));
+
+        when(metadataCalciteGenerator.generateTableMetadata(any())).thenReturn(entity);
+
+        Promise<QueryResult> promise = Promise.promise();
+        createTableDdlExecutor.execute(context, entity.getName())
+                .onComplete(promise);
+        assertTrue(promise.future().failed());
+        assertEquals("Specifying the size for columns[NAME1, NAME2] with types[CHAR/VARCHAR] is required", promise.future().cause().getMessage());
+    }
+
+    @Test
+    void executeWithCharTypesNullSizeError() throws SqlParseException {
+        prepareContext("CREATE TABLE ACCOUNTS (ID INTEGER, NAME1 CHAR, NAME2 VARCHAR)", false);
+
+        val f1 = EntityField.builder()
+                .ordinalPosition(0)
+                .name("ID")
+                .type(ColumnType.INT)
+                .nullable(false)
+                .primaryOrder(1)
+                .shardingOrder(1)
+                .build();
+        val f2 = EntityField.builder()
+                .ordinalPosition(1)
+                .name("NAME1")
+                .type(ColumnType.CHAR)
+                .nullable(false)
+                .build();
+        val f3 = EntityField.builder()
+                .ordinalPosition(2)
+                .name("NAME2")
+                .type(ColumnType.VARCHAR)
+                .nullable(false)
+                .build();
+
+        entity = new Entity(SQL_NODE_NAME, DATAMART, Arrays.asList(f1, f2, f3));
+
+        when(metadataCalciteGenerator.generateTableMetadata(any())).thenReturn(entity);
+
+        Promise<QueryResult> promise = Promise.promise();
+        createTableDdlExecutor.execute(context, entity.getName())
+                .onComplete(promise);
+        assertTrue(promise.future().failed());
+        assertEquals("Specifying the size for columns[NAME1] with types[CHAR/VARCHAR] is required", promise.future().cause().getMessage());
     }
 
     @Test

@@ -17,16 +17,15 @@ package io.arenadata.dtm.query.execution.plugin.adg.mppw.kafka.service;
 
 import io.arenadata.dtm.common.model.ddl.ExternalTableFormat;
 import io.arenadata.dtm.common.model.ddl.ExternalTableLocationType;
-import io.arenadata.dtm.common.reader.QueryResult;
-import io.arenadata.dtm.query.execution.plugin.adg.mppw.configuration.properties.AdgMppwKafkaProperties;
-import io.arenadata.dtm.query.execution.plugin.adg.mppw.kafka.dto.AdgMppwKafkaContext;
-import io.arenadata.dtm.query.execution.plugin.adg.mppw.kafka.factory.AdgMppwKafkaContextFactory;
 import io.arenadata.dtm.query.execution.plugin.adg.base.model.callback.function.TtTransferDataScdCallbackFunction;
 import io.arenadata.dtm.query.execution.plugin.adg.base.model.callback.params.TtTransferDataScdCallbackParameter;
 import io.arenadata.dtm.query.execution.plugin.adg.base.model.cartridge.request.AdgSubscriptionKafkaRequest;
 import io.arenadata.dtm.query.execution.plugin.adg.base.model.cartridge.request.AdgTransferDataEtlRequest;
 import io.arenadata.dtm.query.execution.plugin.adg.base.service.client.AdgCartridgeClient;
 import io.arenadata.dtm.query.execution.plugin.adg.mppw.AdgMppwExecutor;
+import io.arenadata.dtm.query.execution.plugin.adg.mppw.configuration.properties.AdgMppwProperties;
+import io.arenadata.dtm.query.execution.plugin.adg.mppw.kafka.dto.AdgMppwKafkaContext;
+import io.arenadata.dtm.query.execution.plugin.adg.mppw.kafka.factory.AdgMppwKafkaContextFactory;
 import io.arenadata.dtm.query.execution.plugin.api.exception.MppwDatasourceException;
 import io.arenadata.dtm.query.execution.plugin.api.mppw.MppwRequest;
 import io.arenadata.dtm.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
@@ -47,21 +46,21 @@ public class AdgMppwKafkaService implements AdgMppwExecutor {
 
     private final AdgMppwKafkaContextFactory contextFactory;
     private final Map<String, String> initializedLoadingByTopic;
-    private final AdgMppwKafkaProperties properties;
+    private final AdgMppwProperties mppwProperties;
     private final AdgCartridgeClient cartridgeClient;
 
     @Autowired
     public AdgMppwKafkaService(AdgMppwKafkaContextFactory contextFactory,
                                AdgCartridgeClient cartridgeClient,
-                               AdgMppwKafkaProperties properties) {
+                               AdgMppwProperties mppwProperties) {
         this.contextFactory = contextFactory;
         this.cartridgeClient = cartridgeClient;
-        this.properties = properties;
+        this.mppwProperties = mppwProperties;
         initializedLoadingByTopic = new ConcurrentHashMap<>();
     }
 
     @Override
-    public Future<QueryResult> execute(MppwRequest request) {
+    public Future<String> execute(MppwRequest request) {
         return Future.future(promise -> {
             if (request.getUploadMetadata().getFormat() != ExternalTableFormat.AVRO) {
                 promise.fail(new MppwDatasourceException(String.format("Format %s not implemented",
@@ -69,7 +68,7 @@ public class AdgMppwKafkaService implements AdgMppwExecutor {
                 return;
             }
             val mppwKafkaContext = contextFactory.create((MppwKafkaRequest) request);
-            if (request.getIsLoadStart()) {
+            if (request.isLoadStart()) {
                 log.debug("mppw start for request {}", request);
                 initializeLoading(mppwKafkaContext, request.getSourceEntity().getExternalTableUploadMessageLimit())
                         .onComplete(promise);
@@ -86,13 +85,13 @@ public class AdgMppwKafkaService implements AdgMppwExecutor {
         return ExternalTableLocationType.KAFKA;
     }
 
-    private Future<QueryResult> initializeLoading(AdgMppwKafkaContext ctx, Integer externalTableUploadMessageLimit) {
+    private Future<String> initializeLoading(AdgMppwKafkaContext ctx, Integer externalTableUploadMessageLimit) {
         if (initializedLoadingByTopic.containsKey(ctx.getTopicName())) {
             return transferData(ctx);
         } else {
             Long maxNumberOfMessages = Optional.ofNullable(externalTableUploadMessageLimit)
                     .map(Integer::longValue)
-                    .orElse(properties.getMaxNumberOfMessagesPerPartition());
+                    .orElse(mppwProperties.getMaxNumberOfMessagesPerPartition());
             return Future.future(promise -> {
                 val callbackFunctionParameter = new TtTransferDataScdCallbackParameter(
                         ctx.getHelperTableNames().getStaging(),
@@ -102,10 +101,10 @@ public class AdgMppwKafkaService implements AdgMppwExecutor {
                         ctx.getHotDelta());
 
                 val callbackFunction = new TtTransferDataScdCallbackFunction(
-                        properties.getCallbackFunctionName(),
+                        mppwProperties.getCallbackFunctionName(),
                         callbackFunctionParameter,
                         maxNumberOfMessages,
-                        properties.getCallbackFunctionSecIdle());
+                        mppwProperties.getCallbackFunctionSecIdle());
 
                 val request = new AdgSubscriptionKafkaRequest(
                         maxNumberOfMessages,
@@ -118,14 +117,14 @@ public class AdgMppwKafkaService implements AdgMppwExecutor {
                         .onSuccess(result -> {
                             log.debug("Loading initialize completed by [{}]", request);
                             initializedLoadingByTopic.put(ctx.getTopicName(), ctx.getConsumerTableName());
-                            promise.complete(QueryResult.emptyResult());
+                            promise.complete(mppwProperties.getConsumerGroup());
                         })
                         .onFailure(promise::fail);
             });
         }
     }
 
-    private Future<QueryResult> cancelLoadData(AdgMppwKafkaContext ctx) {
+    private Future<String> cancelLoadData(AdgMppwKafkaContext ctx) {
         return Future.future(promise -> {
             val topicName = ctx.getTopicName();
             transferData(ctx)
@@ -133,19 +132,19 @@ public class AdgMppwKafkaService implements AdgMppwExecutor {
                     .onSuccess(result -> {
                         initializedLoadingByTopic.remove(topicName);
                         log.debug("Cancel Load Data completed by request [{}]", topicName);
-                        promise.complete(QueryResult.emptyResult());
+                        promise.complete();
                     })
                     .onFailure(promise::fail);
         });
     }
 
-    private Future<QueryResult> transferData(AdgMppwKafkaContext ctx) {
+    private Future<String> transferData(AdgMppwKafkaContext ctx) {
         return Future.future(promise -> {
             val request = new AdgTransferDataEtlRequest(ctx.getHelperTableNames(), ctx.getHotDelta());
             cartridgeClient.transferDataToScdTable(request)
                     .onSuccess(result -> {
                                 log.debug("Transfer Data completed by request [{}]", request);
-                                promise.complete(QueryResult.emptyResult());
+                                promise.complete(mppwProperties.getConsumerGroup());
                             }
                     )
                     .onFailure(promise::fail);

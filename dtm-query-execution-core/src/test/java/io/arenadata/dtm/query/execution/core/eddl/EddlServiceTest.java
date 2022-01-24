@@ -23,8 +23,8 @@ import io.arenadata.dtm.query.execution.core.eddl.dto.EddlQuery;
 import io.arenadata.dtm.query.execution.core.eddl.dto.EddlRequestContext;
 import io.arenadata.dtm.query.execution.core.eddl.service.EddlExecutor;
 import io.arenadata.dtm.query.execution.core.eddl.service.EddlQueryParamExtractor;
-import io.arenadata.dtm.query.execution.core.eddl.service.EddlServiceImpl;
-import io.arenadata.dtm.query.execution.core.metrics.service.impl.MetricsServiceImpl;
+import io.arenadata.dtm.query.execution.core.eddl.service.EddlService;
+import io.arenadata.dtm.query.execution.core.metrics.service.MetricsService;
 import io.vertx.core.Future;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,18 +45,18 @@ class EddlServiceTest {
     private static final String ERROR_MESSAGE = "ERROR";
     private final EddlQueryParamExtractor paramExtractor = mock(EddlQueryParamExtractor.class);
     private final EddlExecutor eddlExecutor = mock(EddlExecutor.class);
-    private final MetricsServiceImpl metricsService = mock(MetricsServiceImpl.class);
+    private final MetricsService metricsService = mock(MetricsService.class);
     private final EddlQuery eddlQuery = mock(EddlQuery.class);
     private final EddlRequestContext context = EddlRequestContext.builder().build();
     private final QueryResult queryResult = QueryResult.builder()
             .requestId(UUID.randomUUID())
             .build();
-    private EddlServiceImpl eddlService;
+    private EddlService eddlService;
 
     @BeforeEach
     void setUp() {
         when(eddlExecutor.getAction()).thenReturn(EddlAction.CREATE_DOWNLOAD_EXTERNAL_TABLE);
-        eddlService = new EddlServiceImpl(paramExtractor, Collections.singletonList(eddlExecutor), metricsService);
+        eddlService = new EddlService(paramExtractor, Collections.singletonList(eddlExecutor), metricsService);
     }
 
     @Test

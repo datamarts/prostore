@@ -15,21 +15,81 @@
  */
 package io.arenadata.dtm.query.execution.core.metrics.service;
 
+import io.arenadata.dtm.common.configuration.core.CoreConstants;
+import io.arenadata.dtm.common.metrics.MetricsTopic;
 import io.arenadata.dtm.common.metrics.RequestMetrics;
+import io.arenadata.dtm.common.model.RequestStatus;
 import io.arenadata.dtm.common.model.SqlProcessingType;
 import io.arenadata.dtm.common.reader.SourceType;
+import io.arenadata.dtm.query.execution.core.metrics.configuration.MetricsProperties;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
-public interface MetricsService<T extends RequestMetrics> {
+import java.time.LocalDateTime;
 
-    <R> Handler<AsyncResult<R>> sendMetrics(SourceType type,
-                                            SqlProcessingType actionType,
-                                            T metrics,
-                                            Handler<AsyncResult<R>> asyncResultHandler);
+@Service("coreMetricsService")
+public class MetricsService {
 
-    Future<Void> sendMetrics(SourceType type,
-                             SqlProcessingType actionType,
-                             T requestMetrics);
+    private final MetricsProducer metricsProducer;
+    private final MetricsProperties metricsProperties;
+
+    @Autowired
+    public MetricsService(MetricsProducer metricsProducer, MetricsProperties metricsProperties) {
+        this.metricsProducer = metricsProducer;
+        this.metricsProperties = metricsProperties;
+    }
+
+    public <R> Handler<AsyncResult<R>> sendMetrics(SourceType type,
+                                                   SqlProcessingType actionType,
+                                                   RequestMetrics requestMetrics,
+                                                   Handler<AsyncResult<R>> handler) {
+        if (!metricsProperties.isEnabled()) {
+            return ar -> {
+                if (ar.succeeded()) {
+                    handler.handle(Future.succeededFuture(ar.result()));
+                } else {
+                    handler.handle(Future.failedFuture(ar.cause()));
+                }
+            };
+        } else {
+            return ar -> {
+                updateMetrics(type, actionType, requestMetrics);
+                if (ar.succeeded()) {
+                    requestMetrics.setStatus(RequestStatus.SUCCESS);
+                    metricsProducer.publish(MetricsTopic.ALL_EVENTS, requestMetrics);
+                    handler.handle(Future.succeededFuture(ar.result()));
+                } else {
+                    requestMetrics.setStatus(RequestStatus.ERROR);
+                    metricsProducer.publish(MetricsTopic.ALL_EVENTS, requestMetrics);
+                    handler.handle(Future.failedFuture(ar.cause()));
+                }
+            };
+        }
+
+    }
+
+    public Future<Void> sendMetrics(SourceType type,
+                                    SqlProcessingType actionType,
+                                    RequestMetrics requestMetrics) {
+        if (!metricsProperties.isEnabled()) {
+            return Future.succeededFuture();
+        } else {
+            return Future.future(promise -> {
+                requestMetrics.setSourceType(type);
+                requestMetrics.setActionType(actionType);
+                metricsProducer.publish(MetricsTopic.ALL_EVENTS, requestMetrics);
+                promise.complete();
+            });
+        }
+    }
+
+    private void updateMetrics(SourceType type, SqlProcessingType actionType, RequestMetrics metrics) {
+        metrics.setActive(false);
+        metrics.setEndTime(LocalDateTime.now(CoreConstants.CORE_ZONE_ID));
+        metrics.setSourceType(type);
+        metrics.setActionType(actionType);
+    }
 }

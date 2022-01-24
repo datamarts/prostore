@@ -72,11 +72,16 @@ public class AdqmUpsertValuesService implements UpsertValuesService {
             val closeInsertSql = adqmProcessingSqlFactory.getCloseVersionSqlByTableActual(request.getEnvName(), request.getDatamartMnemonic(), request.getEntity(), request.getSysCn());
 
             databaseExecutor.executeWithParams(actualInsertSql, request.getParameters(), Collections.emptyList())
+                    .compose(ignored -> flushAndOptimize(request))
                     .compose(ignored -> databaseExecutor.executeUpdate(closeInsertSql))
-                    .compose(ignored -> databaseExecutor.executeUpdate(adqmProcessingSqlFactory.getFlushActualSql(request.getEnvName(), request.getDatamartMnemonic(), request.getEntity().getName())))
-                    .compose(ignored -> databaseExecutor.executeUpdate(adqmProcessingSqlFactory.getOptimizeActualSql(request.getEnvName(), request.getDatamartMnemonic(), request.getEntity().getName())))
+                    .compose(ignored -> flushAndOptimize(request))
                     .onComplete(promise);
         });
+    }
+
+    private Future<Void> flushAndOptimize(UpsertValuesRequest request) {
+        return databaseExecutor.executeUpdate(adqmProcessingSqlFactory.getFlushActualSql(request.getEnvName(), request.getDatamartMnemonic(), request.getEntity().getName()))
+                .compose(unused -> databaseExecutor.executeUpdate(adqmProcessingSqlFactory.getOptimizeActualSql(request.getEnvName(), request.getDatamartMnemonic(), request.getEntity().getName())));
     }
 
     private String getSqlInsert(UpsertValuesRequest request, List<EntityField> insertedColumns, SqlBasicCall

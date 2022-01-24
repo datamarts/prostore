@@ -28,7 +28,6 @@ import io.arenadata.dtm.query.calcite.core.configuration.CalciteCoreConfiguratio
 import io.arenadata.dtm.query.calcite.core.dto.delta.DeltaQueryPreprocessorResponse;
 import io.arenadata.dtm.query.calcite.core.service.DefinitionService;
 import io.arenadata.dtm.query.execution.core.base.service.delta.DeltaQueryPreprocessor;
-import io.arenadata.dtm.query.execution.core.base.service.delta.impl.DeltaQueryPreprocessorImpl;
 import io.arenadata.dtm.query.execution.core.calcite.service.CoreCalciteDefinitionService;
 import io.arenadata.dtm.query.execution.core.calcite.configuration.CalciteConfiguration;
 import io.arenadata.dtm.query.execution.core.dml.service.view.ViewReplacerService;
@@ -36,7 +35,6 @@ import io.arenadata.dtm.query.execution.core.edml.mppr.service.impl.DownloadExte
 import io.arenadata.dtm.query.execution.core.edml.mppr.service.impl.DownloadKafkaExecutor;
 import io.arenadata.dtm.query.execution.core.edml.mppr.service.EdmlDownloadExecutor;
 import io.arenadata.dtm.query.execution.core.base.service.metadata.LogicalSchemaProvider;
-import io.arenadata.dtm.query.execution.core.base.service.metadata.impl.LogicalSchemaProviderImpl;
 import io.arenadata.dtm.query.execution.model.metadata.Datamart;
 import io.arenadata.dtm.query.execution.core.edml.dto.EdmlRequestContext;
 import io.vertx.core.Future;
@@ -58,8 +56,8 @@ import static org.mockito.Mockito.when;
 
 class DownloadExternalTableExecutorTest {
     public static final String SELECT_SQL = "select id, lst_nam FROM test.pso";
-    private final LogicalSchemaProvider logicalSchemaProvider = mock(LogicalSchemaProviderImpl.class);
-    private final DeltaQueryPreprocessor deltaQueryPreprocessor = mock(DeltaQueryPreprocessorImpl.class);
+    private final LogicalSchemaProvider logicalSchemaProvider = mock(LogicalSchemaProvider.class);
+    private final DeltaQueryPreprocessor deltaQueryPreprocessor = mock(DeltaQueryPreprocessor.class);
     private final List<EdmlDownloadExecutor> downloadExecutors = Arrays.asList(mock(DownloadKafkaExecutor.class));
     private DownloadExternalTableExecutor downloadExternalTableExecutor;
     private final CalciteConfiguration config = new CalciteConfiguration();

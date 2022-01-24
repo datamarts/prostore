@@ -15,7 +15,7 @@
  */
 package io.arenadata.dtm.query.execution.core.delta.service;
 
-import io.arenadata.dtm.cache.service.EvictQueryTemplateCacheServiceImpl;
+import io.arenadata.dtm.cache.service.EvictQueryTemplateCacheService;
 import io.arenadata.dtm.common.exception.DtmException;
 import io.arenadata.dtm.common.reader.QueryRequest;
 import io.arenadata.dtm.common.reader.QueryResult;
@@ -27,7 +27,6 @@ import io.arenadata.dtm.query.execution.core.delta.dto.DeltaRecord;
 import io.arenadata.dtm.query.execution.core.delta.dto.query.CommitDeltaQuery;
 import io.arenadata.dtm.query.execution.core.delta.factory.DeltaQueryResultFactory;
 import io.arenadata.dtm.query.execution.core.delta.factory.impl.CommitDeltaQueryResultFactory;
-import io.arenadata.dtm.query.execution.core.delta.service.CommitDeltaService;
 import io.arenadata.dtm.query.execution.core.delta.utils.DeltaQueryUtil;
 import io.arenadata.dtm.query.execution.core.utils.QueryResultUtils;
 import io.vertx.core.Future;
@@ -55,8 +54,8 @@ class CommitDeltaExecutorTest {
     private final ServiceDbFacade serviceDbFacade = mock(ServiceDbFacadeImpl.class);
     private final DeltaServiceDao deltaServiceDao = mock(DeltaServiceDaoImpl.class);
     private final DeltaQueryResultFactory deltaQueryResultFactory = mock(CommitDeltaQueryResultFactory.class);
-    private final EvictQueryTemplateCacheServiceImpl evictQueryTemplateCacheService =
-            mock(EvictQueryTemplateCacheServiceImpl.class);
+    private final EvictQueryTemplateCacheService evictQueryTemplateCacheService =
+            mock(EvictQueryTemplateCacheService.class);
     private CommitDeltaService commitDeltaService;
     private final QueryRequest req = new QueryRequest();
     private final DeltaRecord delta = new DeltaRecord();

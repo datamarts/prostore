@@ -26,9 +26,8 @@ import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.DatamartD
 import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.EntityDao;
 import io.arenadata.dtm.query.execution.core.check.dto.CheckContext;
 import io.arenadata.dtm.query.execution.core.check.factory.CheckQueryResultFactory;
-import io.arenadata.dtm.query.execution.core.check.service.CheckTableService;
 import io.arenadata.dtm.query.execution.core.check.service.impl.CheckDatabaseExecutor;
-import io.arenadata.dtm.query.execution.core.check.service.impl.CheckTableServiceImpl;
+import io.arenadata.dtm.query.execution.core.check.service.impl.CheckTableService;
 import io.arenadata.dtm.query.execution.core.plugin.service.DataSourcePluginService;
 import io.arenadata.dtm.query.execution.core.plugin.service.impl.DataSourcePluginServiceImpl;
 import io.vertx.core.Future;
@@ -53,7 +52,7 @@ class CheckDatabaseExecutorTest {
     private final EntityDao entityDao = mock(EntityDao.class);
     private final DatamartDao datamartDao = mock(DatamartDao.class);
     private final CheckQueryResultFactory queryResultFactory = mock(CheckQueryResultFactory.class);
-    private final CheckTableService checkTableService = mock(CheckTableServiceImpl.class);
+    private final CheckTableService checkTableService = mock(CheckTableService.class);
     private final CheckDatabaseExecutor checkDatabaseExecutor = new CheckDatabaseExecutor(
             entityDao, datamartDao, queryResultFactory, checkTableService);
 

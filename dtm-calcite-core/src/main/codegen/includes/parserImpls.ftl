@@ -936,3 +936,19 @@ SqlNode SqlCheckSum() :
         return new io.arenadata.dtm.query.calcite.core.extension.check.SqlCheckSum(s.end(this), deltaNum, normalization, table, tableElementList);
     }
 }
+SqlNode SqlGetEntityDdl() :
+{
+    Span s;
+    SqlIdentifier id = null;
+}
+{
+<GET_ENTITY_DDL>
+{
+    s = span();
+}
+<LPAREN>  id = CompoundIdentifier()
+    <RPAREN>
+    {
+        return new io.arenadata.dtm.query.calcite.core.extension.check.SqlGetEntityDdl(s.end(this), id);
+    }
+}

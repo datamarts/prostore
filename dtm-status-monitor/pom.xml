@@ -22,7 +22,7 @@
     <parent>
         <artifactId>parent</artifactId>
         <groupId>io.arenadata.dtm</groupId>
-        <version>5.3.0-SNAPSHOT</version>
+        <version>5.3.0</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -103,23 +103,6 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${maven.surefire.plugin}</version>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-failsafe-plugin</artifactId>
-                <version>${maven.failsafe.plugin}</version>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>integration-test</goal>
-                            <goal>verify</goal>
-                        </goals>
-                    </execution>
-                </executions>
-                <configuration>
-                    <skipTests>${skipITs}</skipTests>
-                    <classesDirectory>${project.build.outputDirectory}</classesDirectory>
-                </configuration>
             </plugin>
 
         </plugins>

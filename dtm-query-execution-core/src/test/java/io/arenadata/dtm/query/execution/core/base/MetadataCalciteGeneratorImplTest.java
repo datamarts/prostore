@@ -22,7 +22,6 @@ import io.arenadata.dtm.common.model.ddl.EntityField;
 import io.arenadata.dtm.query.calcite.core.configuration.CalciteCoreConfiguration;
 import io.arenadata.dtm.query.calcite.core.framework.DtmCalciteFramework;
 import io.arenadata.dtm.query.execution.core.base.service.metadata.MetadataCalciteGenerator;
-import io.arenadata.dtm.query.execution.core.base.service.metadata.impl.MetadataCalciteGeneratorImpl;
 import io.arenadata.dtm.query.execution.core.calcite.configuration.CalciteConfiguration;
 import org.apache.calcite.sql.SqlCreate;
 import org.apache.calcite.sql.SqlNode;
@@ -55,7 +54,7 @@ class MetadataCalciteGeneratorImplTest {
         DtmCalciteFramework.ConfigBuilder configBuilder = DtmCalciteFramework.newConfigBuilder();
         FrameworkConfig frameworkConfig = configBuilder.parserConfig(parserConfig).build();
         planner = DtmCalciteFramework.getPlanner(frameworkConfig);
-        metadataCalciteGenerator = new MetadataCalciteGeneratorImpl();
+        metadataCalciteGenerator = new MetadataCalciteGenerator();
         final List<EntityField> fields = createFieldsForUplTable();
         final List<EntityField> fields2 = createFieldsForTable();
         table = new Entity("uplexttab", null, fields);

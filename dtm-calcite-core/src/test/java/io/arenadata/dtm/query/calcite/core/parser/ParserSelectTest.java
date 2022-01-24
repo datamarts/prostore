@@ -150,6 +150,24 @@ class ParserSelectTest {
     }
 
     @Test
+    void shouldFailWhenDataSourceTypeBeforeOrderBy() {
+        // arrange
+        parseShouldFail("SELECT * FROM dtm.table1 DATASOURCE_TYPE = 'ADB' ORDER BY id");
+    }
+
+    @Test
+    void shouldFailWhenDataSourceTypeAfterEstimateOnly() {
+        // arrange
+        parseShouldFail("SELECT * FROM dtm.table1 ESTIMATE_ONLY DATASOURCE_TYPE = 'ADB'");
+    }
+
+    @Test
+    void shouldFailWhenFirstEstimateOnly() {
+        // arrange
+        parseShouldFail("SELECT * FROM dtm.table1 ESTIMATE_ONLY ORDER_BY id DATASOURCE_TYPE = 'ADB'");
+    }
+
+    @Test
     void shouldParseWhenWhereEqualCollate() throws SqlParseException {
         // arrange
         val sql = "select * from dtm.table1 a WHERE table1.varchar_col = 'test' COLLATE 'unicode_ci'";

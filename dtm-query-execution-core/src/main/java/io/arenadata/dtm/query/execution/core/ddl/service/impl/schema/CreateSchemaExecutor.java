@@ -40,7 +40,7 @@ public class CreateSchemaExecutor extends QueryResultDdlExecutor {
     private final DatamartDao datamartDao;
 
     @Autowired
-    public CreateSchemaExecutor(MetadataExecutor<DdlRequestContext> metadataExecutor,
+    public CreateSchemaExecutor(MetadataExecutor metadataExecutor,
                                 ServiceDbFacade serviceDbFacade,
                                 @Qualifier("coreSqlDialect") SqlDialect sqlDialect) {
         super(metadataExecutor, serviceDbFacade, sqlDialect);

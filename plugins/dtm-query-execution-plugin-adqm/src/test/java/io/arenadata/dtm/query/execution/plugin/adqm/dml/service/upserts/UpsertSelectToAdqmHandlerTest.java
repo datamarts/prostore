@@ -25,7 +25,7 @@ import io.arenadata.dtm.common.reader.QueryParameters;
 import io.arenadata.dtm.query.calcite.core.rel2sql.DtmRelToSqlConverter;
 import io.arenadata.dtm.query.calcite.core.util.SqlNodeTemplates;
 import io.arenadata.dtm.query.execution.model.metadata.Datamart;
-import io.arenadata.dtm.query.execution.plugin.adqm.base.factory.AdqmHelperTableNamesFactoryImpl;
+import io.arenadata.dtm.query.execution.plugin.adqm.base.factory.AdqmHelperTableNamesFactory;
 import io.arenadata.dtm.query.execution.plugin.adqm.base.service.converter.AdqmPluginSpecificLiteralConverter;
 import io.arenadata.dtm.query.execution.plugin.adqm.calcite.configuration.CalciteConfiguration;
 import io.arenadata.dtm.query.execution.plugin.adqm.calcite.factory.AdqmCalciteSchemaFactory;
@@ -115,7 +115,7 @@ class UpsertSelectToAdqmHandlerTest {
         val queryParserService = new AdqmCalciteDMLQueryParserService(contextProvider, vertx);
         val pluginSpecificLiteralConverter = new AdqmPluginSpecificLiteralConverter();
         val relToSqlConverter = new DtmRelToSqlConverter(sqlDialect);
-        val helperTableNamesFactory = new AdqmHelperTableNamesFactoryImpl();
+        val helperTableNamesFactory = new AdqmHelperTableNamesFactory();
         val adqmSchemaExtender = new AdqmSchemaExtender(helperTableNamesFactory);
         val queryExtendService = new AdqmDmlQueryExtendService(helperTableNamesFactory);
         val adqmQueryGenerator = new AdqmQueryGenerator(queryExtendService, sqlDialect, relToSqlConverter);

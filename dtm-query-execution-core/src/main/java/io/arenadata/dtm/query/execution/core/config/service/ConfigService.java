@@ -15,15 +15,56 @@
  */
 package io.arenadata.dtm.query.execution.core.config.service;
 
+import io.arenadata.dtm.common.exception.DtmException;
 import io.arenadata.dtm.common.model.SqlProcessingType;
-import io.arenadata.dtm.query.execution.core.config.dto.ConfigRequestContext;
+import io.arenadata.dtm.common.reader.QueryResult;
+import io.arenadata.dtm.query.calcite.core.extension.config.SqlConfigCall;
+import io.arenadata.dtm.query.calcite.core.extension.config.SqlConfigType;
 import io.arenadata.dtm.query.execution.core.base.service.DatamartExecutionService;
+import io.arenadata.dtm.query.execution.core.config.dto.ConfigRequestContext;
+import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
-public interface ConfigService extends DatamartExecutionService<ConfigRequestContext> {
+import java.util.EnumMap;
+import java.util.Map;
 
-    default SqlProcessingType getSqlProcessingType() {
-        return SqlProcessingType.CONFIG;
+@Slf4j
+@Service("coreConfigServiceImpl")
+public class ConfigService implements DatamartExecutionService<ConfigRequestContext> {
+
+    private final Map<SqlConfigType, ConfigExecutor> executorMap;
+
+    @Autowired
+    public ConfigService() {
+        this.executorMap = new EnumMap<>(SqlConfigType.class);
     }
 
-    void addExecutor(ConfigExecutor executor);
+    @Override
+    public Future<QueryResult> execute(ConfigRequestContext context) {
+        return getExecutor(context)
+                .compose(executor -> executor.execute(context));
+    }
+
+    private Future<ConfigExecutor> getExecutor(ConfigRequestContext context) {
+        return Future.future(promise -> {
+            SqlConfigCall configCall = context.getSqlNode();
+            ConfigExecutor executor = executorMap.get(configCall.getSqlConfigType());
+            if (executor != null) {
+                promise.complete(executor);
+            } else {
+                promise.fail(new DtmException("Not supported config query type"));
+            }
+        });
+    }
+
+    public void addExecutor(ConfigExecutor executor) {
+        executorMap.put(executor.getConfigType(), executor);
+    }
+
+    @Override
+    public SqlProcessingType getSqlProcessingType() {
+        return SqlProcessingType.CONFIG;
+    }
 }

@@ -24,7 +24,6 @@ import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.EntityDao
 import io.arenadata.dtm.query.execution.core.check.dto.CheckContext;
 import io.arenadata.dtm.query.execution.core.check.factory.CheckQueryResultFactory;
 import io.arenadata.dtm.query.execution.core.check.service.CheckExecutor;
-import io.arenadata.dtm.query.execution.core.check.service.CheckTableService;
 import io.vertx.core.Future;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;

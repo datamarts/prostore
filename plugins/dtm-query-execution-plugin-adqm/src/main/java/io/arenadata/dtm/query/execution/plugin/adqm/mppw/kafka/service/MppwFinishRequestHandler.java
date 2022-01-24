@@ -16,7 +16,6 @@
 package io.arenadata.dtm.query.execution.plugin.adqm.mppw.kafka.service;
 
 import io.arenadata.dtm.common.model.ddl.EntityFieldUtils;
-import io.arenadata.dtm.common.reader.QueryResult;
 import io.arenadata.dtm.query.execution.plugin.adqm.base.utils.AdqmDdlUtil;
 import io.arenadata.dtm.query.execution.plugin.adqm.ddl.configuration.properties.DdlProperties;
 import io.arenadata.dtm.query.execution.plugin.adqm.factory.AdqmProcessingSqlFactory;
@@ -58,7 +57,7 @@ public class MppwFinishRequestHandler extends AbstractMppwRequestHandler {
     }
 
     @Override
-    public Future<QueryResult> execute(final MppwKafkaRequest request) {
+    public Future<String> execute(final MppwKafkaRequest request) {
         val err = AdqmDdlUtil.validateRequest(request);
         if (err.isPresent()) {
             return Future.failedFuture(err.get());
@@ -93,7 +92,7 @@ public class MppwFinishRequestHandler extends AbstractMppwRequestHandler {
                 })
                 .compose(v -> {
                     reportFinish(request.getTopic());
-                    return Future.succeededFuture(QueryResult.emptyResult());
+                    return Future.succeededFuture();
                 }, f -> {
                     reportError(request.getTopic());
                     return Future.failedFuture(f);

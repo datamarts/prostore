@@ -39,19 +39,19 @@ public class MppwRequest extends PluginRequest {
     /**
      * Sign of the start of mppw download
      */
-    protected Boolean isLoadStart;
+    protected boolean loadStart;
 
     public MppwRequest(UUID requestId,
                        String envName,
                        String datamartMnemonic,
-                       Boolean isLoadStart,
+                       boolean loadStart,
                        Entity sourceEntity,
                        Long sysCn,
                        Entity destinationEntity,
                        BaseExternalEntityMetadata uploadMetadata,
                        ExternalTableLocationType externalTableLocationType) {
         super(requestId, envName, datamartMnemonic);
-        this.isLoadStart = isLoadStart;
+        this.loadStart = loadStart;
         this.sourceEntity = sourceEntity;
         this.sysCn = sysCn;
         this.destinationEntity = destinationEntity;

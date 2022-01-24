@@ -29,14 +29,12 @@ import io.arenadata.dtm.common.request.DatamartRequest;
 import io.arenadata.dtm.query.execution.core.delta.repository.zookeeper.DeltaServiceDao;
 import io.arenadata.dtm.query.execution.core.delta.repository.zookeeper.impl.DeltaServiceDaoImpl;
 import io.arenadata.dtm.query.execution.core.edml.dto.EdmlRequestContext;
-import io.arenadata.dtm.query.execution.core.edml.mppw.service.EdmlUploadFailedExecutor;
-import io.arenadata.dtm.query.execution.core.edml.mppw.service.impl.UploadFailedExecutorImpl;
+import io.arenadata.dtm.query.execution.core.edml.mppw.service.UploadFailedExecutor;
 import io.arenadata.dtm.query.execution.core.plugin.service.DataSourcePluginService;
 import io.arenadata.dtm.query.execution.core.plugin.service.impl.DataSourcePluginServiceImpl;
 import io.arenadata.dtm.query.execution.core.rollback.dto.RollbackRequest;
 import io.arenadata.dtm.query.execution.core.rollback.dto.RollbackRequestContext;
 import io.arenadata.dtm.query.execution.core.rollback.factory.RollbackRequestContextFactory;
-import io.arenadata.dtm.query.execution.core.rollback.factory.impl.RollbackRequestContextFactoryImpl;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import org.apache.calcite.sql.SqlNode;
@@ -59,9 +57,9 @@ class UploadFailedExecutorImplTest {
 
     private final DeltaServiceDao deltaServiceDao = mock(DeltaServiceDaoImpl.class);
     private final EvictQueryTemplateCacheService evictQueryTemplateCacheService = mock(EvictQueryTemplateCacheService.class);
-    private final RollbackRequestContextFactory rollbackRequestContextFactory = mock(RollbackRequestContextFactoryImpl.class);
+    private final RollbackRequestContextFactory rollbackRequestContextFactory = mock(RollbackRequestContextFactory.class);
     private final DataSourcePluginService pluginService = mock(DataSourcePluginServiceImpl.class);
-    private EdmlUploadFailedExecutor uploadFailedExecutor;
+    private UploadFailedExecutor uploadFailedExecutor;
     private QueryRequest queryRequest;
     private Set<SourceType> sourceTypes = new HashSet<>();
     private Entity sourceEntity;
@@ -94,7 +92,7 @@ class UploadFailedExecutorImplTest {
     @Test
     void executeSuccess() {
         Promise<Void> promise = Promise.promise();
-        uploadFailedExecutor = new UploadFailedExecutorImpl(deltaServiceDao,
+        uploadFailedExecutor = new UploadFailedExecutor(deltaServiceDao,
                 rollbackRequestContextFactory, pluginService, evictQueryTemplateCacheService);
         String selectSql = "(select id, lst_nam FROM test.upload_table)";
         String insertSql = "insert into test.pso " + selectSql;
@@ -139,7 +137,7 @@ class UploadFailedExecutorImplTest {
     @Test
     void executePluginRollbackError() {
         Promise<Void> promise = Promise.promise();
-        uploadFailedExecutor = new UploadFailedExecutorImpl(deltaServiceDao,
+        uploadFailedExecutor = new UploadFailedExecutor(deltaServiceDao,
                 rollbackRequestContextFactory, pluginService, evictQueryTemplateCacheService);
         String selectSql = "(select id, lst_nam FROM test.upload_table)";
         String insertSql = "insert into test.pso " + selectSql;
@@ -181,7 +179,7 @@ class UploadFailedExecutorImplTest {
     @Test
     void executeDeleteOperationError() {
         Promise<Void> promise = Promise.promise();
-        uploadFailedExecutor = new UploadFailedExecutorImpl(deltaServiceDao,
+        uploadFailedExecutor = new UploadFailedExecutor(deltaServiceDao,
                 rollbackRequestContextFactory, pluginService, evictQueryTemplateCacheService);
         String selectSql = "(select id, lst_nam FROM test.upload_table)";
         String insertSql = "insert into test.pso " + selectSql;

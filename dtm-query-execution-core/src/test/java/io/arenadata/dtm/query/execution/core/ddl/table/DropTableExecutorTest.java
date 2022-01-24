@@ -83,7 +83,7 @@ class DropTableExecutorTest {
             .build();
 
     @Mock
-    private MetadataExecutor<DdlRequestContext> metadataExecutor;
+    private MetadataExecutor metadataExecutor;
     @Mock
     private DataSourcePluginService pluginService;
     @Mock

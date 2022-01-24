@@ -15,7 +15,6 @@
  */
 package io.arenadata.dtm.query.execution.core.dml.service.impl;
 
-import io.arenadata.dtm.common.metrics.RequestMetrics;
 import io.arenadata.dtm.common.model.SqlProcessingType;
 import io.arenadata.dtm.common.model.ddl.ColumnType;
 import io.arenadata.dtm.common.model.ddl.SystemMetadata;
@@ -23,13 +22,13 @@ import io.arenadata.dtm.common.reader.QueryResult;
 import io.arenadata.dtm.common.reader.SourceType;
 import io.arenadata.dtm.query.calcite.core.extension.dml.DmlType;
 import io.arenadata.dtm.query.calcite.core.extension.dml.SqlUseSchema;
+import io.arenadata.dtm.query.execution.core.base.exception.datamart.DatamartNotExistsException;
 import io.arenadata.dtm.query.execution.core.base.repository.ServiceDbFacade;
 import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.DatamartDao;
+import io.arenadata.dtm.query.execution.core.ddl.utils.ParseQueryUtils;
 import io.arenadata.dtm.query.execution.core.dml.dto.DmlRequestContext;
-import io.arenadata.dtm.query.execution.core.base.exception.datamart.DatamartNotExistsException;
 import io.arenadata.dtm.query.execution.core.dml.service.DmlExecutor;
 import io.arenadata.dtm.query.execution.core.metrics.service.MetricsService;
-import io.arenadata.dtm.query.execution.core.ddl.utils.ParseQueryUtils;
 import io.arenadata.dtm.query.execution.model.metadata.ColumnMetadata;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
@@ -47,12 +46,12 @@ public class UseSchemaDmlExecutor implements DmlExecutor {
     public static final String SCHEMA_COLUMN_NAME = "schema";
     private final DatamartDao datamartDao;
     private final ParseQueryUtils parseQueryUtils;
-    private final MetricsService<RequestMetrics> metricsService;
+    private final MetricsService metricsService;
 
     @Autowired
     public UseSchemaDmlExecutor(ServiceDbFacade serviceDbFacade,
                                 ParseQueryUtils parseQueryUtils,
-                                MetricsService<RequestMetrics> metricsService) {
+                                MetricsService metricsService) {
         this.datamartDao = serviceDbFacade.getServiceDbDao().getDatamartDao();
         this.parseQueryUtils = parseQueryUtils;
         this.metricsService = metricsService;

@@ -15,7 +15,6 @@
  */
 package io.arenadata.dtm.query.execution.core.ddl.utils;
 
-import io.arenadata.dtm.common.model.ddl.ColumnType;
 import io.arenadata.dtm.common.model.ddl.EntityField;
 import io.arenadata.dtm.query.calcite.core.visitors.SqlInvalidTimestampFinder;
 import io.arenadata.dtm.query.execution.core.base.exception.table.ValidationDtmException;
@@ -28,19 +27,32 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public final class ValidationUtils {
+
     private ValidationUtils() {
     }
 
-    public static void checkVarcharSize(List<EntityField> fields) {
+    public static void checkCharFieldsSize(List<EntityField> fields) {
         List<String> notSetSizeFields = fields.stream()
-                .filter(field -> field.getType() == ColumnType.CHAR)
-                .filter(field -> field.getSize() == null)
+                .filter(field -> !isValidSize(field))
                 .map(EntityField::getName)
                 .collect(Collectors.toList());
         if (!notSetSizeFields.isEmpty()) {
             throw new ValidationDtmException(
-                    String.format("Specifying the size for columns%s with types[CHAR] is required", notSetSizeFields)
+                    String.format("Specifying the size for columns%s with types[CHAR/VARCHAR] is required", notSetSizeFields)
             );
+        }
+    }
+
+    private static boolean isValidSize(EntityField field) {
+        val type = field.getType();
+        val size = field.getSize();
+        switch (type) {
+            case CHAR:
+                return size != null && size > 0;
+            case VARCHAR:
+                return size == null || size > 0;
+            default:
+                return true;
         }
     }
 

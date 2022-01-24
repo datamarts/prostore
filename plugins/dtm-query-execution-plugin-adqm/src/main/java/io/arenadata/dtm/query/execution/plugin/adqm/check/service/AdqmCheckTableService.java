@@ -85,10 +85,11 @@ public class AdqmCheckTableService implements CheckTableService {
 
         List<String> errors = new ArrayList<>();
 
-        List<String> expSortedKeys = Optional.ofNullable(expTableEntity.getSortedKeys())
-                .orElse(Collections.emptyList());
+        Set<String> expSortedKeys = Optional.ofNullable(expTableEntity.getSortedKeys())
+                .map(strings -> (Set<String>) new HashSet<>(strings))
+                .orElse(Collections.emptySet());
         List<String> sortedKeys = Optional.ofNullable(tableEntity.getSortedKeys()).orElse(Collections.emptyList());
-        if (!Objects.equals(expSortedKeys, sortedKeys)) {
+        if (!(expSortedKeys.size() == sortedKeys.size() && expSortedKeys.containsAll(sortedKeys))) {
             errors.add(String.format(SORTED_KEY_ERROR_TEMPLATE,
                     String.join(", ", expSortedKeys),
                     String.join(", ", sortedKeys)));

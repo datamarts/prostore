@@ -12,9 +12,5 @@
 
 `mvn deploy`
 
-### Integration Tests (IT) Run
-
-`mvn verify -DskipITs=false`
-
 
 

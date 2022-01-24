@@ -46,9 +46,9 @@ public class AdbSchemaExtender implements SchemaExtender {
             extendedEntityFields.addAll(getExtendedColumns());
             extendedEntity.setFields(extendedEntityFields);
             extendedEntities.add(extendedEntity);
-            extendedEntities.add(getExtendedSchema(extendedEntity, "_".concat(HISTORY_TABLE)));
-            extendedEntities.add(getExtendedSchema(extendedEntity, "_".concat(STAGING_TABLE)));
-            extendedEntities.add(getExtendedSchema(extendedEntity, "_".concat(ACTUAL_TABLE)));
+            extendedEntities.add(getExtendedSchema(extendedEntity, HISTORY_TABLE_SUFFIX));
+            extendedEntities.add(getExtendedSchema(extendedEntity, STAGING_TABLE_SUFFIX));
+            extendedEntities.add(getExtendedSchema(extendedEntity, ACTUAL_TABLE_SUFFIX));
         });
         extendedSchema.setEntities(extendedEntities);
         return extendedSchema;

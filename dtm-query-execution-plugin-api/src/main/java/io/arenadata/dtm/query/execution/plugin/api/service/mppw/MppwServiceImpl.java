@@ -17,7 +17,6 @@ package io.arenadata.dtm.query.execution.plugin.api.service.mppw;
 
 import io.arenadata.dtm.common.exception.DtmException;
 import io.arenadata.dtm.common.model.ddl.ExternalTableLocationType;
-import io.arenadata.dtm.common.reader.QueryResult;
 import io.arenadata.dtm.query.execution.plugin.api.mppw.MppwRequest;
 import io.vertx.core.Future;
 
@@ -35,7 +34,7 @@ public class MppwServiceImpl<T extends MppwExecutor> implements MppwService {
     }
 
     @Override
-    public Future<QueryResult> execute(MppwRequest request) {
+    public Future<String> execute(MppwRequest request) {
         MppwExecutor mppwExecutor = executors.get(request.getExternalTableLocationType());
         if (mppwExecutor == null) {
             return Future.failedFuture(

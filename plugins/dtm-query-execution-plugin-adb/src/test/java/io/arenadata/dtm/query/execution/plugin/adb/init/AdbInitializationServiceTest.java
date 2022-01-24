@@ -16,7 +16,6 @@
 package io.arenadata.dtm.query.execution.plugin.adb.init;
 
 import io.arenadata.dtm.query.execution.plugin.adb.base.factory.hash.AdbHashFunctionFactory;
-import io.arenadata.dtm.query.execution.plugin.adb.base.factory.hash.impl.AdbHashFunctionFactoryImpl;
 import io.arenadata.dtm.query.execution.plugin.adb.query.service.impl.AdbQueryExecutor;
 import io.arenadata.dtm.query.execution.plugin.adb.init.service.AdbInitializationService;
 import io.arenadata.dtm.query.execution.plugin.api.exception.DataSourceException;
@@ -30,7 +29,7 @@ import static org.mockito.Mockito.*;
 class AdbInitializationServiceTest {
 
     private final AdbQueryExecutor adbQueryExecutor = mock(AdbQueryExecutor.class);
-    private final AdbHashFunctionFactory hashFunctionFactory = new AdbHashFunctionFactoryImpl();
+    private final AdbHashFunctionFactory hashFunctionFactory = new AdbHashFunctionFactory();
     private final AdbInitializationService initializationService = new AdbInitializationService(adbQueryExecutor, hashFunctionFactory);
 
     @Test

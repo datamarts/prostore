@@ -48,12 +48,12 @@ import static io.arenadata.dtm.common.model.SqlProcessingType.DELTA;
 public class DeltaExecutionService implements DatamartExecutionService<DeltaRequestContext> {
 
     private final Map<DeltaAction, DeltaService> executors;
-    private final MetricsService<RequestMetrics> metricsService;
+    private final MetricsService metricsService;
     private final DeltaQueryFactory deltaQueryFactory;
 
     @Autowired
     public DeltaExecutionService(List<DeltaService> executors,
-                                 @Qualifier("coreMetricsService") MetricsService<RequestMetrics> metricsService,
+                                 @Qualifier("coreMetricsService") MetricsService metricsService,
                                  DeltaQueryFactory deltaQueryFactory) {
         this.executors = executors.stream()
                 .collect(Collectors.toMap(DeltaService::getAction, Function.identity()));

@@ -15,13 +15,51 @@
  */
 package io.arenadata.dtm.query.execution.plugin.adb.ddl.factory;
 
-public interface DdlSqlFactory {
+import org.springframework.stereotype.Service;
 
-    String createSchemaSqlQuery(String schemaName);
+import java.util.Arrays;
+import java.util.Collections;
 
-    String dropSchemaSqlQuery(String schemaName);
+import static io.arenadata.dtm.query.execution.plugin.adb.base.factory.Constants.*;
 
-    String createDropTableScript(String tableNameWithSchema);
+@Service
+public class DdlSqlFactory {
+    public static final String QUERY_DELIMITER = "; ";
 
-    String createSecondaryIndexSqlQuery(String schema, String tableName);
+    private static final String DELIMITER = ", ";
+    private static final String DROP_TABLE = "DROP TABLE IF EXISTS ";
+    private static final String DROP_SCHEMA = "DROP SCHEMA IF EXISTS %s CASCADE";
+    private static final String CREATE_SCHEMA = "CREATE SCHEMA IF NOT EXISTS %s";
+    private static final String CREATE_INDEX_SQL = "CREATE INDEX %s_%s_%s ON %s.%s_%s (%s)";
+
+    public String createDropTableScript(String tableNameWithSchema) {
+        return DROP_TABLE + tableNameWithSchema +
+                ACTUAL_TABLE_SUFFIX +
+                QUERY_DELIMITER +
+                DROP_TABLE + tableNameWithSchema +
+                HISTORY_TABLE_SUFFIX +
+                QUERY_DELIMITER +
+                DROP_TABLE + tableNameWithSchema +
+                STAGING_TABLE_SUFFIX +
+                QUERY_DELIMITER;
+    }
+
+    public String createSchemaSqlQuery(String schema) {
+        return String.format(CREATE_SCHEMA, schema);
+    }
+
+    public String dropSchemaSqlQuery(String schema) {
+        return String.format(DROP_SCHEMA, schema);
+    }
+
+    public String createSecondaryIndexSqlQuery(String schema, String table) {
+        final String idxPostfix = "_idx";
+        return String.format(CREATE_INDEX_SQL, table, ACTUAL_TABLE,
+                SYS_FROM_ATTR + idxPostfix, schema, table, ACTUAL_TABLE,
+                String.join(DELIMITER, Collections.singletonList(SYS_FROM_ATTR))) +
+                QUERY_DELIMITER +
+                String.format(CREATE_INDEX_SQL, table, HISTORY_TABLE,
+                        SYS_TO_ATTR + idxPostfix, schema, table, HISTORY_TABLE,
+                        String.join(DELIMITER, Arrays.asList(SYS_TO_ATTR, SYS_OP_ATTR)));
+    }
 }

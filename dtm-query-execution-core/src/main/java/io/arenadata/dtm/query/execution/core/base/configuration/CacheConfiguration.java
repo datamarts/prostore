@@ -18,7 +18,6 @@ package io.arenadata.dtm.query.execution.core.base.configuration;
 import io.arenadata.dtm.cache.factory.CaffeineCacheServiceFactory;
 import io.arenadata.dtm.cache.service.CacheService;
 import io.arenadata.dtm.cache.service.EvictQueryTemplateCacheService;
-import io.arenadata.dtm.cache.service.EvictQueryTemplateCacheServiceImpl;
 import io.arenadata.dtm.common.cache.*;
 import io.arenadata.dtm.common.model.ddl.Entity;
 import io.arenadata.dtm.query.execution.core.base.dto.cache.EntityKey;
@@ -83,6 +82,6 @@ public class CacheConfiguration {
     public EvictQueryTemplateCacheService evictQueryTemplateCacheService(
             CacheService<QueryTemplateKey, SourceQueryTemplateValue> cacheService,
             List<CacheService<QueryTemplateKey, QueryTemplateValue>> cacheServiceList) {
-        return new EvictQueryTemplateCacheServiceImpl(cacheService, cacheServiceList);
+        return new EvictQueryTemplateCacheService(cacheService, cacheServiceList);
     }
 }

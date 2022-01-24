@@ -31,7 +31,7 @@ import io.arenadata.dtm.query.execution.core.edml.dto.EdmlRequestContext;
 import io.arenadata.dtm.query.execution.core.edml.mppw.dto.MppwStopFuture;
 import io.arenadata.dtm.query.execution.core.edml.mppw.dto.MppwStopReason;
 import io.arenadata.dtm.query.execution.core.edml.mppw.factory.MppwKafkaRequestFactory;
-import io.arenadata.dtm.query.execution.core.edml.mppw.factory.impl.MppwErrorMessageFactory;
+import io.arenadata.dtm.query.execution.core.edml.mppw.factory.MppwErrorMessageFactory;
 import io.arenadata.dtm.query.execution.core.edml.mppw.service.EdmlUploadExecutor;
 import io.arenadata.dtm.query.execution.core.plugin.service.DataSourcePluginService;
 import io.arenadata.dtm.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
@@ -116,13 +116,14 @@ public class UploadKafkaExecutor implements EdmlUploadExecutor {
     private Future<MppwStopFuture> startMppw(SourceType ds,
                                              RequestMetrics metrics,
                                              MppwKafkaRequest kafkaRequest) {
-        return Future.future((Promise<MppwStopFuture> promise) -> pluginService.mppw(ds, metrics, kafkaRequest)
+        return Future.future(promise -> pluginService.mppw(ds, metrics, kafkaRequest)
                 .onComplete(ar -> {
                     val mppwRequestWrapper = MppwRequestWrapper.builder()
                             .sourceType(ds)
                             .metrics(metrics)
                             .request(kafkaRequest)
                             .topic(kafkaRequest.getTopic())
+                            .consumerGroup(ar.result())
                             .build();
 
                     if (ar.succeeded()) {
@@ -150,11 +151,9 @@ public class UploadKafkaExecutor implements EdmlUploadExecutor {
             log.trace("Plugin status request: {} mppw downloads", mppwRequestWrapper.getSourceType());
             getMppwLoadingStatus(mppwRequestWrapper)
                     .onSuccess(statusQueryResult -> processMppwLoad(promise, mppwRequestWrapper, statusQueryResult))
-                    .onFailure(fail -> {
-                        promise.fail(new DtmException(
-                                String.format("Error getting plugin status: %s", mppwRequestWrapper.getSourceType()),
-                                fail));
-                    });
+                    .onFailure(fail -> promise.fail(new DtmException(
+                            String.format("Error getting plugin status: %s", mppwRequestWrapper.getSourceType()),
+                            fail)));
         });
     }
 
@@ -223,7 +222,7 @@ public class UploadKafkaExecutor implements EdmlUploadExecutor {
 
     private Future<StatusQueryResult> getMppwLoadingStatus(MppwRequestWrapper mppwRequestWrapper) {
         return Future.future((Promise<StatusQueryResult> promise) ->
-                pluginService.status(mppwRequestWrapper.getSourceType(), mppwRequestWrapper.getMetrics(), mppwRequestWrapper.getTopic())
+                pluginService.status(mppwRequestWrapper.getSourceType(), mppwRequestWrapper.getMetrics(), mppwRequestWrapper.getTopic(), mppwRequestWrapper.getConsumerGroup())
                         .onSuccess(queryResult -> {
                             log.trace("Plugin status received: {} mppw downloads: {}, on topic: {}",
                                     mppwRequestWrapper.getSourceType(),
@@ -299,14 +298,14 @@ public class UploadKafkaExecutor implements EdmlUploadExecutor {
 
     private Future<QueryResult> stopMppw(MppwRequestWrapper mppwRequestWrapper) {
         return Future.future((Promise<QueryResult> promise) -> {
-            mppwRequestWrapper.getRequest().setIsLoadStart(false);
+            mppwRequestWrapper.getRequest().setLoadStart(false);
             log.debug("A request has been sent for the plugin: {} to stop loading mppw: {}",
                     mppwRequestWrapper.getSourceType(),
                     mppwRequestWrapper.getRequest());
             pluginService.mppw(mppwRequestWrapper.getSourceType(), mppwRequestWrapper.getMetrics(), mppwRequestWrapper.getRequest())
-                    .onSuccess(queryResult -> {
+                    .onSuccess(ignore -> {
                         log.debug("Completed stopping MPPW loading by plugin: {}", mppwRequestWrapper.getSourceType());
-                        promise.complete(queryResult);
+                        promise.complete(QueryResult.emptyResult());
                     })
                     .onFailure(t -> {
                         log.error("Exception during stopping MPPW by plugin: {}", mppwRequestWrapper.getSourceType(), t);
@@ -374,6 +373,7 @@ public class UploadKafkaExecutor implements EdmlUploadExecutor {
         private RequestMetrics metrics;
         private MppwKafkaRequest request;
         private String topic;
+        private String consumerGroup;
         private MppwLoadStatusResult loadStatusResult;
     }
 

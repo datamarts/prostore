@@ -55,7 +55,7 @@ public abstract class PrepareQueriesOfChangesServiceBase implements PrepareQueri
     private final ColumnsCastService columnsCastService;
     private final QueryEnrichmentService queryEnrichmentService;
 
-    public PrepareQueriesOfChangesServiceBase(QueryParserService parserService,
+    protected PrepareQueriesOfChangesServiceBase(QueryParserService parserService,
                                               ColumnsCastService columnsCastService,
                                               QueryEnrichmentService adbQueryEnrichmentService) {
         this.parserService = parserService;

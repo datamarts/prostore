@@ -16,19 +16,36 @@
 package io.arenadata.dtm.query.execution.core.metrics.repository;
 
 import io.arenadata.dtm.common.metrics.RequestMetrics;
+import org.springframework.stereotype.Repository;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
-public interface ActiveRequestsRepository<T extends RequestMetrics> {
+@Repository("mapActiveRequestsRepository")
+public class ActiveRequestsRepository {
 
-    void add(T request);
+    private final Map<UUID, RequestMetrics> requestsMap = new ConcurrentHashMap<>();
 
-    void remove(T request);
+    public void add(RequestMetrics request) {
+        requestsMap.put(request.getRequestId(), request);
+    }
 
-    T get(UUID requestId);
+    public void remove(RequestMetrics request) {
+        requestsMap.remove(request.getRequestId());
+    }
 
-    List<T> getList();
+    public RequestMetrics get(UUID requestId) {
+        return requestsMap.get(requestId);
+    }
 
-    void deleteAll();
+    public List<RequestMetrics> getList() {
+        return new ArrayList<>(requestsMap.values());
+    }
+
+    public void deleteAll() {
+        requestsMap.clear();
+    }
 }

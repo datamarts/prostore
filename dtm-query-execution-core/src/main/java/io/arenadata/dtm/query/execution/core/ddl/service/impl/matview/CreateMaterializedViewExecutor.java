@@ -95,9 +95,9 @@ public class CreateMaterializedViewExecutor extends QueryResultDdlExecutor {
     private final DtmRelToSqlConverter relToSqlConverter;
 
     @Autowired
-    public CreateMaterializedViewExecutor(MetadataExecutor<DdlRequestContext> metadataExecutor,
+    public CreateMaterializedViewExecutor(MetadataExecutor metadataExecutor,
                                           ServiceDbFacade serviceDbFacade,
-                                          @Qualifier("coreSqlDialect") SqlDialect sqlDialect,
+                                          @Qualifier("coreLimitSqlDialect") SqlDialect sqlDialect,
                                           @Qualifier("entityCacheService") CacheService<EntityKey, Entity> entityCacheService,
                                           @Qualifier("materializedViewCacheService") CacheService<EntityKey, MaterializedViewCacheValue> materializedViewCacheService,
                                           LogicalSchemaProvider logicalSchemaProvider,
@@ -194,8 +194,8 @@ public class CreateMaterializedViewExecutor extends QueryResultDdlExecutor {
             }
 
             if (datamarts.size() == 1) {
-                String entityDatamart = entity.getSchema();
-                String queryDatamart = datamarts.get(0).getMnemonic();
+                val entityDatamart = entity.getSchema();
+                val queryDatamart = datamarts.get(0).getMnemonic();
                 if (!Objects.equals(entityDatamart, queryDatamart)) {
                     p.fail(MaterializedViewValidationException.differentDatamarts(entity.getName(), entityDatamart, queryDatamart));
                     return;
@@ -208,15 +208,15 @@ public class CreateMaterializedViewExecutor extends QueryResultDdlExecutor {
 
     private Future<Entity> checkEntityNotExists(Entity entity) {
         return Future.future(p -> {
-            String datamartName = entity.getSchema();
-            String entityName = entity.getName();
+            val datamartName = entity.getSchema();
+            val entityName = entity.getName();
             datamartDao.existsDatamart(datamartName)
                     .compose(existsDatamart -> existsDatamart ? entityDao.existsEntity(datamartName, entityName) : Future.failedFuture(new DatamartNotExistsException(datamartName)))
                     .onSuccess(existsEntity -> {
                         if (!existsEntity) {
                             p.complete(entity);
                         } else {
-                            p.fail(new EntityAlreadyExistsException(entityName));
+                            p.fail(new EntityAlreadyExistsException(entity.getNameWithSchema()));
                         }
                     })
                     .onFailure(p::fail);
@@ -267,7 +267,7 @@ public class CreateMaterializedViewExecutor extends QueryResultDdlExecutor {
         }
 
         for (int i = 0; i < queryColumnsCount; i++) {
-            SqlNode current = selectList.get(i);
+            val current = selectList.get(i);
 
             SqlBasicCall expression;
             if (current instanceof SqlBasicCall) {
@@ -411,7 +411,7 @@ public class CreateMaterializedViewExecutor extends QueryResultDdlExecutor {
 
     private void validateFields(Entity entity, List<ColumnMetadata> columnMetadata) {
         checkRequiredKeys(entity.getFields());
-        checkVarcharSize(entity.getFields());
+        checkCharFieldsSize(entity.getFields());
         checkFieldsMatch(entity, columnMetadata);
         checkFieldsDuplication(entity.getFields());
     }

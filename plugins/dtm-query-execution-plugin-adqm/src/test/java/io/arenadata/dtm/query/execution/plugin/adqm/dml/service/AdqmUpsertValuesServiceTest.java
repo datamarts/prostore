@@ -95,10 +95,12 @@ class AdqmUpsertValuesServiceTest {
         }
 
         verify(databaseExecutor).executeWithParams(sqlCaptor.capture(), any(), any());
-        verify(databaseExecutor, times(3)).executeUpdate(sqlCaptor.capture());
+        verify(databaseExecutor, times(5)).executeUpdate(sqlCaptor.capture());
         List<String> sqlCalls = sqlCaptor.getAllValues();
         assertThat(sqlCalls, Matchers.contains(
                 Matchers.is("INSERT INTO dev__datamart.abc_actual (id, col1, col2, col3, col4, sys_from, sys_to, sys_op, sys_close_date, sign) VALUES  (1, 11323, 3661000000, 978310861000000, 1, 1, 9223372036854775807, 0, 9223372036854775807, 1),  (2, 11720, 7322000000, 1012615322000000, 0, 1, 9223372036854775807, 0, 9223372036854775807, 1),  (3, 12114, 10983000000, 1046660583000000, 1, 1, 9223372036854775807, 0, 9223372036854775807, 1)"),
+                Matchers.is("SYSTEM FLUSH DISTRIBUTED dev__datamart.abc_actual"),
+                Matchers.is("OPTIMIZE TABLE dev__datamart.abc_actual_shard ON CLUSTER cluster FINAL"),
                 Matchers.matchesPattern(CLOSE_VERSIONS_PATTERN),
                 Matchers.is("SYSTEM FLUSH DISTRIBUTED dev__datamart.abc_actual"),
                 Matchers.is("OPTIMIZE TABLE dev__datamart.abc_actual_shard ON CLUSTER cluster FINAL")
@@ -120,10 +122,12 @@ class AdqmUpsertValuesServiceTest {
         }
 
         verify(databaseExecutor).executeWithParams(sqlCaptor.capture(), any(), any());
-        verify(databaseExecutor, times(3)).executeUpdate(sqlCaptor.capture());
+        verify(databaseExecutor, times(5)).executeUpdate(sqlCaptor.capture());
         List<String> sqlCalls = sqlCaptor.getAllValues();
         assertThat(sqlCalls, Matchers.contains(
                 Matchers.is("INSERT INTO dev__datamart.abc_actual (id, col1, col2, sys_from, sys_to, sys_op, sys_close_date, sign) VALUES  (1, 11323, 3661000000, 1, 9223372036854775807, 0, 9223372036854775807, 1),  (2, 11720, 7322000000, 1, 9223372036854775807, 0, 9223372036854775807, 1),  (3, 12114, 10983000000, 1, 9223372036854775807, 0, 9223372036854775807, 1)"),
+                Matchers.is("SYSTEM FLUSH DISTRIBUTED dev__datamart.abc_actual"),
+                Matchers.is("OPTIMIZE TABLE dev__datamart.abc_actual_shard ON CLUSTER cluster FINAL"),
                 Matchers.matchesPattern(CLOSE_VERSIONS_PATTERN),
                 Matchers.is("SYSTEM FLUSH DISTRIBUTED dev__datamart.abc_actual"),
                 Matchers.is("OPTIMIZE TABLE dev__datamart.abc_actual_shard ON CLUSTER cluster FINAL")

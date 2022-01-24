@@ -27,11 +27,11 @@ import io.arenadata.dtm.query.execution.core.base.exception.table.ValidationDtmE
 import io.arenadata.dtm.query.execution.core.base.repository.ServiceDbFacade;
 import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.EntityDao;
 import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.ServiceDbDao;
-import io.arenadata.dtm.query.execution.core.base.service.delta.impl.DeltaInformationExtractorImpl;
-import io.arenadata.dtm.query.execution.core.base.service.delta.impl.DeltaInformationServiceImpl;
-import io.arenadata.dtm.query.execution.core.base.service.delta.impl.DeltaQueryPreprocessorImpl;
-import io.arenadata.dtm.query.execution.core.base.service.metadata.impl.LogicalSchemaProviderImpl;
-import io.arenadata.dtm.query.execution.core.base.service.metadata.impl.LogicalSchemaServiceImpl;
+import io.arenadata.dtm.query.execution.core.base.service.delta.DeltaInformationExtractor;
+import io.arenadata.dtm.query.execution.core.base.service.delta.DeltaInformationService;
+import io.arenadata.dtm.query.execution.core.base.service.delta.DeltaQueryPreprocessor;
+import io.arenadata.dtm.query.execution.core.base.service.metadata.LogicalSchemaProvider;
+import io.arenadata.dtm.query.execution.core.base.service.metadata.LogicalSchemaService;
 import io.arenadata.dtm.query.execution.core.calcite.configuration.CalciteConfiguration;
 import io.arenadata.dtm.query.execution.core.calcite.factory.CoreCalciteSchemaFactory;
 import io.arenadata.dtm.query.execution.core.calcite.factory.CoreSchemaFactory;
@@ -50,7 +50,9 @@ import io.arenadata.dtm.query.execution.core.dml.dto.DmlRequest;
 import io.arenadata.dtm.query.execution.core.dml.dto.DmlRequestContext;
 import io.arenadata.dtm.query.execution.core.dml.dto.PluginDeterminationRequest;
 import io.arenadata.dtm.query.execution.core.dml.dto.PluginDeterminationResult;
+import io.arenadata.dtm.query.execution.core.dml.service.ColumnMetadataService;
 import io.arenadata.dtm.query.execution.core.dml.service.PluginDeterminationService;
+import io.arenadata.dtm.query.execution.core.dml.service.SqlParametersTypeExtractor;
 import io.arenadata.dtm.query.execution.core.dml.service.view.LogicViewReplacer;
 import io.arenadata.dtm.query.execution.core.dml.service.view.MaterializedViewReplacer;
 import io.arenadata.dtm.query.execution.core.dml.service.view.ViewReplacerService;
@@ -111,8 +113,8 @@ class UpsertSelectExecutorTest {
         when(serviceDbFacade.getDeltaServiceDao()).thenReturn(deltaServiceDao);
         when(serviceDbDao.getEntityDao()).thenReturn(entityDao);
 
-        val deltaInformationExtractor = new DeltaInformationExtractorImpl();
-        val deltaQueryPreprocessor = new DeltaQueryPreprocessorImpl(new DeltaInformationServiceImpl(serviceDbFacade), deltaInformationExtractor);
+        val deltaInformationExtractor = new DeltaInformationExtractor();
+        val deltaQueryPreprocessor = new DeltaQueryPreprocessor(new DeltaInformationService(serviceDbFacade), deltaInformationExtractor, entityDao);
         val calciteConfiguration = new CalciteConfiguration();
         val sqlParserFactory = calciteConfiguration.getSqlParserFactory();
         val configParser = calciteConfiguration.configEddlParser(sqlParserFactory);
@@ -120,12 +122,12 @@ class UpsertSelectExecutorTest {
         val calciteSchemaFactory = new CoreCalciteSchemaFactory(schemaFactory);
         val contextProvider = new CoreCalciteContextProvider(configParser, calciteSchemaFactory);
         val queryParserService = new CoreCalciteDMLQueryParserService(contextProvider, vertx);
-        val columnMetadataService = new ColumnMetadataServiceImpl(queryParserService);
+        val columnMetadataService = new ColumnMetadataService(queryParserService);
         val definitionService = new CoreCalciteDefinitionService(configParser);
-        val logicalSchemaProvider = new LogicalSchemaProviderImpl(new LogicalSchemaServiceImpl(serviceDbFacade, deltaInformationExtractor));
+        val logicalSchemaProvider = new LogicalSchemaProvider(new LogicalSchemaService(serviceDbFacade, deltaInformationExtractor));
         val viewReplacerService = new ViewReplacerService(entityDao, new LogicViewReplacer(definitionService), Mockito.mock(MaterializedViewReplacer.class));
         val templateExtractor = new CoreQueryTemplateExtractor(definitionService, calciteConfiguration.coreSqlDialect());
-        val parametersTypeExtractor = new SqlParametersTypeExtractorImpl();
+        val parametersTypeExtractor = new SqlParametersTypeExtractor();
         upsertExecutor = new UpsertSelectExecutor(pluginService, serviceDbFacade, restoreStateService, logicalSchemaProvider, deltaQueryPreprocessor, queryParserService, columnMetadataService, viewReplacerService, pluginDeterminationService, templateExtractor, parametersTypeExtractor);
 
         val fields = Arrays.asList(

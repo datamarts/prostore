@@ -16,11 +16,9 @@
 package io.arenadata.dtm.query.execution.plugin.adp.mppw.kafka.service.impl;
 
 import io.arenadata.dtm.common.exception.DtmException;
-import io.arenadata.dtm.common.model.ddl.EntityField;
 import io.arenadata.dtm.common.model.ddl.EntityFieldUtils;
-import io.arenadata.dtm.common.reader.QueryResult;
-import io.arenadata.dtm.query.execution.plugin.adp.connector.service.AdpConnectorClient;
 import io.arenadata.dtm.query.execution.plugin.adp.connector.dto.AdpConnectorMppwStopRequest;
+import io.arenadata.dtm.query.execution.plugin.adp.connector.service.AdpConnectorClient;
 import io.arenadata.dtm.query.execution.plugin.adp.mppw.dto.AdpTransferDataRequest;
 import io.arenadata.dtm.query.execution.plugin.adp.mppw.kafka.service.AdpMppwRequestExecutor;
 import io.arenadata.dtm.query.execution.plugin.adp.mppw.transfer.AdpTransferDataService;
@@ -30,10 +28,6 @@ import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
-
-import java.util.Comparator;
-import java.util.List;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service("adpStopMppwRequestExecutor")
@@ -49,7 +43,7 @@ public class AdpStopMppwRequestExecutor implements AdpMppwRequestExecutor {
     }
 
     @Override
-    public Future<QueryResult> execute(MppwKafkaRequest request) {
+    public Future<String> execute(MppwKafkaRequest request) {
         return Future.future(promise -> {
             log.info("[ADP] Trying to stop MPPW, request: [{}]", request);
             val connectorRequest = new AdpConnectorMppwStopRequest(request.getRequestId().toString(), request.getTopic());
@@ -57,7 +51,7 @@ public class AdpStopMppwRequestExecutor implements AdpMppwRequestExecutor {
                     .compose(v -> transferDataService.transferData(createRequest(request)))
                     .onSuccess(v -> {
                         log.info("[ADP] Mppw stopped successfully");
-                        promise.complete(QueryResult.emptyResult());
+                        promise.complete();
                     })
                     .onFailure(t -> {
                         log.error("[ADP] Mppw failed to stop", t);

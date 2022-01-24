@@ -72,10 +72,10 @@ public class AcceptableSourceTypesDefinitionService {
     private Set<SourceType> getCommonSourceTypes(List<Entity> entities) {
         if (entities.isEmpty()) {
             return new HashSet<>();
-        } else {
-            Set<SourceType> stResult = new HashSet<>(entities.get(0).getDestination());
-            entities.forEach(e -> stResult.retainAll(e.getDestination()));
-            return stResult;
         }
+
+        Set<SourceType> stResult = new HashSet<>(entities.get(0).getDestination());
+        entities.forEach(e -> stResult.retainAll(e.getDestination()));
+        return stResult;
     }
 }

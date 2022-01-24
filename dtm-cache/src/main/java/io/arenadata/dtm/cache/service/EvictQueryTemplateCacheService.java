@@ -15,7 +15,39 @@
  */
 package io.arenadata.dtm.cache.service;
 
-public interface EvictQueryTemplateCacheService {
-    void evictByDatamartName(String datamartName);
-    void evictByEntityName(String datamartName, String entityName);
+import io.arenadata.dtm.common.cache.QueryTemplateKey;
+import io.arenadata.dtm.common.cache.QueryTemplateValue;
+import io.arenadata.dtm.common.cache.SourceQueryTemplateValue;
+import io.arenadata.dtm.query.execution.model.metadata.Datamart;
+
+import java.util.List;
+import java.util.function.Predicate;
+
+public class EvictQueryTemplateCacheService {
+    private final CacheService<QueryTemplateKey, SourceQueryTemplateValue> cacheService;
+    private final List<CacheService<QueryTemplateKey, QueryTemplateValue>> cacheServiceList;
+
+    public EvictQueryTemplateCacheService(CacheService<QueryTemplateKey, SourceQueryTemplateValue> cacheService,
+                                          List<CacheService<QueryTemplateKey, QueryTemplateValue>> cacheServiceList) {
+        this.cacheService = cacheService;
+        this.cacheServiceList = cacheServiceList;
+    }
+
+    public void evictByDatamartName(String datamartName) {
+        remove(datamart -> datamart.getMnemonic().equals(datamartName));
+    }
+
+    public void evictByEntityName(String datamartName, String entityName) {
+        remove(datamart -> datamart.getMnemonic().equals(datamartName)
+                && datamart.getEntities().stream()
+                .anyMatch(dmEntity -> dmEntity.getName().equals(entityName)));
+    }
+
+    private void remove(Predicate<Datamart> predicate) {
+        Predicate<QueryTemplateKey> templatePredicate = queryTemplateKey ->
+                queryTemplateKey.getLogicalSchema().stream()
+                        .anyMatch(predicate);
+        cacheService.removeIf(templatePredicate);
+        cacheServiceList.forEach(pluginCacheService -> pluginCacheService.removeIf(templatePredicate));
+    }
 }

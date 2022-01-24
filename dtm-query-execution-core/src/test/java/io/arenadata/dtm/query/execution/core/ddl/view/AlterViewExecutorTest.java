@@ -16,13 +16,13 @@
 package io.arenadata.dtm.query.execution.core.ddl.view;
 
 import io.arenadata.dtm.cache.service.CacheService;
-import io.arenadata.dtm.cache.service.CaffeineCacheService;
 import io.arenadata.dtm.common.dto.QueryParserRequest;
 import io.arenadata.dtm.common.exception.DtmException;
 import io.arenadata.dtm.common.model.ddl.ColumnType;
 import io.arenadata.dtm.common.model.ddl.Entity;
+import io.arenadata.dtm.common.model.ddl.EntityField;
+import io.arenadata.dtm.common.model.ddl.EntityType;
 import io.arenadata.dtm.common.reader.QueryRequest;
-import io.arenadata.dtm.common.reader.QueryResult;
 import io.arenadata.dtm.common.request.DatamartRequest;
 import io.arenadata.dtm.query.calcite.core.configuration.CalciteCoreConfiguration;
 import io.arenadata.dtm.query.calcite.core.extension.ddl.SqlAlterView;
@@ -34,17 +34,13 @@ import io.arenadata.dtm.query.execution.core.base.dto.cache.EntityKey;
 import io.arenadata.dtm.query.execution.core.base.exception.entity.EntityNotExistsException;
 import io.arenadata.dtm.query.execution.core.base.exception.table.ValidationDtmException;
 import io.arenadata.dtm.query.execution.core.base.repository.ServiceDbFacade;
-import io.arenadata.dtm.query.execution.core.base.repository.ServiceDbFacadeImpl;
 import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.*;
 import io.arenadata.dtm.query.execution.core.base.service.metadata.LogicalSchemaProvider;
 import io.arenadata.dtm.query.execution.core.base.service.metadata.MetadataExecutor;
-import io.arenadata.dtm.query.execution.core.base.service.metadata.impl.LogicalSchemaProviderImpl;
-import io.arenadata.dtm.query.execution.core.base.service.metadata.impl.MetadataExecutorImpl;
 import io.arenadata.dtm.query.execution.core.calcite.configuration.CalciteConfiguration;
 import io.arenadata.dtm.query.execution.core.calcite.factory.CoreCalciteSchemaFactory;
 import io.arenadata.dtm.query.execution.core.calcite.factory.CoreSchemaFactory;
 import io.arenadata.dtm.query.execution.core.calcite.service.CoreCalciteContextProvider;
-import io.arenadata.dtm.query.execution.core.calcite.service.CoreCalciteDMLQueryParserService;
 import io.arenadata.dtm.query.execution.core.ddl.dto.DdlRequestContext;
 import io.arenadata.dtm.query.execution.core.ddl.service.impl.view.AlterViewExecutor;
 import io.arenadata.dtm.query.execution.core.delta.dto.OkDelta;
@@ -53,7 +49,8 @@ import io.arenadata.dtm.query.execution.core.dml.service.ColumnMetadataService;
 import io.arenadata.dtm.query.execution.model.metadata.ColumnMetadata;
 import io.arenadata.dtm.query.execution.model.metadata.Datamart;
 import io.vertx.core.Future;
-import io.vertx.core.Promise;
+import io.vertx.junit5.VertxExtension;
+import io.vertx.junit5.VertxTestContext;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParseException;
 import org.apache.calcite.sql.parser.SqlParser;
@@ -61,30 +58,47 @@ import org.apache.calcite.tools.FrameworkConfig;
 import org.apache.calcite.tools.Planner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.UUID;
 
 import static io.arenadata.dtm.query.execution.core.utils.TestUtils.*;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static java.util.Collections.singletonList;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
-import static org.mockito.Mockito.lenient;
 
+@ExtendWith({MockitoExtension.class, VertxExtension.class})
 class AlterViewExecutorTest {
 
-    private final ServiceDbFacade serviceDbFacade = mock(ServiceDbFacadeImpl.class);
-    private final ServiceDbDao serviceDbDao = mock(ServiceDbDao.class);
-    private final ChangelogDao changelogDao = mock(ChangelogDao.class);
-    private final EntityDao entityDao = mock(EntityDao.class);
-    private final DatamartDao datamartDao = mock(DatamartDao.class);
-    private final DeltaServiceDao deltaServiceDao = mock(DeltaServiceDao.class);
-    private final LogicalSchemaProvider logicalSchemaProvider = mock(LogicalSchemaProviderImpl.class);
-    private final ColumnMetadataService columnMetadataService = mock(ColumnMetadataService.class);
-    private final MetadataExecutor<DdlRequestContext> metadataExecutor = mock(MetadataExecutorImpl.class);
-    private final CacheService<EntityKey, Entity> entityCacheService = mock(CaffeineCacheService.class);
-    private final QueryParserService parserService = mock(CoreCalciteDMLQueryParserService.class);
+    @Mock
+    private ServiceDbFacade serviceDbFacade;
+    @Mock
+    private ServiceDbDao serviceDbDao;
+    @Mock
+    private ChangelogDao changelogDao;
+    @Mock
+    private EntityDao entityDao;
+    @Mock
+    private DatamartDao datamartDao;
+    @Mock
+    private DeltaServiceDao deltaServiceDao;
+    @Mock
+    private LogicalSchemaProvider logicalSchemaProvider;
+    @Mock
+    private ColumnMetadataService columnMetadataService;
+    @Mock
+    private MetadataExecutor metadataExecutor;
+    @Mock
+    private CacheService<EntityKey, Entity> entityCacheService;
+    @Mock
+    private QueryParserService parserService;
 
     private final CalciteConfiguration calciteConfiguration = new CalciteConfiguration();
     private final CalciteCoreConfiguration calciteCoreConfiguration = new CalciteCoreConfiguration();
@@ -105,11 +119,14 @@ class AlterViewExecutorTest {
 
     @BeforeEach
     void setUp() {
-        when(serviceDbFacade.getServiceDbDao()).thenReturn(serviceDbDao);
-        when(serviceDbDao.getEntityDao()).thenReturn(entityDao);
-        when(serviceDbDao.getDatamartDao()).thenReturn(datamartDao);
+        lenient().when(serviceDbFacade.getServiceDbDao()).thenReturn(serviceDbDao);
+        lenient().when(serviceDbDao.getEntityDao()).thenReturn(entityDao);
+        lenient().when(serviceDbDao.getDatamartDao()).thenReturn(datamartDao);
         lenient().when(serviceDbFacade.getDeltaServiceDao()).thenReturn(deltaServiceDao);
         lenient().when(serviceDbDao.getChangelogDao()).thenReturn(changelogDao);
+        lenient().when(metadataExecutor.execute(any())).thenReturn(Future.succeededFuture());
+        lenient().when(logicalSchemaProvider.getSchemaFromQuery(any(), any()))
+                .thenReturn(Future.succeededFuture(logicSchema));
 
         alterViewExecutor = new AlterViewExecutor(metadataExecutor,
                 serviceDbFacade,
@@ -121,19 +138,24 @@ class AlterViewExecutorTest {
                 relToSqlConverter);
         schema = "shares";
         initEntityList(entityList, schema);
-        logicSchema = Collections.singletonList(new Datamart(
-                schema,
-                true,
-                entityList));
+        List<Entity> informationSchemaEntity = singletonList(Entity.builder()
+                .entityType(EntityType.TABLE)
+                .name("tables")
+                .fields(singletonList(
+                        EntityField.builder()
+                                .ordinalPosition(0)
+                                .name("id")
+                                .type(ColumnType.BIGINT)
+                                .nullable(false)
+                                .build()))
+                .build());
+        logicSchema = Arrays.asList(new Datamart(schema, true, entityList),
+                new Datamart("information_schema", false, informationSchemaEntity));
         sqlNodeName = schema + "." + entityList.get(0).getName();
-        when(metadataExecutor.execute(any())).thenReturn(Future.succeededFuture());
-        when(logicalSchemaProvider.getSchemaFromQuery(any(), any()))
-                .thenReturn(Future.succeededFuture(logicSchema));
     }
 
     @Test
-    void executeSuccess() throws SqlParseException {
-        Promise<QueryResult> promise = Promise.promise();
+    void executeSuccess(VertxTestContext testContext) throws SqlParseException {
         DtmCalciteFramework.ConfigBuilder configBuilder = DtmCalciteFramework.newConfigBuilder();
         FrameworkConfig frameworkConfig = configBuilder.parserConfig(parserConfig).build();
         Planner planner = DtmCalciteFramework.getPlanner(frameworkConfig);
@@ -150,7 +172,7 @@ class AlterViewExecutorTest {
                 .thenReturn(Future.succeededFuture(parse(contextProvider, new QueryParserRequest(((SqlAlterView) sqlNode).getQuery(), logicSchema))));
 
         when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
-                .thenReturn(Future.succeededFuture(Collections.singletonList(ColumnMetadata.builder()
+                .thenReturn(Future.succeededFuture(singletonList(ColumnMetadata.builder()
                         .name("id")
                         .type(ColumnType.BIGINT)
                         .build())));
@@ -171,13 +193,66 @@ class AlterViewExecutorTest {
                 .thenReturn(Future.succeededFuture());
 
         alterViewExecutor.execute(context, sqlNodeName)
-                .onComplete(promise);
-        assertTrue(promise.future().succeeded());
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.failed()) {
+                        fail(ar.cause());
+                    }
+
+                    assertTrue(ar.succeeded());
+
+                }).completeNow());
     }
 
     @Test
-    void executeWrongEntityTypeError() throws SqlParseException {
-        Promise<QueryResult> promise = Promise.promise();
+    void shouldFailWhenInformationSchemaInQuery(VertxTestContext testContext) throws SqlParseException {
+        DtmCalciteFramework.ConfigBuilder configBuilder = DtmCalciteFramework.newConfigBuilder();
+        FrameworkConfig frameworkConfig = configBuilder.parserConfig(parserConfig).build();
+        Planner planner = DtmCalciteFramework.getPlanner(frameworkConfig);
+
+        final QueryRequest queryRequest = new QueryRequest();
+        queryRequest.setRequestId(UUID.randomUUID());
+        queryRequest.setDatamartMnemonic(schema);
+        queryRequest.setSql(String.format("ALTER VIEW %s.%s AS SELECT * FROM information_schema.tables",
+                schema, entityList.get(0).getName()));
+        SqlNode sqlNode = planner.parse(queryRequest.getSql());
+        DdlRequestContext context = new DdlRequestContext(null, new DatamartRequest(queryRequest), sqlNode, null, null);
+
+        lenient().when(parserService.parse(any()))
+                .thenReturn(Future.succeededFuture(parse(contextProvider, new QueryParserRequest(((SqlAlterView) sqlNode).getQuery(), logicSchema))));
+
+        lenient().when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
+                .thenReturn(Future.succeededFuture(singletonList(ColumnMetadata.builder()
+                        .name("id")
+                        .type(ColumnType.BIGINT)
+                        .build())));
+
+        lenient().when(entityDao.getEntity(schema, entityList.get(1).getName()))
+                .thenReturn(Future.succeededFuture(entityList.get(1)));
+
+        lenient().when(entityDao.getEntity(schema, entityList.get(0).getName()))
+                .thenReturn(Future.succeededFuture(entityList.get(0)));
+
+        lenient().when(deltaServiceDao.getDeltaOk(schema))
+                .thenReturn(Future.succeededFuture(deltaOk));
+
+        lenient().when(changelogDao.writeNewRecord(anyString(), anyString(), anyString(), any()))
+                .thenReturn(Future.succeededFuture());
+
+        lenient().when(entityDao.setEntityState(any(), any(), anyString(), eq(SetEntityState.UPDATE)))
+                .thenReturn(Future.succeededFuture());
+
+        alterViewExecutor.execute(context, sqlNodeName)
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.succeeded()) {
+                        fail("Unexpected success");
+                    }
+
+                    assertEquals("Using of INFORMATION_SCHEMA is forbidden [information_schema.tables]", ar.cause().getMessage());
+                }).completeNow());
+    }
+
+    @Test
+    void executeWrongEntityTypeError(VertxTestContext testContext) throws SqlParseException {
         DtmCalciteFramework.ConfigBuilder configBuilder = DtmCalciteFramework.newConfigBuilder();
         FrameworkConfig frameworkConfig = configBuilder.parserConfig(parserConfig).build();
         Planner planner = DtmCalciteFramework.getPlanner(frameworkConfig);
@@ -194,32 +269,36 @@ class AlterViewExecutorTest {
                 .thenReturn(Future.succeededFuture(parse(contextProvider, new QueryParserRequest(((SqlAlterView) sqlNode).getQuery(), logicSchema))));
 
         when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
-                .thenReturn(Future.succeededFuture(Collections.singletonList(ColumnMetadata.builder()
+                .thenReturn(Future.succeededFuture(singletonList(ColumnMetadata.builder()
                         .name("id")
                         .type(ColumnType.BIGINT)
                         .build())));
 
-        when(deltaServiceDao.getDeltaOk(schema))
+        lenient().when(deltaServiceDao.getDeltaOk(schema))
                 .thenReturn(Future.succeededFuture(deltaOk));
 
-        when(changelogDao.writeNewRecord(anyString(), anyString(), anyString(), any()))
+        lenient().when(changelogDao.writeNewRecord(anyString(), anyString(), anyString(), any()))
                 .thenReturn(Future.succeededFuture());
 
-        when(entityDao.getEntity(schema, entityList.get(1).getName()))
+        lenient().when(entityDao.getEntity(schema, entityList.get(1).getName()))
                 .thenReturn(Future.succeededFuture(entityList.get(1)));
 
         when(entityDao.getEntity(schema, entityList.get(2).getName()))
                 .thenReturn(Future.succeededFuture(entityList.get(2)));
 
         alterViewExecutor.execute(context, sqlNodeName)
-                .onComplete(promise);
-        assertTrue(promise.future().failed());
-        assertEquals(String.format("Entity %s does not exist", entityList.get(1).getName()), promise.future().cause().getMessage());
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.succeeded()) {
+                        fail("Unexpected success");
+                    }
+
+                    assertTrue(ar.failed());
+                    assertEquals(String.format("Entity %s is not a view", entityList.get(1).getName()), ar.cause().getMessage());
+                }).completeNow());
     }
 
     @Test
-    void executeSuccessWithJoinQuery() throws SqlParseException {
-        Promise<QueryResult> promise = Promise.promise();
+    void executeSuccessWithJoinQuery(VertxTestContext testContext) throws SqlParseException {
         DtmCalciteFramework.ConfigBuilder configBuilder = DtmCalciteFramework.newConfigBuilder();
         FrameworkConfig frameworkConfig = configBuilder.parserConfig(parserConfig).build();
         Planner planner = DtmCalciteFramework.getPlanner(frameworkConfig);
@@ -241,7 +320,7 @@ class AlterViewExecutorTest {
                 .thenReturn(Future.succeededFuture(parse(contextProvider, new QueryParserRequest(((SqlAlterView) sqlNode).getQuery(), logicSchema))));
 
         when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
-                .thenReturn(Future.succeededFuture(Collections.singletonList(ColumnMetadata.builder()
+                .thenReturn(Future.succeededFuture(singletonList(ColumnMetadata.builder()
                         .name("id")
                         .type(ColumnType.BIGINT)
                         .build())));
@@ -265,13 +344,16 @@ class AlterViewExecutorTest {
                 .thenReturn(Future.succeededFuture());
 
         alterViewExecutor.execute(context, sqlNodeName)
-                .onComplete(promise);
-        assertTrue(promise.future().succeeded());
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.failed()) {
+                        fail(ar.cause());
+                    }
+                    assertTrue(ar.succeeded());
+                }).completeNow());
     }
 
     @Test
-    void executeIsEntityExistsError() throws SqlParseException {
-        Promise<QueryResult> promise = Promise.promise();
+    void executeIsEntityExistsError(VertxTestContext testContext) throws SqlParseException {
         DtmCalciteFramework.ConfigBuilder configBuilder = DtmCalciteFramework.newConfigBuilder();
         FrameworkConfig frameworkConfig = configBuilder.parserConfig(parserConfig).build();
         Planner planner = DtmCalciteFramework.getPlanner(frameworkConfig);
@@ -287,23 +369,26 @@ class AlterViewExecutorTest {
         when(entityDao.getEntity(schema, entityList.get(1).getName()))
                 .thenReturn(Future.succeededFuture(entityList.get(1)));
 
-        when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
-                .thenReturn(Future.succeededFuture(Collections.singletonList(ColumnMetadata.builder()
+        lenient().when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
+                .thenReturn(Future.succeededFuture(singletonList(ColumnMetadata.builder()
                         .name("id")
                         .type(ColumnType.BIGINT)
                         .build())));
 
-        when(entityDao.getEntity(schema, entityList.get(0).getName()))
+        lenient().when(entityDao.getEntity(schema, entityList.get(0).getName()))
                 .thenReturn(Future.failedFuture(new EntityNotExistsException(entityList.get(0).getName())));
 
         alterViewExecutor.execute(context, sqlNodeName)
-                .onComplete(promise);
-        assertTrue(promise.future().failed());
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.succeeded()) {
+                        fail("Unexpected success");
+                    }
+                    assertTrue(ar.failed());
+                }).completeNow());
     }
 
     @Test
-    void executeWithViewUpdateError() throws SqlParseException {
-        Promise<QueryResult> promise = Promise.promise();
+    void executeWithViewUpdateError(VertxTestContext testContext) throws SqlParseException {
         DtmCalciteFramework.ConfigBuilder configBuilder = DtmCalciteFramework.newConfigBuilder();
         FrameworkConfig frameworkConfig = configBuilder.parserConfig(parserConfig).build();
         Planner planner = DtmCalciteFramework.getPlanner(frameworkConfig);
@@ -319,26 +404,29 @@ class AlterViewExecutorTest {
         when(entityDao.getEntity(schema, entityList.get(1).getName()))
                 .thenReturn(Future.succeededFuture(entityList.get(1)));
 
-        when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
-                .thenReturn(Future.succeededFuture(Collections.singletonList(ColumnMetadata.builder()
+        lenient().when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
+                .thenReturn(Future.succeededFuture(singletonList(ColumnMetadata.builder()
                         .name("id")
                         .type(ColumnType.BIGINT)
                         .build())));
 
-        when(entityDao.getEntity(schema, entityList.get(0).getName()))
+        lenient().when(entityDao.getEntity(schema, entityList.get(0).getName()))
                 .thenReturn(Future.succeededFuture(entityList.get(0)));
 
-        when(entityDao.updateEntity(any()))
+        lenient().when(entityDao.updateEntity(any()))
                 .thenReturn(Future.failedFuture(new DtmException("Update error")));
 
         alterViewExecutor.execute(context, sqlNodeName)
-                .onComplete(promise);
-        assertTrue(promise.future().failed());
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.succeeded()) {
+                        fail("Unexpected success");
+                    }
+                    assertTrue(ar.failed());
+                }).completeNow());
     }
 
     @Test
-    void executeQueryContainsViewError() throws SqlParseException {
-        Promise<QueryResult> promise = Promise.promise();
+    void executeQueryContainsViewError(VertxTestContext testContext) throws SqlParseException {
         DtmCalciteFramework.ConfigBuilder configBuilder = DtmCalciteFramework.newConfigBuilder();
         FrameworkConfig frameworkConfig = configBuilder.parserConfig(parserConfig).build();
         Planner planner = DtmCalciteFramework.getPlanner(frameworkConfig);
@@ -352,7 +440,7 @@ class AlterViewExecutorTest {
         DdlRequestContext context = new DdlRequestContext(null, new DatamartRequest(queryRequest), sqlNode, null, null);
 
         when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
-                .thenReturn(Future.succeededFuture(Collections.singletonList(ColumnMetadata.builder()
+                .thenReturn(Future.succeededFuture(singletonList(ColumnMetadata.builder()
                         .name("id")
                         .type(ColumnType.BIGINT)
                         .build())));
@@ -364,13 +452,16 @@ class AlterViewExecutorTest {
                 .thenReturn(Future.succeededFuture(entityList.get(1)));
 
         alterViewExecutor.execute(context, sqlNodeName)
-                .onComplete(promise);
-        assertTrue(promise.future().failed());
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.succeeded()) {
+                        fail("Unexpected success");
+                    }
+                    assertTrue(ar.failed());
+                }).completeNow());
     }
 
     @Test
-    void executeContainsCollateViewError() throws SqlParseException {
-        Promise<QueryResult> promise = Promise.promise();
+    void executeContainsCollateViewError(VertxTestContext testContext) throws SqlParseException {
         DtmCalciteFramework.ConfigBuilder configBuilder = DtmCalciteFramework.newConfigBuilder();
         FrameworkConfig frameworkConfig = configBuilder.parserConfig(parserConfig).build();
         Planner planner = DtmCalciteFramework.getPlanner(frameworkConfig);
@@ -384,13 +475,16 @@ class AlterViewExecutorTest {
         DdlRequestContext context = new DdlRequestContext(null, new DatamartRequest(queryRequest), sqlNode, null, null);
 
         alterViewExecutor.execute(context, sqlNodeName)
-                .onComplete(promise);
-        assertTrue(promise.future().failed());
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.succeeded()) {
+                        fail("Unexpected success");
+                    }
+                    assertTrue(ar.failed());
+                }).completeNow());
     }
 
     @Test
-    void executeSuccessColumnDuplication() throws SqlParseException {
-        Promise<QueryResult> promise = Promise.promise();
+    void executeSuccessColumnDuplication(VertxTestContext testContext) throws SqlParseException {
         DtmCalciteFramework.ConfigBuilder configBuilder = DtmCalciteFramework.newConfigBuilder();
         FrameworkConfig frameworkConfig = configBuilder.parserConfig(parserConfig).build();
         Planner planner = DtmCalciteFramework.getPlanner(frameworkConfig);
@@ -413,7 +507,7 @@ class AlterViewExecutorTest {
                 .thenReturn(Future.succeededFuture(parse(contextProvider, new QueryParserRequest(((SqlAlterView) sqlNode).getQuery(), logicSchema))));
 
         when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
-                .thenReturn(Future.succeededFuture(Collections.singletonList(ColumnMetadata.builder()
+                .thenReturn(Future.succeededFuture(singletonList(ColumnMetadata.builder()
                         .name("id")
                         .type(ColumnType.BIGINT)
                         .build())));
@@ -437,13 +531,16 @@ class AlterViewExecutorTest {
                 .thenReturn(Future.succeededFuture());
 
         alterViewExecutor.execute(context, sqlNodeName)
-                .onComplete(promise);
-        assertTrue(promise.future().succeeded());
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.failed()) {
+                        fail(ar.cause());
+                    }
+                    assertTrue(ar.succeeded());
+                }).completeNow());
     }
 
     @Test
-    void executeWithTimestampSuccess() throws SqlParseException {
-        Promise<QueryResult> promise = Promise.promise();
+    void executeWithTimestampSuccess(VertxTestContext testContext) throws SqlParseException {
         DtmCalciteFramework.ConfigBuilder configBuilder = DtmCalciteFramework.newConfigBuilder();
         FrameworkConfig frameworkConfig = configBuilder.parserConfig(parserConfig).build();
         Planner planner = DtmCalciteFramework.getPlanner(frameworkConfig);
@@ -485,13 +582,16 @@ class AlterViewExecutorTest {
                 .thenReturn(Future.succeededFuture());
 
         alterViewExecutor.execute(context, sqlNodeName)
-                .onComplete(promise);
-        assertTrue(promise.future().succeeded());
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.failed()) {
+                        fail(ar.cause());
+                    }
+                    assertTrue(ar.succeeded());
+                }).completeNow());
     }
 
     @Test
-    void executeWrongTimestampFormatError() throws SqlParseException {
-        Promise<QueryResult> promise = Promise.promise();
+    void executeWrongTimestampFormatError(VertxTestContext testContext) throws SqlParseException {
         DtmCalciteFramework.ConfigBuilder configBuilder = DtmCalciteFramework.newConfigBuilder();
         FrameworkConfig frameworkConfig = configBuilder.parserConfig(parserConfig).build();
         Planner planner = DtmCalciteFramework.getPlanner(frameworkConfig);
@@ -508,7 +608,7 @@ class AlterViewExecutorTest {
         when(parserService.parse(any()))
                 .thenReturn(Future.succeededFuture(parse(contextProvider, new QueryParserRequest(((SqlAlterView) sqlNode).getQuery(), logicSchema))));
 
-        when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
+        lenient().when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
                 .thenReturn(Future.succeededFuture(Arrays.asList(ColumnMetadata.builder()
                                 .name("id")
                                 .type(ColumnType.BIGINT)
@@ -518,15 +618,19 @@ class AlterViewExecutorTest {
                                 .type(ColumnType.TIMESTAMP)
                                 .build())));
 
-        when(entityDao.getEntity(schema, entityList.get(0).getName()))
+        lenient().when(entityDao.getEntity(schema, entityList.get(0).getName()))
                 .thenReturn(Future.succeededFuture(entityList.get(0)));
 
         when(entityDao.getEntity(schema, entityList.get(6).getName()))
                 .thenReturn(Future.succeededFuture(entityList.get(6)));
 
         alterViewExecutor.execute(context, sqlNodeName)
-                .onComplete(promise);
-        assertTrue(promise.future().failed());
-        assertTrue(promise.future().cause() instanceof ValidationDtmException);
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.succeeded()) {
+                        fail("Unexpected success");
+                    }
+                    assertTrue(ar.failed());
+                    assertTrue(ar.cause() instanceof ValidationDtmException);
+                }).completeNow());
     }
 }

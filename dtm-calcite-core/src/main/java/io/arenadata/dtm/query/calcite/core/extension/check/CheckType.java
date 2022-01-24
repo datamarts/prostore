@@ -22,5 +22,6 @@ public enum CheckType {
     VERSIONS,
     SUM,
     MATERIALIZED_VIEW,
-    CHANGES
+    CHANGES,
+    ENTITY_DDL
 }

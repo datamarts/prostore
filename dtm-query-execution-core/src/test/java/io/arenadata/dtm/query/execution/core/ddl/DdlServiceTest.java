@@ -26,7 +26,7 @@ import io.arenadata.dtm.query.calcite.core.extension.eddl.SqlCreateDatabase;
 import io.arenadata.dtm.query.execution.core.base.exception.table.ValidationDtmException;
 import io.arenadata.dtm.query.execution.core.ddl.dto.DdlRequestContext;
 import io.arenadata.dtm.query.execution.core.ddl.service.DdlExecutor;
-import io.arenadata.dtm.query.execution.core.ddl.service.impl.DdlServiceImpl;
+import io.arenadata.dtm.query.execution.core.ddl.service.DdlService;
 import io.arenadata.dtm.query.execution.core.ddl.utils.ParseQueryUtils;
 import io.arenadata.dtm.query.execution.plugin.api.service.PostExecutor;
 import io.vertx.core.Future;
@@ -64,7 +64,7 @@ class DdlServiceTest {
             .build();
 
     private DdlRequestContext context;
-    private DdlServiceImpl ddlService;
+    private DdlService ddlService;
 
     @BeforeEach
     void setUp() {
@@ -80,7 +80,7 @@ class DdlServiceTest {
                         .datamartMnemonic("dtm")
                         .build()),
                 sqlCreateDatabase, SourceType.ADB, ENV);
-        ddlService = new DdlServiceImpl(parseQueryUtils,
+        ddlService = new DdlService(parseQueryUtils,
                 Collections.singletonList(postExecutor),
                 Collections.singletonList(ddlExecutor));
     }

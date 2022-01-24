@@ -104,7 +104,7 @@ class MppwFinishRequestHandlerTest {
                 .requestId(UUID.randomUUID())
                 .datamartMnemonic("shares")
                 .envName("dev")
-                .isLoadStart(true)
+                .loadStart(true)
                 .sysCn(101L)
                 .destinationEntity(getEntity())
                 .topic(TEST_TOPIC)

@@ -16,7 +16,8 @@
 
 FROM openjdk:8-jdk-slim
 WORKDIR app
-ARG DTM_JAR
-COPY ${DTM_JAR} dtm-query-execution-core.jar
 COPY config/ config/
+COPY /target/dtm-query-execution-core-*.jar dtm-query-execution-core.jar
+EXPOSE 8080
+EXPOSE 9090
 ENTRYPOINT ["java", "-jar", "./dtm-query-execution-core.jar"]

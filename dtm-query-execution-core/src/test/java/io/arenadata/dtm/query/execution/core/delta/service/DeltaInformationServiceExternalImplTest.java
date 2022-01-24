@@ -21,7 +21,6 @@ import io.arenadata.dtm.common.exception.DtmException;
 import io.arenadata.dtm.query.execution.core.base.repository.ServiceDbFacade;
 import io.arenadata.dtm.query.execution.core.base.repository.ServiceDbFacadeImpl;
 import io.arenadata.dtm.query.execution.core.base.service.delta.DeltaInformationService;
-import io.arenadata.dtm.query.execution.core.base.service.delta.impl.DeltaInformationServiceImpl;
 import io.arenadata.dtm.query.execution.core.delta.dto.HotDelta;
 import io.arenadata.dtm.query.execution.core.delta.dto.OkDelta;
 import io.arenadata.dtm.query.execution.core.delta.repository.zookeeper.DeltaServiceDao;
@@ -49,7 +48,7 @@ class DeltaInformationServiceExternalImplTest {
     @BeforeEach
     void setUp() {
         when(serviceDbFacade.getDeltaServiceDao()).thenReturn(deltaServiceDao);
-        deltaService = new DeltaInformationServiceImpl(serviceDbFacade);
+        deltaService = new DeltaInformationService(serviceDbFacade);
     }
 
     @Test

@@ -33,7 +33,6 @@ import io.arenadata.dtm.query.execution.core.dml.dto.DmlRequest;
 import io.arenadata.dtm.query.execution.core.dml.dto.DmlRequestContext;
 import io.arenadata.dtm.query.execution.core.dml.service.impl.UseSchemaDmlExecutor;
 import io.arenadata.dtm.query.execution.core.metrics.service.MetricsService;
-import io.arenadata.dtm.query.execution.core.metrics.service.impl.MetricsServiceImpl;
 import io.arenadata.dtm.query.execution.core.utils.QueryResultUtils;
 import io.arenadata.dtm.query.execution.model.metadata.ColumnMetadata;
 import io.vertx.core.Future;
@@ -65,7 +64,7 @@ class UseSchemaDmlExecutorTest {
     private final ServiceDbDao serviceDbDao = mock(ServiceDbDao.class);
     private final DatamartDao datamartDao = mock(DatamartDao.class);
     private final ParseQueryUtils parseQueryUtils = mock(ParseQueryUtils.class);
-    private final MetricsService<RequestMetrics> metricsService = mock(MetricsServiceImpl.class);
+    private final MetricsService metricsService = mock(MetricsService.class);
     private UseSchemaDmlExecutor useSchemaDdlExecutor;
     private DmlRequestContext context;
     private String schema = "shares";
@@ -130,9 +129,7 @@ class UseSchemaDmlExecutorTest {
                 .thenReturn(Future.succeededFuture(false));
 
         when(metricsService.sendMetrics(any(), any(), any(), any()))
-                .thenReturn(ar -> {
-                    promise.fail(ar.cause());
-                });
+                .thenReturn(ar -> promise.fail(ar.cause()));
 
         useSchemaDdlExecutor.execute(context);
         assertTrue(promise.future().failed());

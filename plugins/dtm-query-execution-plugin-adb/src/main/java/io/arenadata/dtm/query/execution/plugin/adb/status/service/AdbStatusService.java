@@ -17,7 +17,6 @@ package io.arenadata.dtm.query.execution.plugin.adb.status.service;
 
 import io.arenadata.dtm.common.plugin.status.StatusQueryResult;
 import io.arenadata.dtm.kafka.core.service.kafka.KafkaConsumerMonitor;
-import io.arenadata.dtm.query.execution.plugin.adb.mppw.configuration.properties.MppwProperties;
 import io.arenadata.dtm.query.execution.plugin.api.service.StatusService;
 import io.vertx.core.Future;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,26 +26,15 @@ import org.springframework.stereotype.Service;
 @Service("adbStatusService")
 public class AdbStatusService implements StatusService {
     private final KafkaConsumerMonitor kafkaConsumerMonitor;
-    private final MppwProperties mppwProperties;
 
     @Autowired
-    public AdbStatusService(@Qualifier("coreKafkaConsumerMonitor") KafkaConsumerMonitor kafkaConsumerMonitor,
-                            MppwProperties mppwProperties) {
+    public AdbStatusService(@Qualifier("coreKafkaConsumerMonitor") KafkaConsumerMonitor kafkaConsumerMonitor) {
         this.kafkaConsumerMonitor = kafkaConsumerMonitor;
-        this.mppwProperties = mppwProperties;
     }
 
     @Override
-    public Future<StatusQueryResult> execute(String topic) {
-        return Future.future(promise -> {
-            String consumerGroup = mppwProperties.getConsumerGroup();
-            kafkaConsumerMonitor.getAggregateGroupConsumerInfo(consumerGroup, topic)
-                    .onSuccess(kafkaInfoResult -> {
-                        StatusQueryResult result = new StatusQueryResult();
-                        result.setPartitionInfo(kafkaInfoResult);
-                        promise.complete(result);
-                    })
-                    .onFailure(promise::fail);
-        });
+    public Future<StatusQueryResult> execute(String topic, String consumerGroup) {
+        return kafkaConsumerMonitor.getAggregateGroupConsumerInfo(consumerGroup, topic)
+                .map(StatusQueryResult::new);
     }
 }

@@ -73,6 +73,7 @@ data: {
       "ALLOW_CHANGES"
       "DENY_CHANGES"
       "GET_CHANGES"
+      "GET_ENTITY_DDL"
     ]
 
     # List of keywords from "keywords" section that are not reserved.
@@ -441,6 +442,7 @@ data: {
         "SqlAllowChanges()"
         "SqlDenyChanges()"
         "SqlGetChanges()"
+        "SqlGetEntityDdl()"
     ]
 
     # List of methods for parsing custom literals.

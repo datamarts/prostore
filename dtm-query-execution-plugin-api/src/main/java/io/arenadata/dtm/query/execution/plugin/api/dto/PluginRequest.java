@@ -17,7 +17,6 @@ package io.arenadata.dtm.query.execution.plugin.api.dto;
 
 
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.util.UUID;
 

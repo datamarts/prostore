@@ -15,8 +15,6 @@
  */
 package io.arenadata.dtm.query.execution.core.base.service.metadata;
 
-import io.arenadata.dtm.query.execution.core.base.service.metadata.impl.DataTypeMapper;
-import io.arenadata.dtm.query.execution.core.base.service.metadata.impl.InformationSchemaQueryFactory;
 import org.junit.Before;
 import org.junit.Test;
 

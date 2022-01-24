@@ -21,10 +21,6 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.arenadata.dtm.common.schema.codec.AvroEncoder;
-import io.arenadata.dtm.query.execution.core.base.service.delta.DeltaInformationExtractor;
-import io.arenadata.dtm.query.execution.core.base.service.delta.DeltaInformationService;
-import io.arenadata.dtm.query.execution.core.base.service.delta.DeltaQueryPreprocessor;
-import io.arenadata.dtm.query.execution.core.base.service.delta.impl.DeltaQueryPreprocessorImpl;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.jackson.DatabindCodec;
 import io.vertx.ext.web.client.WebClient;
@@ -70,12 +66,5 @@ public class AppConfiguration {
     @Bean("coreWebClient")
     public WebClient webClient(@Qualifier("coreVertx") Vertx vertx) {
         return WebClient.create(vertx);
-    }
-
-    @Bean
-    public DeltaQueryPreprocessor deltaQueryPreprocessor(
-            DeltaInformationService deltaService,
-            DeltaInformationExtractor deltaInformationExtractor) {
-        return new DeltaQueryPreprocessorImpl(deltaService, deltaInformationExtractor);
     }
 }

@@ -15,9 +15,21 @@
  */
 package io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.factory;
 
+import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.dto.AdbKafkaMppwTransferRequest;
 import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.dto.TransferDataRequest;
 
-public interface MppwRequestFactory<T> {
+import java.util.List;
+import java.util.stream.Collectors;
 
-    T create(TransferDataRequest request);
+import static io.arenadata.dtm.query.execution.plugin.adb.base.factory.Constants.SYS_FROM_ATTR;
+
+public abstract class MppwRequestFactory {
+
+    public abstract AdbKafkaMppwTransferRequest create(TransferDataRequest request);
+
+    protected List<String> getStagingColumnList(TransferDataRequest request) {
+        return request.getColumnList().stream()
+                .map(fieldName -> SYS_FROM_ATTR.equals(fieldName) ? String.valueOf(request.getHotDelta()) : fieldName)
+                .collect(Collectors.toList());
+    }
 }

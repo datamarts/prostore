@@ -41,8 +41,9 @@ import static org.mockito.Mockito.*;
 class CheckServiceTest {
     private final List<CheckExecutor> executors = Arrays.asList(mock(CheckDatabaseExecutor.class),
             mock(CheckTableExecutor.class), mock(CheckDataExecutor.class), mock(CheckMaterializedViewExecutor.class),
-            mock(CheckVersionsExecutor.class), mock(CheckSumExecutor.class), mock(GetChangesExecutor.class));
-    private final CheckService checkService = new CheckServiceImpl();
+            mock(CheckVersionsExecutor.class), mock(CheckSumExecutor.class), mock(GetChangesExecutor.class),
+            mock(GetEntityDdlExecutor.class));
+    private final CheckService checkService = new CheckService();
     private final SqlCheckCall sqlCheckCall = mock(SqlCheckCall.class);
 
     @BeforeEach
@@ -74,7 +75,10 @@ class CheckServiceTest {
     @Test
     void testEmptyDatamartErrorPresenceOrAbser() {
         // arrange 1
-        val expectedToWorkWithoutDatamart = EnumSet.of(CheckType.MATERIALIZED_VIEW, CheckType.VERSIONS, CheckType.CHANGES);
+        val expectedToWorkWithoutDatamart = EnumSet.of(CheckType.MATERIALIZED_VIEW,
+                CheckType.VERSIONS,
+                CheckType.CHANGES,
+                CheckType.ENTITY_DDL);
         val datamartRequest = new DatamartRequest(new QueryRequest());
 
         for (val checkType : CheckType.values()) {

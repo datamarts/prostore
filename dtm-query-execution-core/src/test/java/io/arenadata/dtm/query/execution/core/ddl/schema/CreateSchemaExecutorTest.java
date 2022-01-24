@@ -27,7 +27,6 @@ import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.Changelog
 import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.DatamartDao;
 import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.ServiceDbDao;
 import io.arenadata.dtm.query.execution.core.base.service.metadata.MetadataExecutor;
-import io.arenadata.dtm.query.execution.core.base.service.metadata.impl.MetadataExecutorImpl;
 import io.arenadata.dtm.query.execution.core.calcite.configuration.CalciteConfiguration;
 import io.arenadata.dtm.query.execution.core.ddl.dto.DdlRequestContext;
 import io.arenadata.dtm.query.execution.core.ddl.service.QueryResultDdlExecutor;
@@ -53,7 +52,7 @@ import static org.mockito.Mockito.*;
 
 class CreateSchemaExecutorTest {
 
-    private final MetadataExecutor<DdlRequestContext> metadataExecutor = mock(MetadataExecutorImpl.class);
+    private final MetadataExecutor metadataExecutor = mock(MetadataExecutor.class);
     private final ServiceDbFacade serviceDbFacade = mock(ServiceDbFacadeImpl.class);
     private final ServiceDbDao serviceDbDao = mock(ServiceDbDao.class);
     private final ChangelogDao changelogDao = mock(ChangelogDao.class);

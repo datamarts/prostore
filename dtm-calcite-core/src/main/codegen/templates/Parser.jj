@@ -123,6 +123,8 @@ import org.apache.calcite.util.Util;
 import org.apache.calcite.util.trace.CalciteTrace;
 import io.arenadata.dtm.query.calcite.core.extension.ddl.*;
 import io.arenadata.dtm.query.calcite.core.extension.delta.*;
+import io.arenadata.dtm.query.calcite.core.extension.dml.SqlDataSourceTypeGetter;
+import io.arenadata.dtm.query.calcite.core.extension.dml.SqlEstimateOnlyQuery;
 import io.arenadata.dtm.query.calcite.core.extension.eddl.*;
 import io.arenadata.dtm.query.calcite.core.framework.SqlExtOperatorTable;
 
@@ -402,6 +404,22 @@ JAVACODE Span span()
     return Span.of(getPos());
 }
 
+JAVACODE void checkDataSourceTypeExist(SqlNode selectNode)
+{
+    if (selectNode instanceof SqlDataSourceTypeGetter
+            && ((SqlDataSourceTypeGetter) selectNode).getDatasourceType().getValue() != null) {
+        throw SqlUtil.newContextException(selectNode.getParserPosition(), RESOURCE.illegalQueryExpression());
+    }
+}
+
+JAVACODE void checkEstimateOnlyExist(SqlNode selectNode)
+{
+    if (selectNode instanceof SqlEstimateOnlyQuery
+            && ((SqlEstimateOnlyQuery) this).isEstimate()) {
+        throw SqlUtil.newContextException(selectNode.getParserPosition(), RESOURCE.illegalQueryExpression());
+    }
+}
+
 JAVACODE void checkQueryExpression(ExprContext exprContext)
 {
     switch (exprContext) {
@@ -649,8 +667,11 @@ SqlNode OrderedQueryOrExpr(ExprContext exprContext) :
             if (orderBy == null) {
                 orderBy = SqlNodeList.EMPTY;
             }
+            checkDataSourceTypeExist(e);
             e = new io.arenadata.dtm.query.calcite.core.extension.dml.LimitableSqlOrderBy(getPos(), e, orderBy, count, start, datasourceType, estimate);
 
+        } else if (datasourceType != null) {
+            checkEstimateOnlyExist(e);
         }
         return e;
     }

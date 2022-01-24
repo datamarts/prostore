@@ -29,7 +29,6 @@ import io.arenadata.dtm.query.calcite.core.extension.check.CheckType;
 import io.arenadata.dtm.query.calcite.core.extension.check.SqlCheckVersions;
 import io.arenadata.dtm.query.execution.core.check.dto.CheckContext;
 import io.arenadata.dtm.query.execution.core.check.factory.CheckVersionQueryResultFactory;
-import io.arenadata.dtm.query.execution.core.check.factory.impl.CheckVersionQueryResultFactoryImpl;
 import io.arenadata.dtm.query.execution.core.check.service.impl.CheckVersionsExecutor;
 import io.arenadata.dtm.query.execution.core.plugin.configuration.properties.ActivePluginsProperties;
 import io.arenadata.dtm.query.execution.core.plugin.service.DataSourcePluginService;
@@ -64,8 +63,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static io.arenadata.dtm.query.execution.core.check.factory.impl.CheckVersionQueryResultFactoryImpl.COMPONENT_NAME_COLUMN;
-import static io.arenadata.dtm.query.execution.core.check.factory.impl.CheckVersionQueryResultFactoryImpl.VERSION_COLUMN;
+import static io.arenadata.dtm.query.execution.core.check.factory.CheckVersionQueryResultFactory.COMPONENT_NAME_COLUMN;
+import static io.arenadata.dtm.query.execution.core.check.factory.CheckVersionQueryResultFactory.VERSION_COLUMN;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -76,7 +75,7 @@ public class CheckVersionsExecutorTest {
     private final DataSourcePluginService dataSourcePluginService = mock(DataSourcePluginServiceImpl.class);
     private final static Set<SourceType> SOURCE_TYPES = Stream.of(SourceType.ADB, SourceType.ADG, SourceType.ADQM)
             .collect(Collectors.toSet());
-    private final CheckVersionQueryResultFactory queryResultFactory = mock(CheckVersionQueryResultFactoryImpl.class);
+    private final CheckVersionQueryResultFactory queryResultFactory = mock(CheckVersionQueryResultFactory.class);
     private final WebClient webClient = mock(WebClient.class);
     private final ActivePluginsProperties activePluginsProperties = new ActivePluginsProperties();
     private final KafkaProperties kafkaProperties = new KafkaProperties();

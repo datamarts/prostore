@@ -17,9 +17,11 @@ package io.arenadata.dtm.query.execution.plugin.adqm.base.factory;
 
 import io.arenadata.dtm.query.execution.plugin.adqm.base.dto.metadata.AdqmTableColumn;
 import io.arenadata.dtm.query.execution.plugin.adqm.base.dto.metadata.AdqmTableEntity;
+import io.arenadata.dtm.query.execution.plugin.adqm.ddl.configuration.properties.DdlProperties;
 import io.arenadata.dtm.query.execution.plugin.adqm.query.service.DatabaseExecutor;
 import io.arenadata.dtm.query.execution.plugin.api.factory.MetaTableEntityFactory;
 import io.vertx.core.Future;
+import lombok.val;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -36,24 +38,32 @@ public class AdqmMetaTableEntityFactory implements MetaTableEntityFactory<AdqmTa
 
     public static final String IS_IN_SORTING_KEY = "is_in_sorting_key";
     public static final String IN_SORTING_KEY = "1";
-    public static final String QUERY_PATTERN = String.format("SELECT \n" +
-                    "  name as %s, \n" +
-                    "  type as %s, \n" +
-                    "  is_in_sorting_key as %s\n" +
-                    "FROM system.columns \n" +
-                    "%s",
-            COLUMN_NAME, DATA_TYPE, IS_IN_SORTING_KEY, "WHERE table = '%s' AND database = '%s__%s'");
+    public static final String QUERY_PATTERN = "SELECT \n" +
+            "  name as " + COLUMN_NAME + ", \n" +
+            "  type as " + DATA_TYPE + ", \n" +
+            "  is_in_sorting_key as " + IS_IN_SORTING_KEY + " \n" +
+            "FROM cluster('%s', system.columns) \n" +
+            "WHERE table = '%s' AND database = '%s__%s' \n" +
+            "GROUP BY name, type, is_in_sorting_key \n" +
+            "HAVING count() = (SELECT count(distinct shard_num) as shards_count \n" +
+            "FROM system.clusters \n" +
+            "WHERE cluster = '%s')";
     private static final String REGEX_TYPE_PATTERN = "Nullable\\((.*?)\\)";
     private final DatabaseExecutor adqmQueryExecutor;
+    private final DdlProperties ddlProperties;
+
 
     @Autowired
-    public AdqmMetaTableEntityFactory(DatabaseExecutor adqmQueryExecutor) {
+    public AdqmMetaTableEntityFactory(DatabaseExecutor adqmQueryExecutor,
+                                      DdlProperties ddlProperties) {
         this.adqmQueryExecutor = adqmQueryExecutor;
+        this.ddlProperties = ddlProperties;
     }
 
     @Override
     public Future<Optional<AdqmTableEntity>> create(String envName, String schema, String table) {
-        String query = String.format(QUERY_PATTERN, table, envName, schema);
+        val cluster  = ddlProperties.getCluster();
+        String query = String.format(QUERY_PATTERN, cluster, table, envName, schema, cluster);
         return adqmQueryExecutor.execute(query)
                 .compose(result -> Future.succeededFuture(result.isEmpty()
                         ? Optional.empty()

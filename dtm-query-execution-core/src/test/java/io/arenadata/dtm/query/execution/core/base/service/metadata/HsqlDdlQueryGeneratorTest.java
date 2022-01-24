@@ -19,7 +19,8 @@ import io.arenadata.dtm.common.model.ddl.ColumnType;
 import io.arenadata.dtm.common.model.ddl.Entity;
 import io.arenadata.dtm.common.model.ddl.EntityField;
 import io.arenadata.dtm.common.model.ddl.EntityType;
-import io.arenadata.dtm.query.execution.core.base.service.metadata.impl.HsqlDdlQueryGenerator;
+import io.arenadata.dtm.query.execution.core.base.service.metadata.query.HsqlDdlQueryGenerator;
+import io.arenadata.dtm.query.execution.core.base.service.metadata.query.DdlQueryGenerator;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;

@@ -84,7 +84,7 @@ class DropMaterializedViewExecutorTest {
             .deltaNum(1)
             .build();
     @Mock
-    private MetadataExecutor<DdlRequestContext> metadataExecutor;
+    private MetadataExecutor metadataExecutor;
     @Mock
     private DataSourcePluginService pluginService;
     @Mock

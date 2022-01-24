@@ -20,7 +20,6 @@ import io.arenadata.dtm.common.delta.DeltaInformationResult;
 import io.arenadata.dtm.query.calcite.core.configuration.CalciteCoreConfiguration;
 import io.arenadata.dtm.query.calcite.core.service.DefinitionService;
 import io.arenadata.dtm.query.execution.core.base.service.delta.DeltaInformationExtractor;
-import io.arenadata.dtm.query.execution.core.base.service.delta.impl.DeltaInformationExtractorImpl;
 import io.arenadata.dtm.query.execution.core.calcite.configuration.CalciteConfiguration;
 import io.arenadata.dtm.query.execution.core.calcite.service.CoreCalciteDefinitionService;
 import io.arenadata.dtm.query.execution.core.query.utils.DefaultDatamartSetter;
@@ -45,7 +44,7 @@ class DefaultDatamartSetterTest {
             new CoreCalciteDefinitionService(config.configEddlParser(calciteCoreConfiguration.eddlParserImplFactory()));
     private final DefaultDatamartSetter datamartSetter = new DefaultDatamartSetter();
     private final DeltaInformationExtractor deltaInformationExtractor =
-            new DeltaInformationExtractorImpl();
+            new DeltaInformationExtractor();
 
     @Test
     void setToSelect() {

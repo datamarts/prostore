@@ -17,7 +17,7 @@ package io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.verticle.worker;
 
 import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.dto.MppwKafkaRequestContext;
 import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.dto.MppwTopic;
-import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.service.handler.AdbMppwHandler;
+import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.service.handler.AdbMppwTransferDataHandler;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -34,10 +34,10 @@ public class AdbMppwWorker extends AbstractVerticle {
     public static final int ERROR_CODE = 400;
     private final Map<String, MppwKafkaRequestContext> requestMap;
     private final Map<String, Future> resultMap;
-    private final AdbMppwHandler mppwTransferDataHandler;
+    private final AdbMppwTransferDataHandler mppwTransferDataHandler;
 
     public AdbMppwWorker(Map<String, MppwKafkaRequestContext> requestMap, Map<String, Future> resultMap,
-                         AdbMppwHandler mppwTransferDataHandler) {
+                         AdbMppwTransferDataHandler mppwTransferDataHandler) {
         this.requestMap = requestMap;
         this.resultMap = resultMap;
         this.mppwTransferDataHandler = mppwTransferDataHandler;

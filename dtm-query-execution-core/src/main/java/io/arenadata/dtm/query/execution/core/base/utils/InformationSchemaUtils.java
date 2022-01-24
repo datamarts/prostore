@@ -112,6 +112,8 @@ public class InformationSchemaUtils {
                 "WHERE   si.TABLE_SCHEMA NOT IN ('DTM', 'INFORMATION_SCHEMA', 'SYSTEM_LOBS');";
 
     public static final String CREATE_SCHEMA = "CREATE SCHEMA IF NOT EXISTS %s";
+    public static final String SELECT_VIEWS_BY_SCHEMA = "SELECT table_name FROM information_schema.tables\n " +
+            "WHERE table_schema = '%s' AND table_type = 'VIEW'";
     public static final String DROP_SCHEMA = "DROP SCHEMA %s CASCADE";
 
     public static final String CREATE_SHARDING_KEY_INDEX = "CREATE INDEX IF NOT EXISTS sk_%s on %s (%s)";
@@ -121,8 +123,12 @@ public class InformationSchemaUtils {
 
     public static final String DROP_VIEW = "DROP VIEW IF EXISTS %s.%s";
     public static final String DROP_TABLE = "DROP TABLE IF EXISTS %s.%s";
-    public static final String CHECK_VIEW =
+    public static final String CHECK_VIEW_BY_TABLE_NAME =
             "SELECT VIEW_NAME\n" +
             "FROM   INFORMATION_SCHEMA.VIEW_TABLE_USAGE\n" +
             "WHERE  TABLE_SCHEMA = '%s' AND TABLE_NAME = '%s';";
+    public static final String CHECK_VIEW_BY_TABLE_SCHEMA =
+            "SELECT VIEW_SCHEMA, VIEW_NAME\n" +
+                    "FROM   INFORMATION_SCHEMA.VIEW_TABLE_USAGE\n" +
+                    "WHERE  TABLE_SCHEMA = '%s' AND VIEW_SCHEMA != '%s';";
 }

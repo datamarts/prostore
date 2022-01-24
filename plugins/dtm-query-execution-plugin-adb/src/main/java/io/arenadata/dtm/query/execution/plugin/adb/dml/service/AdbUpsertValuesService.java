@@ -82,6 +82,6 @@ public class AdbUpsertValuesService implements UpsertValuesService {
     }
 
     private SqlNode getStagingIdentifier(UpsertValuesRequest request) {
-        return identifier(request.getDatamartMnemonic(), String.format("%s_%s", request.getEntity().getName(), Constants.STAGING_TABLE));
+        return identifier(request.getDatamartMnemonic(), request.getEntity().getName() + Constants.STAGING_TABLE_SUFFIX);
     }
 }

@@ -25,8 +25,7 @@ import io.arenadata.dtm.query.execution.core.base.dto.cache.MaterializedViewCach
 import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.DatamartDao;
 import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.EntityDao;
 import io.arenadata.dtm.query.execution.core.base.service.hsql.HSQLClient;
-import io.arenadata.dtm.query.execution.core.base.service.metadata.impl.InformationSchemaQueryFactory;
-import io.arenadata.dtm.query.execution.core.base.service.metadata.impl.InformationSchemaService;
+import io.arenadata.dtm.query.execution.core.base.service.metadata.query.DdlQueryGenerator;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.json.JsonArray;

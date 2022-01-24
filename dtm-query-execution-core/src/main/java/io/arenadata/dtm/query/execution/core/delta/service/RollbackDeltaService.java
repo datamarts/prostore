@@ -31,7 +31,7 @@ import io.arenadata.dtm.query.execution.core.delta.dto.query.RollbackDeltaQuery;
 import io.arenadata.dtm.query.execution.core.delta.exception.DeltaAlreadyIsRollingBackException;
 import io.arenadata.dtm.query.execution.core.delta.factory.DeltaQueryResultFactory;
 import io.arenadata.dtm.query.execution.core.delta.repository.zookeeper.DeltaServiceDao;
-import io.arenadata.dtm.query.execution.core.edml.mppw.service.EdmlUploadFailedExecutor;
+import io.arenadata.dtm.query.execution.core.edml.mppw.service.UploadFailedExecutor;
 import io.arenadata.dtm.query.execution.core.rollback.dto.RollbackRequest;
 import io.arenadata.dtm.query.execution.core.rollback.dto.RollbackRequestContext;
 import io.arenadata.dtm.query.execution.core.rollback.service.RestoreStateService;
@@ -54,7 +54,7 @@ import static io.arenadata.dtm.query.execution.core.delta.dto.query.DeltaAction.
 @Slf4j
 public class RollbackDeltaService implements DeltaService, StatusEventPublisher {
 
-    private final EdmlUploadFailedExecutor edmlUploadFailedExecutor;
+    private final UploadFailedExecutor uploadFailedExecutor;
     private final DeltaQueryResultFactory deltaQueryResultFactory;
     private final DeltaServiceDao deltaServiceDao;
     private final Vertx vertx;
@@ -65,7 +65,7 @@ public class RollbackDeltaService implements DeltaService, StatusEventPublisher 
     private final BreakLlwService breakLlwService;
 
     @Autowired
-    public RollbackDeltaService(EdmlUploadFailedExecutor edmlUploadFailedExecutor,
+    public RollbackDeltaService(UploadFailedExecutor uploadFailedExecutor,
                                 ServiceDbFacade serviceDbFacade,
                                 @Qualifier("beginDeltaQueryResultFactory") DeltaQueryResultFactory deltaQueryResultFactory,
                                 @Qualifier("coreVertx") Vertx vertx,
@@ -75,7 +75,7 @@ public class RollbackDeltaService implements DeltaService, StatusEventPublisher 
                                 BreakLlwService breakLlwService) {
         this.entityDao = serviceDbFacade.getServiceDbDao().getEntityDao();
         this.deltaServiceDao = serviceDbFacade.getDeltaServiceDao();
-        this.edmlUploadFailedExecutor = edmlUploadFailedExecutor;
+        this.uploadFailedExecutor = uploadFailedExecutor;
         this.deltaQueryResultFactory = deltaQueryResultFactory;
         this.vertx = vertx;
         this.evictQueryTemplateCacheService = evictQueryTemplateCacheService;
@@ -171,7 +171,7 @@ public class RollbackDeltaService implements DeltaService, StatusEventPublisher 
                         rollbackRequest,
                         deltaQuery.getSqlNode()
                 ))
-                .forEach(rollbackRequestContext -> futures.add(edmlUploadFailedExecutor.eraseWriteOp(rollbackRequestContext)));
+                .forEach(rollbackRequestContext -> futures.add(uploadFailedExecutor.eraseWriteOp(rollbackRequestContext)));
 
         return CompositeFuture.join(futures).mapEmpty();
     }

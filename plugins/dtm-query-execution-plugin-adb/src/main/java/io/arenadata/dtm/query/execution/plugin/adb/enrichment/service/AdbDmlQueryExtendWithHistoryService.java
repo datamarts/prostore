@@ -41,8 +41,6 @@ import static io.arenadata.dtm.query.execution.plugin.adb.base.factory.Constants
 @Slf4j
 public class AdbDmlQueryExtendWithHistoryService implements QueryExtendService {
 
-    public static final String TABLE_PREFIX = "_";
-
     @Override
     public RelNode extendQuery(QueryGeneratorContext context) {
         context.getRelBuilder().clear();
@@ -105,7 +103,7 @@ public class AdbDmlQueryExtendWithHistoryService implements QueryExtendService {
                 .proto(tableScan.getCluster().getPlanner().getContext())
                 .create(tableScan.getCluster(), parentBuilder.getRelOptSchema());
         val qualifiedName = tableScan.getTable().getQualifiedName();
-        val mutableQualifiedName = new ArrayList<String>(qualifiedName);
+        val mutableQualifiedName = new ArrayList<>(qualifiedName);
 
         val rexBuilder = relBuilder.getCluster().getRexBuilder();
         val rexNodes = new ArrayList<RexNode>();
@@ -142,11 +140,11 @@ public class AdbDmlQueryExtendWithHistoryService implements QueryExtendService {
     }
 
     private void initHistoryTableName(ArrayList<String> mutableQualifiedName, StringBuilder name) {
-        mutableQualifiedName.set(mutableQualifiedName.size() - 1, name + TABLE_PREFIX + HISTORY_TABLE);
+        mutableQualifiedName.set(mutableQualifiedName.size() - 1, name + HISTORY_TABLE_SUFFIX);
     }
 
     private void initActualTableName(ArrayList<String> mutableQualifiedName, StringBuilder name) {
-        mutableQualifiedName.set(mutableQualifiedName.size() - 1, name + TABLE_PREFIX + ACTUAL_TABLE);
+        mutableQualifiedName.set(mutableQualifiedName.size() - 1, name + ACTUAL_TABLE_SUFFIX);
     }
 
     private RelNode createRelNodeDeltaStartedIn(DeltaInformation deltaInfo,

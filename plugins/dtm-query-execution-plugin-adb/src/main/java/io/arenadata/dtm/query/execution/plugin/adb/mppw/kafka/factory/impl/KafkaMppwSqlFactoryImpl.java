@@ -15,10 +15,11 @@
  */
 package io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.factory.impl;
 
+import io.arenadata.dtm.common.model.ddl.ColumnType;
 import io.arenadata.dtm.common.model.ddl.Entity;
 import io.arenadata.dtm.common.model.ddl.EntityField;
 import io.arenadata.dtm.query.execution.plugin.adb.base.utils.AdbTypeUtil;
-import io.arenadata.dtm.query.execution.plugin.adb.mppw.configuration.properties.MppwProperties;
+import io.arenadata.dtm.query.execution.plugin.adb.mppw.configuration.properties.AdbMppwProperties;
 import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.factory.KafkaMppwSqlFactory;
 import io.arenadata.dtm.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
 import io.arenadata.dtm.query.execution.plugin.api.mppw.kafka.UploadExternalEntityMetadata;
@@ -29,13 +30,12 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static io.arenadata.dtm.query.execution.plugin.adb.base.factory.Constants.STAGING_TABLE;
+import static io.arenadata.dtm.query.execution.plugin.adb.base.factory.Constants.STAGING_TABLE_SUFFIX;
 
 @Service("kafkaMppwSqlFactoryImpl")
 public class KafkaMppwSqlFactoryImpl implements KafkaMppwSqlFactory {
     private static final String COMMIT_OFFSETS = "SELECT kadb.commit_offsets('%s.%s'::regclass::oid)";
     private static final String SERVER_NAME_TEMPLATE = "FDW_KAFKA_%s";
-    private static final String TABLE_POSTFIX_DELIMITER = "_";
     private static final String WRITABLE_EXT_TABLE_PREF = "FDW_EXT_";
     private static final String DELIMITER = ", ";
     private static final String DROP_FOREIGN_TABLE_SQL = "DROP FOREIGN TABLE IF EXISTS %s.%s";
@@ -69,6 +69,37 @@ public class KafkaMppwSqlFactoryImpl implements KafkaMppwSqlFactory {
                     "  k_brokers '%s'\n" +
                     ")";
     private static final String INSERT_INTO_STAGING_TABLE_SQL = "INSERT INTO %s.%s (%s) SELECT %s FROM %s.%s";
+    private static final String CREATE_READABLE_EXT_TABLE_SQL = "CREATE READABLE EXTERNAL TABLE %s_%s_ext (%s)" +
+            " LOCATION ('pxf://%s?" +
+            "PROFILE=kafka-greenplum-writer&" +
+            "KAFKA_BROKERS=%s&" +
+            "CONSUMER_GROUP_NAME=%s&" +
+            "POLL_TIMEOUT=%d')\n" +
+            "FORMAT 'CUSTOM' (FORMATTER='pxfwritable_import')";
+    private static final String DROP_EXT_TABLE_SQL = "DROP EXTERNAL TABLE IF EXISTS %s.%s_%s_ext";
+    private static final String CHECK_STAGING_TABLE = "SELECT 1 FROM %s_staging LIMIT 1";
+
+    @Override
+    public String checkStagingTableSqlQuery(String tableWithSchema) {
+        return String.format(CHECK_STAGING_TABLE, tableWithSchema);
+    }
+
+    @Override
+    public String createReadableExtTableSqlQuery(String tableWithSchema,
+                                                 String requestId,
+                                                 List<String> columnNameTypeList,
+                                                 String topic,
+                                                 String brokerList,
+                                                 String consumerGroup,
+                                                 long pollTimeout) {
+        val columns = String.join(DELIMITER, columnNameTypeList);
+        return String.format(CREATE_READABLE_EXT_TABLE_SQL, tableWithSchema, requestId, columns, topic, brokerList, consumerGroup, pollTimeout);
+    }
+
+    @Override
+    public String dropExtTableSqlQuery(String schema, String talbe, String requestId) {
+        return String.format(DROP_EXT_TABLE_SQL, schema, talbe, requestId);
+    }
 
     @Override
     public String moveOffsetsExtTableSqlQuery(String schema, String table) {
@@ -86,19 +117,19 @@ public class KafkaMppwSqlFactoryImpl implements KafkaMppwSqlFactory {
     }
 
     @Override
-    public String createExtTableSqlQuery(String server,
-                                         List<String> columnNameTypeList,
-                                         MppwKafkaRequest request,
-                                         MppwProperties mppwProperties) {
+    public String createWritableExtTableSqlQuery(String server,
+                                                 List<String> columnNameTypeList,
+                                                 MppwKafkaRequest request,
+                                                 AdbMppwProperties adbMppwProperties) {
         val schema = request.getDatamartMnemonic();
         val table = WRITABLE_EXT_TABLE_PREF + getUuidString(request.getRequestId());
         val columns = String.join(DELIMITER, columnNameTypeList);
         val format = request.getUploadMetadata().getFormat().getName();
         val topic = request.getTopic();
-        val consumerGroup = mppwProperties.getConsumerGroup();
+        val consumerGroup = adbMppwProperties.getConsumerGroup();
         val uploadMessageLimit = ((UploadExternalEntityMetadata) request.getUploadMetadata()).getUploadMessageLimit();
-        val chunkSize = uploadMessageLimit != null ? uploadMessageLimit : mppwProperties.getDefaultMessageLimit();
-        val timeout = mppwProperties.getFdwTimeoutMs();
+        val chunkSize = uploadMessageLimit != null ? uploadMessageLimit : adbMppwProperties.getDefaultMessageLimit();
+        val timeout = adbMppwProperties.getFdwTimeoutMs();
         return String.format(CREATE_FOREIGN_TABLE_SQL, schema, table, columns, server, format, topic, consumerGroup, chunkSize, timeout);
     }
 
@@ -110,6 +141,25 @@ public class KafkaMppwSqlFactoryImpl implements KafkaMppwSqlFactory {
     @Override
     public String createServerSqlQuery(String database, UUID requestId, String brokerList) {
         return String.format(CREATE_SERVER_SQL, database, getUuidString(requestId), brokerList);
+    }
+
+    @Override
+    public List<String> getPxfColumnsFromEntity(Entity entity) {
+        return entity.getFields().stream()
+                .map(this::getPxfColumnDDLByField)
+                .collect(Collectors.toList());
+    }
+
+    private String getPxfColumnDDLByField(EntityField field) {
+        val sb = new StringBuilder();
+        sb.append(field.getName())
+                .append(" ");
+        if (field.getType().equals(ColumnType.TIME)) {
+            sb.append(AdbTypeUtil.adbTypeFromDtmType(ColumnType.TIMESTAMP, field.getSize()));
+        } else {
+            sb.append(AdbTypeUtil.adbTypeFromDtmType(field));
+        }
+        return sb.toString();
     }
 
     @Override
@@ -132,14 +182,20 @@ public class KafkaMppwSqlFactoryImpl implements KafkaMppwSqlFactory {
     }
 
     @Override
-    public String dropExtTableSqlQuery(String schema, String table) {
+    public String dropForeignTableSqlQuery(String schema, String table) {
         return String.format(DROP_FOREIGN_TABLE_SQL, schema, table);
     }
 
     @Override
     public String insertIntoStagingTableSqlQuery(String schema, String columns, String table, String extTable) {
-        val stagingTable = table + TABLE_POSTFIX_DELIMITER + STAGING_TABLE;
+        val stagingTable = table + STAGING_TABLE_SUFFIX;
         return String.format(INSERT_INTO_STAGING_TABLE_SQL, schema, stagingTable, columns, columns, schema, extTable);
+    }
+
+    @Override
+    public String insertIntoStagingTablePxfSqlQuery(String schema, String insertColumns, String selectColumns, String table, String extTable) {
+        val stagingTable = table + STAGING_TABLE_SUFFIX;
+        return String.format(INSERT_INTO_STAGING_TABLE_SQL, schema, stagingTable, insertColumns, selectColumns, schema, extTable);
     }
 
     @Override

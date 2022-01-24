@@ -15,15 +15,51 @@
  */
 package io.arenadata.dtm.query.execution.core.dml.service;
 
+import io.arenadata.dtm.common.exception.DtmException;
 import io.arenadata.dtm.common.model.SqlProcessingType;
-import io.arenadata.dtm.query.execution.core.dml.dto.DmlRequestContext;
+import io.arenadata.dtm.common.reader.QueryResult;
+import io.arenadata.dtm.query.calcite.core.extension.dml.DmlType;
 import io.arenadata.dtm.query.execution.core.base.service.DatamartExecutionService;
+import io.arenadata.dtm.query.execution.core.dml.dto.DmlRequestContext;
+import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 
-public interface DmlService extends DatamartExecutionService<DmlRequestContext> {
+import java.util.EnumMap;
+import java.util.Map;
 
-  default SqlProcessingType getSqlProcessingType() {
-    return SqlProcessingType.DML;
-  }
+@Slf4j
+@Service("coreDmlService")
+public class DmlService implements DatamartExecutionService<DmlRequestContext> {
+    private final Map<DmlType, DmlExecutor> executorMap;
 
-  void addExecutor(DmlExecutor executor);
+    public DmlService() {
+        this.executorMap = new EnumMap<>(DmlType.class);
+    }
+
+    @Override
+    public Future<QueryResult> execute(DmlRequestContext context) {
+        return getExecutor(context).execute(context);
+    }
+
+    private DmlExecutor getExecutor(DmlRequestContext context) {
+        final DmlExecutor dmlExecutor = executorMap.get(context.getType());
+
+        if (dmlExecutor != null) {
+            return dmlExecutor;
+        }
+
+        throw new DtmException(
+                String.format("Couldn't find dml executor for query kind %s",
+                        context.getSqlNode().getKind()));
+    }
+
+    @Override
+    public SqlProcessingType getSqlProcessingType() {
+        return SqlProcessingType.DML;
+    }
+
+    public void addExecutor(DmlExecutor executor) {
+        executorMap.put(executor.getType(), executor);
+    }
 }

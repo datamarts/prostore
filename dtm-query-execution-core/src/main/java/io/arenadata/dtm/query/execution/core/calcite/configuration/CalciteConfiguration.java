@@ -16,11 +16,10 @@
 package io.arenadata.dtm.query.execution.core.calcite.configuration;
 
 import io.arenadata.dtm.query.calcite.core.configuration.CalciteCoreConfiguration;
+import io.arenadata.dtm.query.calcite.core.dialect.LimitSqlDialect;
 import io.arenadata.dtm.query.calcite.core.rel2sql.DtmRelToSqlConverter;
 import io.arenadata.dtm.query.calcite.core.service.DefinitionService;
 import io.arenadata.dtm.query.calcite.core.service.QueryTemplateExtractor;
-import io.arenadata.dtm.query.execution.core.base.service.delta.DeltaInformationExtractor;
-import io.arenadata.dtm.query.execution.core.base.service.delta.impl.DeltaInformationExtractorImpl;
 import io.arenadata.dtm.query.execution.core.calcite.service.CoreQueryTemplateExtractor;
 import org.apache.calcite.avatica.util.Casing;
 import org.apache.calcite.avatica.util.Quoting;
@@ -65,14 +64,14 @@ public class CalciteConfiguration {
                 .build();
     }
 
-    @Bean
-    public DeltaInformationExtractor deltaInformationExtractor() {
-        return new DeltaInformationExtractorImpl();
-    }
-
     @Bean("coreSqlDialect")
     public SqlDialect coreSqlDialect() {
         return new SqlDialect(SqlDialect.EMPTY_CONTEXT);
+    }
+
+    @Bean("coreLimitSqlDialect")
+    public SqlDialect coreLimitSqlDialect() {
+        return new LimitSqlDialect(SqlDialect.EMPTY_CONTEXT);
     }
 
     @Bean("coreQueryTmplateExtractor")

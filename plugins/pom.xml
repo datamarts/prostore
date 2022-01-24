@@ -21,15 +21,19 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>plugins</artifactId>
-    <version>5.3.0-SNAPSHOT</version>
+    <version>5.3.0</version>
     <packaging>pom</packaging>
     <name>DTM DB Plugins</name>
 
     <parent>
         <groupId>io.arenadata.dtm</groupId>
         <artifactId>parent</artifactId>
-        <version>5.3.0-SNAPSHOT</version>
+        <version>5.3.0</version>
     </parent>
+
+    <properties>
+        <sonar.coverage.jacoco.xmlReportPaths>${project.basedir}/../../reports/target/site/jacoco-aggregate/jacoco.xml,${project.basedir}/target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+    </properties>
 
     <modules>
         <module>dtm-query-execution-plugin-adb</module>

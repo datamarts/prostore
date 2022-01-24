@@ -21,7 +21,6 @@ import io.arenadata.dtm.query.calcite.core.extension.config.SqlConfigCall;
 import io.arenadata.dtm.query.calcite.core.extension.config.SqlConfigType;
 import io.arenadata.dtm.query.execution.core.config.service.ConfigService;
 import io.arenadata.dtm.query.execution.core.config.dto.ConfigRequestContext;
-import io.arenadata.dtm.query.execution.core.config.service.impl.ConfigServiceImpl;
 import io.arenadata.dtm.query.execution.core.config.service.impl.ConfigStorageAddDdlExecutor;
 import io.vertx.core.Future;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,7 +34,7 @@ import static org.mockito.Mockito.when;
 
 class ConfigServiceTest {
     private final ConfigStorageAddDdlExecutor configStorageAddDdlExecutor = mock(ConfigStorageAddDdlExecutor.class);
-    private final ConfigService configService = new ConfigServiceImpl();
+    private final ConfigService configService = new ConfigService();
 
     @BeforeEach
     void init() {

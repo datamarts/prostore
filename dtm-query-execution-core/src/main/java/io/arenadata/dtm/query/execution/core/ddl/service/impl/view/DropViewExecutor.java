@@ -46,7 +46,7 @@ public class DropViewExecutor extends QueryResultDdlExecutor {
     protected final EntityDao entityDao;
 
     @Autowired
-    public DropViewExecutor(MetadataExecutor<DdlRequestContext> metadataExecutor,
+    public DropViewExecutor(MetadataExecutor metadataExecutor,
                             ServiceDbFacade serviceDbFacade,
                             @Qualifier("coreSqlDialect") SqlDialect sqlDialect,
                             @Qualifier("entityCacheService") CacheService<EntityKey, Entity> entityCacheService) {

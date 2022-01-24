@@ -15,15 +15,58 @@
  */
 package io.arenadata.dtm.query.execution.core.check.service;
 
+import io.arenadata.dtm.common.exception.DtmException;
 import io.arenadata.dtm.common.model.SqlProcessingType;
+import io.arenadata.dtm.common.reader.QueryResult;
+import io.arenadata.dtm.query.calcite.core.extension.check.CheckType;
 import io.arenadata.dtm.query.execution.core.base.service.DatamartExecutionService;
 import io.arenadata.dtm.query.execution.core.check.dto.CheckContext;
+import io.vertx.core.Future;
+import org.springframework.stereotype.Service;
+import org.tarantool.util.StringUtils;
 
-public interface CheckService extends DatamartExecutionService<CheckContext> {
+import java.util.EnumMap;
+import java.util.Map;
 
-    default SqlProcessingType getSqlProcessingType() {
+@Service("coreCheckService")
+public class CheckService implements DatamartExecutionService<CheckContext> {
+    private final Map<CheckType, CheckExecutor> executorMap;
+
+    public CheckService() {
+        this.executorMap = new EnumMap<>(CheckType.class);
+    }
+
+    @Override
+    public Future<QueryResult> execute(CheckContext context) {
+        String datamart = context.getRequest().getQueryRequest().getDatamartMnemonic();
+        if (isDatamartRequired(context) && StringUtils.isEmpty(datamart)) {
+            return Future.failedFuture(
+                    new DtmException("Datamart must be specified for all tables and views"));
+        } else {
+            return executorMap.get(context.getCheckType())
+                    .execute(context);
+        }
+    }
+
+    private boolean isDatamartRequired(CheckContext context) {
+        switch (context.getCheckType()) {
+            case VERSIONS:
+            case MATERIALIZED_VIEW:
+            case CHANGES:
+            case ENTITY_DDL:
+                return false;
+            default:
+                return true;
+        }
+    }
+
+    public void addExecutor(CheckExecutor executor) {
+        executorMap.put(executor.getType(), executor);
+    }
+
+    @Override
+    public SqlProcessingType getSqlProcessingType() {
         return SqlProcessingType.CHECK;
     }
 
-    void addExecutor(CheckExecutor executor);
 }

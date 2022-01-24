@@ -20,6 +20,8 @@ import io.arenadata.dtm.common.dto.QueryParserRequest;
 import io.arenadata.dtm.common.exception.DtmException;
 import io.arenadata.dtm.common.model.ddl.ColumnType;
 import io.arenadata.dtm.common.model.ddl.Entity;
+import io.arenadata.dtm.common.model.ddl.EntityField;
+import io.arenadata.dtm.common.model.ddl.EntityType;
 import io.arenadata.dtm.common.reader.QueryRequest;
 import io.arenadata.dtm.common.reader.QueryResult;
 import io.arenadata.dtm.common.request.DatamartRequest;
@@ -31,6 +33,7 @@ import io.arenadata.dtm.query.calcite.core.rel2sql.DtmRelToSqlConverter;
 import io.arenadata.dtm.query.calcite.core.service.QueryParserService;
 import io.arenadata.dtm.query.execution.core.base.dto.cache.EntityKey;
 import io.arenadata.dtm.query.execution.core.base.exception.entity.EntityAlreadyExistsException;
+import io.arenadata.dtm.query.execution.core.base.exception.entity.EntityNotExistsException;
 import io.arenadata.dtm.query.execution.core.base.exception.table.ValidationDtmException;
 import io.arenadata.dtm.query.execution.core.base.repository.ServiceDbFacade;
 import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.*;
@@ -65,13 +68,16 @@ import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.UUID;
 
 import static io.arenadata.dtm.query.execution.core.utils.TestUtils.*;
+import static java.util.Collections.singletonList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
@@ -110,7 +116,7 @@ class CreateViewExecutorTest {
     @Mock
     private ColumnMetadataService columnMetadataService;
     @Mock
-    private MetadataExecutor<DdlRequestContext> metadataExecutor;
+    private MetadataExecutor metadataExecutor;
     @Mock
     private CacheService<EntityKey, Entity> entityCacheService;
     @Mock
@@ -149,10 +155,19 @@ class CreateViewExecutorTest {
         queryRequest.setRequestId(UUID.randomUUID());
         queryRequest.setDatamartMnemonic(schema);
         initEntityList(entityList, schema);
-        logicSchema = Collections.singletonList(new Datamart(
-                schema,
-                true,
-                entityList));
+        List<Entity> informationSchemaEntity = singletonList(Entity.builder()
+                .entityType(EntityType.TABLE)
+                .name("tables")
+                .fields(singletonList(
+                        EntityField.builder()
+                                .ordinalPosition(0)
+                                .name("id")
+                                .type(ColumnType.BIGINT)
+                                .nullable(false)
+                                .build()))
+                .build());
+        logicSchema = Arrays.asList(new Datamart(schema, true, entityList),
+                new Datamart("information_schema", false, informationSchemaEntity));
         sqlNodeName = schema + "." + entityList.get(0).getName();
         lenient().when(metadataExecutor.execute(any())).thenReturn(Future.succeededFuture());
         lenient().when(logicalSchemaProvider.getSchemaFromQuery(any(), any()))
@@ -170,13 +185,16 @@ class CreateViewExecutorTest {
                 .thenReturn(Future.succeededFuture(parse(contextProvider, new QueryParserRequest(((SqlCreateView) sqlNode).getQuery(), logicSchema))));
 
         when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
-                .thenReturn(Future.succeededFuture(Collections.singletonList(ColumnMetadata.builder()
+                .thenReturn(Future.succeededFuture(singletonList(ColumnMetadata.builder()
                         .name("id")
                         .type(ColumnType.BIGINT)
                         .build())));
 
         when(entityDao.getEntity(schema, entityList.get(1).getName()))
                 .thenReturn(Future.succeededFuture(entityList.get(1)));
+
+        when(entityDao.getEntity(schema, entityList.get(0).getName()))
+                .thenReturn(Future.failedFuture(new EntityNotExistsException(entityList.get(0).getName())));
 
         when(deltaServiceDao.getDeltaOk(schema)).thenReturn(Future.succeededFuture(deltaOk));
         when(changelogDao.writeNewRecord(anyString(), anyString(), changeQueryCaptor.capture(), any())).thenReturn(Future.succeededFuture());
@@ -199,6 +217,43 @@ class CreateViewExecutorTest {
     }
 
     @Test
+    void shouldFailWhenInformationSchemaInQuery(VertxTestContext testContext) throws SqlParseException {
+        queryRequest.setSql(String.format("CREATE VIEW %s.%s AS SELECT * FROM information_schema.tables",
+                schema, entityList.get(0).getName()));
+        SqlNode sqlNode = planner.parse(queryRequest.getSql());
+        DdlRequestContext context = new DdlRequestContext(null, new DatamartRequest(queryRequest), sqlNode, null, null);
+
+        lenient().when(parserService.parse(any()))
+                .thenReturn(Future.succeededFuture(parse(contextProvider, new QueryParserRequest(((SqlCreateView) sqlNode).getQuery(), logicSchema))));
+
+        lenient().when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
+                .thenReturn(Future.succeededFuture(singletonList(ColumnMetadata.builder()
+                        .name("id")
+                        .type(ColumnType.BIGINT)
+                        .build())));
+
+        lenient().when(entityDao.getEntity(schema, entityList.get(1).getName()))
+                .thenReturn(Future.succeededFuture(entityList.get(1)));
+
+        lenient().when(entityDao.getEntity(schema, entityList.get(0).getName()))
+                .thenReturn(Future.failedFuture(new EntityNotExistsException(entityList.get(0).getName())));
+
+        lenient().when(deltaServiceDao.getDeltaOk(schema)).thenReturn(Future.succeededFuture(deltaOk));
+        lenient().when(changelogDao.writeNewRecord(anyString(), anyString(), changeQueryCaptor.capture(), any())).thenReturn(Future.succeededFuture());
+        lenient().when(entityDao.setEntityState(entityArgumentCaptor.capture(), any(), anyString(), eq(SetEntityState.CREATE)))
+                .thenReturn(Future.succeededFuture());
+
+        createViewExecutor.execute(context, sqlNodeName)
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.succeeded()) {
+                        fail("Unexpected success");
+                    }
+
+                    assertEquals("Using of INFORMATION_SCHEMA is forbidden [information_schema.tables]", ar.cause().getMessage());
+                }).completeNow());
+    }
+
+    @Test
     void executeReplaceSuccess() throws SqlParseException {
         Promise<QueryResult> promise = Promise.promise();
 
@@ -211,7 +266,7 @@ class CreateViewExecutorTest {
                 .thenReturn(Future.succeededFuture(parse(contextProvider, new QueryParserRequest(((SqlCreateView) sqlNode).getQuery(), logicSchema))));
 
         when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
-                .thenReturn(Future.succeededFuture(Collections.singletonList(ColumnMetadata.builder()
+                .thenReturn(Future.succeededFuture(singletonList(ColumnMetadata.builder()
                         .name("id")
                         .type(ColumnType.BIGINT)
                         .build())));
@@ -251,13 +306,16 @@ class CreateViewExecutorTest {
                 .thenReturn(Future.succeededFuture(parse(contextProvider, new QueryParserRequest(((SqlCreateView) sqlNode).getQuery(), logicSchema))));
 
         when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
-                .thenReturn(Future.succeededFuture(Collections.singletonList(ColumnMetadata.builder()
+                .thenReturn(Future.succeededFuture(singletonList(ColumnMetadata.builder()
                         .name("id")
                         .type(ColumnType.BIGINT)
                         .build())));
 
         when(entityDao.getEntity(schema, entityList.get(1).getName()))
                 .thenReturn(Future.succeededFuture(entityList.get(1)));
+
+        when(entityDao.getEntity(schema, entityList.get(0).getName()))
+                .thenReturn(Future.failedFuture(new EntityNotExistsException(entityList.get(0).getName())));
 
         when(deltaServiceDao.getDeltaOk(schema)).thenReturn(Future.succeededFuture(deltaOk));
         when(changelogDao.writeNewRecord(anyString(), anyString(), changeQueryCaptor.capture(), any())).thenReturn(Future.succeededFuture());
@@ -310,30 +368,21 @@ class CreateViewExecutorTest {
                 .thenReturn(Future.succeededFuture(parse(contextProvider, new QueryParserRequest(((SqlCreateView) sqlNode).getQuery(), logicSchema))));
 
         when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
-                .thenReturn(Future.succeededFuture(Collections.singletonList(ColumnMetadata.builder()
+                .thenReturn(Future.succeededFuture(singletonList(ColumnMetadata.builder()
                         .name("id")
                         .type(ColumnType.BIGINT)
                         .build())));
 
+        when(entityDao.getEntity(schema, entityList.get(0).getName()))
+                .thenReturn(Future.succeededFuture(entityList.get(0)));
+
         when(entityDao.getEntity(schema, entityList.get(1).getName()))
                 .thenReturn(Future.succeededFuture(entityList.get(1)));
-
-        when(deltaServiceDao.getDeltaOk(schema))
-                .thenReturn(Future.succeededFuture(deltaOk));
-
-        when(changelogDao.writeNewRecord(anyString(), anyString(), changeQueryCaptor.capture(), any()))
-                .thenReturn(Future.succeededFuture());
-
-        when(entityDao.setEntityState(any(), any(), changeQueryCaptor.capture(), eq(SetEntityState.CREATE)))
-                .thenReturn(Future.failedFuture(new EntityAlreadyExistsException("entity already exist")));
 
         createViewExecutor.execute(context, sqlNodeName)
                 .onComplete(ar -> testContext.verify(() -> {
                     assertTrue(ar.failed());
                     assertTrue(ar.cause() instanceof EntityAlreadyExistsException);
-                    assertEquals("CREATE VIEW shares.test_view AS\n" +
-                            "SELECT id\n" +
-                            "FROM shares.test_table", changeQueryCaptor.getValue());
                 }).completeNow());
     }
 
@@ -350,7 +399,7 @@ class CreateViewExecutorTest {
                 .thenReturn(Future.succeededFuture(parse(contextProvider, new QueryParserRequest(((SqlCreateView) sqlNode).getQuery(), logicSchema))));
 
         when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
-                .thenReturn(Future.succeededFuture(Collections.singletonList(ColumnMetadata.builder()
+                .thenReturn(Future.succeededFuture(singletonList(ColumnMetadata.builder()
                         .name("id")
                         .type(ColumnType.BIGINT)
                         .build())));
@@ -362,15 +411,10 @@ class CreateViewExecutorTest {
         when(entityDao.getEntity(schema, entityList.get(1).getName()))
                 .thenReturn(Future.succeededFuture(entityList.get(1)));
 
-        when(deltaServiceDao.getDeltaOk(schema)).thenReturn(Future.succeededFuture(deltaOk));
-        when(changelogDao.writeNewRecord(anyString(), anyString(), changeQueryCaptor.capture(), any())).thenReturn(Future.succeededFuture());
-        when(entityDao.setEntityState(any(), any(), anyString(), eq(SetEntityState.CREATE)))
-                .thenReturn(Future.failedFuture(new EntityAlreadyExistsException("")));
-
         createViewExecutor.execute(context, sqlNodeName)
                 .onComplete(promise);
         assertTrue(promise.future().failed());
-        assertEquals(String.format("Entity %s does not exist", entityList.get(1).getName()), promise.future().cause().getMessage());
+        assertEquals(String.format("Entity %s is not a view", entityList.get(1).getName()), promise.future().cause().getMessage());
     }
 
     @Test
@@ -446,6 +490,9 @@ class CreateViewExecutorTest {
                                 .type(ColumnType.TIMESTAMP)
                                 .build())));
 
+        when(entityDao.getEntity(schema, entityList.get(0).getName()))
+                .thenReturn(Future.failedFuture(new EntityNotExistsException(entityList.get(0).getName())));
+
         when(entityDao.getEntity(schema, entityList.get(6).getName()))
                 .thenReturn(Future.succeededFuture(entityList.get(6)));
 
@@ -502,7 +549,7 @@ class CreateViewExecutorTest {
                 .thenReturn(Future.succeededFuture(parse(contextProvider, new QueryParserRequest(((SqlCreateView) sqlNode).getQuery(), logicSchema))));
 
         lenient().when(columnMetadataService.getColumnMetadata(any(QueryParserRequest.class)))
-                .thenReturn(Future.succeededFuture(Collections.singletonList(ColumnMetadata.builder()
+                .thenReturn(Future.succeededFuture(singletonList(ColumnMetadata.builder()
                         .name("id")
                         .type(ColumnType.BIGINT)
                         .build())));

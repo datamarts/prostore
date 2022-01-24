@@ -117,17 +117,18 @@ public interface DtmDataSourcePlugin extends Plugin<SourceType> {
      * <p>execute Massively Parallel Processing Writing</p>
      *
      * @param request MPPW context
-     * @return query result
+     * @return Consumer group if it's start request, else empty string
      */
-    Future<QueryResult> mppw(MppwRequest request);
+    Future<String> mppw(MppwRequest request);
 
     /**
      * <p>Get plugin status information</p>
      *
      * @param topic Topic
+     * @param consumerGroup consumer group
      * @return query status
      */
-    Future<StatusQueryResult> status(String topic);
+    Future<StatusQueryResult> status(String topic, String consumerGroup);
 
     /**
      * @param request Rollback request

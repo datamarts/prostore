@@ -18,16 +18,18 @@ package io.arenadata.dtm.query.execution.plugin.adqm.check;
 import io.arenadata.dtm.common.model.ddl.ColumnType;
 import io.arenadata.dtm.common.model.ddl.Entity;
 import io.arenadata.dtm.common.model.ddl.EntityField;
-import io.arenadata.dtm.query.execution.plugin.adqm.check.service.AdqmCheckTableService;
 import io.arenadata.dtm.query.execution.plugin.adqm.base.factory.AdqmMetaTableEntityFactory;
 import io.arenadata.dtm.query.execution.plugin.adqm.base.factory.AdqmTableEntitiesFactory;
-import io.arenadata.dtm.query.execution.plugin.adqm.query.service.DatabaseExecutor;
-import io.arenadata.dtm.query.execution.plugin.adqm.query.service.AdqmQueryExecutor;
 import io.arenadata.dtm.query.execution.plugin.adqm.base.utils.AdqmDdlUtil;
+import io.arenadata.dtm.query.execution.plugin.adqm.check.service.AdqmCheckTableService;
+import io.arenadata.dtm.query.execution.plugin.adqm.ddl.configuration.properties.DdlProperties;
+import io.arenadata.dtm.query.execution.plugin.adqm.query.service.AdqmQueryExecutor;
+import io.arenadata.dtm.query.execution.plugin.adqm.query.service.DatabaseExecutor;
 import io.arenadata.dtm.query.execution.plugin.api.check.CheckTableRequest;
 import io.arenadata.dtm.query.execution.plugin.api.factory.MetaTableEntityFactory;
 import io.arenadata.dtm.query.execution.plugin.api.service.check.CheckTableService;
 import io.vertx.core.Future;
+import lombok.val;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,6 +53,7 @@ class AdqmCheckTableServiceTest {
     private static final List<String> tablePostFixes = Arrays.asList(ACTUAL_SHARD_POSTFIX, ACTUAL_POSTFIX);
     private static final String TEST_COLUMN_NAME = "test_column";
     private static final String ENV = "env";
+    private static final DdlProperties ddlProperties = new DdlProperties();
     private static Map<String, List<Map<String, Object>>> sysColumns;
     private Entity entity;
     private CheckTableService adqmCheckTableService;
@@ -91,15 +94,15 @@ class AdqmCheckTableServiceTest {
 
         tablePostFixes.forEach(postFix -> when(adqmQueryExecutor.execute(argThat(getPredicate(postFix)::test)))
                 .thenReturn(Future.succeededFuture(getResultSet(postFix, entity.getFields()))));
-
+        val cluster = ddlProperties.getCluster();
         List<String> queries = tablePostFixes.stream()
-                .map(postFix -> String.format(AdqmMetaTableEntityFactory.QUERY_PATTERN,
-                        String.format("%s%s", entity.getName(), postFix), ENV, entity.getSchema()))
+                .map(postFix -> String.format(AdqmMetaTableEntityFactory.QUERY_PATTERN, cluster,
+                        String.format("%s%s", entity.getName(), postFix), ENV, entity.getSchema(), cluster))
                 .collect(Collectors.toList());
         when(adqmQueryExecutor.execute(argThat(arg -> queries.stream().noneMatch(arg::equals))))
                 .thenReturn(Future.succeededFuture(Collections.emptyList()));
         adqmCheckTableService = new AdqmCheckTableService(new AdqmTableEntitiesFactory(),
-                new AdqmMetaTableEntityFactory(adqmQueryExecutor));
+                new AdqmMetaTableEntityFactory(adqmQueryExecutor, ddlProperties));
     }
 
     @Test
@@ -140,10 +143,7 @@ class AdqmCheckTableServiceTest {
 
     @Test
     void testSortedKey() {
-        String expectedError = String.format(AdqmCheckTableService.SORTED_KEY_ERROR_TEMPLATE,
-                "id, pk2, test_column, sys_from", "id, pk2, sys_from");
-        testColumns(field -> field.setPrimaryOrder(4), expectedError);
-
+        testColumns(field -> field.setPrimaryOrder(4), "Sorted keys are not equal expected");
     }
 
     private void testColumns(Consumer<EntityField> consumer,
@@ -158,8 +158,10 @@ class AdqmCheckTableServiceTest {
     }
 
     private Predicate<String> getPredicate(String postFix) {
-        String query = String.format(AdqmMetaTableEntityFactory.QUERY_PATTERN,
-                String.format("%s%s", entity.getName(), postFix), ENV, entity.getSchema());
+        val cluster = ddlProperties.getCluster();
+        String query = String.format(AdqmMetaTableEntityFactory.QUERY_PATTERN, cluster,
+                String.format("%s%s", entity.getName(), postFix),
+                ENV, entity.getSchema(), cluster);
         return query::equals;
     }
 

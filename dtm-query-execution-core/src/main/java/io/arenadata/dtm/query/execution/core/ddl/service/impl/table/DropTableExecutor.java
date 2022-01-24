@@ -64,7 +64,7 @@ public class DropTableExecutor extends QueryResultDdlExecutor {
     private final EvictQueryTemplateCacheService evictQueryTemplateCacheService;
 
     @Autowired
-    public DropTableExecutor(MetadataExecutor<DdlRequestContext> metadataExecutor,
+    public DropTableExecutor(MetadataExecutor metadataExecutor,
                              ServiceDbFacade serviceDbFacade,
                              @Qualifier("coreSqlDialect") SqlDialect sqlDialect,
                              @Qualifier("entityCacheService") CacheService<EntityKey, Entity> entityCacheService,
@@ -212,7 +212,7 @@ public class DropTableExecutor extends QueryResultDdlExecutor {
     }
 
     private Future<Entity> checkRelatedViews(Entity entity) {
-        return Future.future(promise -> hsqlClient.getQueryResult(String.format(InformationSchemaUtils.CHECK_VIEW, entity.getSchema().toUpperCase(), entity.getName().toUpperCase()))
+        return Future.future(promise -> hsqlClient.getQueryResult(String.format(InformationSchemaUtils.CHECK_VIEW_BY_TABLE_NAME, entity.getSchema().toUpperCase(), entity.getName().toUpperCase()))
                 .onSuccess(resultSet -> {
                     if (resultSet.getResults().isEmpty()) {
                         promise.complete(entity);

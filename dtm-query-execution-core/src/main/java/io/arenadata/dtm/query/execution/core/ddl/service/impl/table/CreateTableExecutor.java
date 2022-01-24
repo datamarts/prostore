@@ -55,7 +55,7 @@ public class CreateTableExecutor extends QueryResultDdlExecutor {
     private final DataSourcePluginService dataSourcePluginService;
 
     @Autowired
-    public CreateTableExecutor(MetadataExecutor<DdlRequestContext> metadataExecutor,
+    public CreateTableExecutor(MetadataExecutor metadataExecutor,
                                ServiceDbFacade serviceDbFacade,
                                @Qualifier("coreSqlDialect") SqlDialect sqlDialect,
                                MetadataCalciteGenerator metadataCalciteGenerator,
@@ -105,7 +105,7 @@ public class CreateTableExecutor extends QueryResultDdlExecutor {
     private void validateFields(List<EntityField> fields) {
         checkRequiredKeys(fields);
         checkShardingKeys(fields);
-        checkVarcharSize(fields);
+        checkCharFieldsSize(fields);
         checkFieldsDuplication(fields);
     }
 

@@ -24,7 +24,6 @@ import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.DatamartD
 import io.arenadata.dtm.query.execution.core.config.dto.ConfigRequestContext;
 import io.arenadata.dtm.query.execution.core.config.service.impl.ConfigStorageAddDdlExecutor;
 import io.arenadata.dtm.query.execution.core.init.service.CoreInitializationService;
-import io.arenadata.dtm.query.execution.core.init.service.impl.CoreInitializationServiceImpl;
 import io.arenadata.dtm.query.execution.core.plugin.service.DataSourcePluginService;
 import io.arenadata.dtm.query.execution.plugin.api.request.ConfigRequest;
 import io.vertx.core.Future;
@@ -43,7 +42,7 @@ import static org.mockito.Mockito.when;
 
 class ConfigStorageAddDdlExecutorTest {
     private final DataSourcePluginService dataSourcePluginService = mock(DataSourcePluginService.class);
-    private final CoreInitializationService initializationService = mock(CoreInitializationServiceImpl.class);
+    private final CoreInitializationService initializationService = mock(CoreInitializationService.class);
     private final DatamartDao datamartDao = mock(DatamartDao.class);
     private final ConfigStorageAddDdlExecutor configStorageAddDdlExecutor =
             new ConfigStorageAddDdlExecutor(dataSourcePluginService, datamartDao, initializationService);

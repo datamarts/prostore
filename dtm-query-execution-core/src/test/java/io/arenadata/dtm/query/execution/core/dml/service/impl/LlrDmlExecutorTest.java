@@ -73,7 +73,7 @@ class LlrDmlExecutorTest {
     @Mock
     private InformationSchemaDefinitionService infoSchemaDefService;
     @Mock
-    private MetricsService<RequestMetrics> metricsService;
+    private MetricsService metricsService;
     @Mock
     private QueryTemplateExtractor templateExtractor;
     @Mock

@@ -18,13 +18,14 @@ package io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.factory.impl;
 import io.arenadata.dtm.common.plugin.sql.PreparedStatementRequest;
 import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.dto.AdbKafkaMppwTransferRequest;
 import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.dto.TransferDataRequest;
+import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.factory.MppwRequestFactory;
 
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
 import static io.arenadata.dtm.query.execution.plugin.adb.base.factory.Constants.SYS_FROM_ATTR;
 
-public class MppwWithHistoryTableRequestFactory extends AbstractMppwRequestFactory {
+public class MppwWithHistoryTableRequestFactory extends MppwRequestFactory {
 
     private static final String INSERT_HISTORY_SQL = "INSERT INTO %s.%s_history (%s)\n" +
         "SELECT %s\n" +

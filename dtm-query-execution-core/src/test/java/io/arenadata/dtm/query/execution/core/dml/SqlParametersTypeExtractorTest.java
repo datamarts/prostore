@@ -24,7 +24,6 @@ import io.arenadata.dtm.query.execution.core.calcite.factory.CoreSchemaFactory;
 import io.arenadata.dtm.query.execution.core.calcite.service.CoreCalciteContextProvider;
 import io.arenadata.dtm.query.execution.core.calcite.service.CoreCalciteDMLQueryParserService;
 import io.arenadata.dtm.query.execution.core.dml.service.SqlParametersTypeExtractor;
-import io.arenadata.dtm.query.execution.core.dml.service.impl.SqlParametersTypeExtractorImpl;
 import io.arenadata.dtm.query.execution.core.utils.TestUtils;
 import io.arenadata.dtm.query.execution.model.metadata.Datamart;
 import io.vertx.core.Vertx;
@@ -73,7 +72,7 @@ class SqlParametersTypeExtractorTest {
     private final CoreCalciteSchemaFactory calciteSchemaFactory = new CoreCalciteSchemaFactory(new CoreSchemaFactory());
     private final CoreCalciteContextProvider calciteContextProvider = new CoreCalciteContextProvider(configParser, calciteSchemaFactory);
     private final QueryParserService parserService = new CoreCalciteDMLQueryParserService(calciteContextProvider, Vertx.vertx());
-    private final SqlParametersTypeExtractor parametersTypeExtractor = new SqlParametersTypeExtractorImpl();
+    private final SqlParametersTypeExtractor parametersTypeExtractor = new SqlParametersTypeExtractor();
 
     @Test
     void testExtractWhereBetween(VertxTestContext testContext) {

@@ -47,7 +47,7 @@ import static io.arenadata.dtm.query.execution.core.ddl.utils.ValidationUtils.ch
 public class AlterViewExecutor extends CreateViewExecutor {
 
     @Autowired
-    public AlterViewExecutor(MetadataExecutor<DdlRequestContext> metadataExecutor,
+    public AlterViewExecutor(MetadataExecutor metadataExecutor,
                              ServiceDbFacade serviceDbFacade,
                              @Qualifier("coreSqlDialect") SqlDialect sqlDialect,
                              @Qualifier("entityCacheService") CacheService<EntityKey, Entity> entityCacheService,
@@ -76,6 +76,11 @@ public class AlterViewExecutor extends CreateViewExecutor {
                 .compose(response -> getCreateViewContext(context, response))
                 .compose(viewContext -> writeViewChangelodRecord(viewContext)
                         .compose(delta -> updateEntity(viewContext, context, delta)));
+    }
+
+    @Override
+    protected Future<Entity> checkEntity(Entity generatedEntity, boolean orReplace) {
+        return super.checkEntity(generatedEntity, true);
     }
 
     private Future<QueryResult> updateEntity(CreateViewContext viewContext, DdlRequestContext context, OkDelta deltaOk) {

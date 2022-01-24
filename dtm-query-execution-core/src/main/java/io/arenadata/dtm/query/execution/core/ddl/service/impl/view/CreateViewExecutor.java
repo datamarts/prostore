@@ -40,6 +40,7 @@ import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.EntityDao
 import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.SetEntityState;
 import io.arenadata.dtm.query.execution.core.base.service.metadata.LogicalSchemaProvider;
 import io.arenadata.dtm.query.execution.core.base.service.metadata.MetadataExecutor;
+import io.arenadata.dtm.query.execution.core.base.utils.InformationSchemaUtils;
 import io.arenadata.dtm.query.execution.core.ddl.dto.DdlRequestContext;
 import io.arenadata.dtm.query.execution.core.ddl.service.QueryResultDdlExecutor;
 import io.arenadata.dtm.query.execution.core.ddl.utils.SqlPreparer;
@@ -91,9 +92,9 @@ public class CreateViewExecutor extends QueryResultDdlExecutor {
     private final DtmRelToSqlConverter relToSqlConverter;
 
     @Autowired
-    public CreateViewExecutor(MetadataExecutor<DdlRequestContext> metadataExecutor,
+    public CreateViewExecutor(MetadataExecutor metadataExecutor,
                               ServiceDbFacade serviceDbFacade,
-                              @Qualifier("coreSqlDialect") SqlDialect sqlDialect,
+                              @Qualifier("coreLimitSqlDialect") SqlDialect sqlDialect,
                               @Qualifier("entityCacheService") CacheService<EntityKey, Entity> entityCacheService,
                               LogicalSchemaProvider logicalSchemaProvider,
                               ColumnMetadataService columnMetadataService,
@@ -140,6 +141,7 @@ public class CreateViewExecutor extends QueryResultDdlExecutor {
             val isCreateOrReplace = SqlPreparer.isCreateOrReplace(context.getRequest().getQueryRequest().getSql());
             replaceSqlSelectQuery(context, isCreateOrReplace, selectSqlNode);
             getEntityFuture(context, selectSqlNode, parserResponse.getSchema())
+                    .compose(entity -> checkEntity(entity, isCreateOrReplace))
                     .map(entity -> {
                         context.setEntity(entity);
                         return CreateViewContext.builder()
@@ -150,6 +152,26 @@ public class CreateViewExecutor extends QueryResultDdlExecutor {
                     })
                     .onComplete(p);
         });
+    }
+
+    protected Future<Entity> checkEntity(Entity generatedEntity, boolean orReplace) {
+        return Future.future(p -> entityDao.getEntity(generatedEntity.getSchema(), generatedEntity.getName())
+                .onSuccess(entity -> {
+                    if (EntityType.VIEW != entity.getEntityType()) {
+                        p.fail(new DtmException(String.format("Entity %s is not a view", entity.getName())));
+                    } else if (orReplace) {
+                        p.complete(generatedEntity);
+                    } else {
+                        p.fail(new EntityAlreadyExistsException(entity.getNameWithSchema()));
+                    }
+                })
+                .onFailure(err -> {
+                    if (err instanceof EntityNotExistsException) {
+                        p.complete(generatedEntity);
+                    } else {
+                        p.fail(err);
+                    }
+                }));
     }
 
     protected Future<OkDelta> writeViewChangelodRecord(CreateViewContext ctx) {
@@ -243,6 +265,11 @@ public class CreateViewExecutor extends QueryResultDdlExecutor {
                 throw new DtmException(String.format("Can't extract table name from query %s",
                         sqlNode.toSqlString(sqlDialect).toString()));
             }
+
+            if (InformationSchemaUtils.INFORMATION_SCHEMA.equalsIgnoreCase(datamartName)) {
+                throw new DtmException(String.format("Using of INFORMATION_SCHEMA is forbidden [%s.%s]", datamartName, tableName));
+            }
+
             entityCacheService.remove(new EntityKey(datamartName, tableName));
             entityFutures.add(entityDao.getEntity(datamartName, tableName));
         });

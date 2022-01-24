@@ -16,11 +16,35 @@
 package io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.factory;
 
 import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.dto.TransferDataRequest;
+import io.arenadata.dtm.query.execution.plugin.api.mppw.MppwRequest;
 import io.arenadata.dtm.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
+import org.apache.avro.Schema;
+import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
-public interface MppwTransferRequestFactory {
+import static io.arenadata.dtm.query.execution.plugin.adb.base.factory.Constants.SYS_FROM_ATTR;
+import static io.arenadata.dtm.query.execution.plugin.adb.base.factory.Constants.SYS_TO_ATTR;
 
-    TransferDataRequest create(MppwKafkaRequest request, List<String> keyColumns);
+@Component
+public class MppwTransferRequestFactory {
+
+    public TransferDataRequest create(MppwKafkaRequest request, List<String> keyColumns) {
+        return TransferDataRequest.builder()
+                .datamart(request.getDatamartMnemonic())
+                .tableName(request.getDestinationEntity().getName())
+                .hotDelta(request.getSysCn())
+                .columnList(getColumnList(request))
+                .keyColumnList(keyColumns)
+                .build();
+    }
+
+    private List<String> getColumnList(MppwRequest request) {
+        final List<String> columns = new Schema.Parser().parse(request.getUploadMetadata().getExternalSchema())
+                .getFields().stream().map(Schema.Field::name).collect(Collectors.toList());
+        columns.add(SYS_FROM_ATTR);
+        columns.add(SYS_TO_ATTR);
+        return columns;
+    }
 }

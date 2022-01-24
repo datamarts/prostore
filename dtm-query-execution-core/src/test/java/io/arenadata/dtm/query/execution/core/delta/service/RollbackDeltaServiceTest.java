@@ -15,7 +15,7 @@
  */
 package io.arenadata.dtm.query.execution.core.delta.service;
 
-import io.arenadata.dtm.cache.service.EvictQueryTemplateCacheServiceImpl;
+import io.arenadata.dtm.cache.service.EvictQueryTemplateCacheService;
 import io.arenadata.dtm.common.exception.DtmException;
 import io.arenadata.dtm.common.model.ddl.Entity;
 import io.arenadata.dtm.common.reader.QueryRequest;
@@ -32,7 +32,7 @@ import io.arenadata.dtm.query.execution.core.delta.factory.impl.CommitDeltaQuery
 import io.arenadata.dtm.query.execution.core.delta.repository.zookeeper.DeltaServiceDao;
 import io.arenadata.dtm.query.execution.core.delta.repository.zookeeper.impl.DeltaServiceDaoImpl;
 import io.arenadata.dtm.query.execution.core.delta.utils.DeltaQueryUtil;
-import io.arenadata.dtm.query.execution.core.edml.mppw.service.EdmlUploadFailedExecutor;
+import io.arenadata.dtm.query.execution.core.edml.mppw.service.UploadFailedExecutor;
 import io.arenadata.dtm.query.execution.core.rollback.service.RestoreStateService;
 import io.arenadata.dtm.query.execution.core.utils.QueryResultUtils;
 import io.vertx.core.Future;
@@ -58,9 +58,9 @@ class RollbackDeltaServiceTest {
     private final EntityDao entityDao = mock(EntityDao.class);
     private final DeltaServiceDao deltaServiceDao = mock(DeltaServiceDaoImpl.class);
     private final DeltaQueryResultFactory deltaQueryResultFactory = mock(CommitDeltaQueryResultFactory.class);
-    private final EdmlUploadFailedExecutor edmlUploadFailedExecutor = mock(EdmlUploadFailedExecutor.class);
-    private final EvictQueryTemplateCacheServiceImpl evictQueryTemplateCacheService =
-            mock(EvictQueryTemplateCacheServiceImpl.class);
+    private final UploadFailedExecutor uploadFailedExecutor = mock(UploadFailedExecutor.class);
+    private final EvictQueryTemplateCacheService evictQueryTemplateCacheService =
+            mock(EvictQueryTemplateCacheService.class);
     private final RestoreStateService restoreStateService = mock(RestoreStateService.class);
     private BreakMppwService breakMppwService = mock(BreakMppwService.class);
     private BreakLlwService breakLlwService = mock(BreakLlwService.class);
@@ -83,8 +83,8 @@ class RollbackDeltaServiceTest {
         when(entityDao.getEntity(eq(datamart), any())).thenReturn(Future.succeededFuture(entity));
         when(serviceDbDao.getEntityDao()).thenReturn(entityDao);
         when(serviceDbFacade.getServiceDbDao()).thenReturn(serviceDbDao);
-        when(edmlUploadFailedExecutor.eraseWriteOp(any())).thenReturn(Future.succeededFuture());
-        rollbackDeltaService = new RollbackDeltaService(edmlUploadFailedExecutor, serviceDbFacade,
+        when(uploadFailedExecutor.eraseWriteOp(any())).thenReturn(Future.succeededFuture());
+        rollbackDeltaService = new RollbackDeltaService(uploadFailedExecutor, serviceDbFacade,
                 deltaQueryResultFactory, Vertx.vertx(), evictQueryTemplateCacheService, restoreStateService, breakMppwService, breakLlwService);
         when(deltaServiceDao.writeDeltaError(eq(datamart), eq(null)))
                 .thenReturn(Future.succeededFuture());

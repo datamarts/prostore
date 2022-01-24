@@ -16,19 +16,19 @@
     limitations under the License.
 
 -->
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>dtm-query-execution-core</artifactId>
-    <version>5.3.0-SNAPSHOT</version>
+    <version>5.3.0</version>
     <packaging>jar</packaging>
     <name>DTM Core</name>
 
     <parent>
         <groupId>io.arenadata.dtm</groupId>
         <artifactId>parent</artifactId>
-        <version>5.3.0-SNAPSHOT</version>
+        <version>5.3.0</version>
     </parent>
 
     <properties>
@@ -373,6 +373,12 @@
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>config</directory>
+                <filtering>true</filtering>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
@@ -433,6 +439,16 @@
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven.surefire.plugin}</version>
+                <configuration>
+                    <forkCount>1</forkCount>
+                    <reuseForks>true</reuseForks>
+                    <argLine>-Xmx1024m -XX:MaxPermSize=1024m ${argLine}</argLine>
+                </configuration>
             </plugin>
         </plugins>
     </build>

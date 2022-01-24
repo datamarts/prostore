@@ -15,11 +15,33 @@
  */
 package io.arenadata.dtm.query.execution.core.status.service;
 
+import io.arenadata.dtm.common.exception.DtmException;
 import io.arenadata.dtm.common.status.StatusEventCode;
 import io.arenadata.dtm.query.execution.core.status.factory.StatusEventFactory;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
-public interface StatusEventFactoryRegistry {
-    StatusEventFactory<?> get(StatusEventCode eventCode);
+import java.util.EnumMap;
+import java.util.Map;
 
-    void registryFactory(StatusEventFactory<?> factory);
+@Slf4j
+@Component
+public class StatusEventFactoryRegistry {
+    private final Map<StatusEventCode, StatusEventFactory<?>> factoryMap;
+
+    public StatusEventFactoryRegistry() {
+        factoryMap = new EnumMap<>(StatusEventCode.class);
+    }
+
+    public StatusEventFactory<?> get(StatusEventCode eventCode) {
+        if (factoryMap.containsKey(eventCode)) {
+            return factoryMap.get(eventCode);
+        } else {
+            throw new DtmException(String.format("StatusEventCode not supported: %s", eventCode));
+        }
+    }
+
+    public void registryFactory(StatusEventFactory<?> factory) {
+        factoryMap.put(factory.getEventCode(), factory);
+    }
 }

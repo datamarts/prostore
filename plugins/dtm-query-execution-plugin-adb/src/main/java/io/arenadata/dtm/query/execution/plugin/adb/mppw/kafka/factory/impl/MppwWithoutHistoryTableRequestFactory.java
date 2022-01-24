@@ -18,6 +18,7 @@ package io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.factory.impl;
 import io.arenadata.dtm.common.plugin.sql.PreparedStatementRequest;
 import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.dto.AdbKafkaMppwTransferRequest;
 import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.dto.TransferDataRequest;
+import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.factory.MppwRequestFactory;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -26,7 +27,7 @@ import java.util.stream.Collectors;
 
 import static io.arenadata.dtm.query.execution.plugin.adb.base.factory.Constants.*;
 
-public class MppwWithoutHistoryTableRequestFactory extends AbstractMppwRequestFactory {
+public class MppwWithoutHistoryTableRequestFactory extends MppwRequestFactory {
 
     private static final String STAGING_ALIAS = "staging.";
     private static final String INSERT_HISTORY_SQL = "UPDATE ${datamart}.${table}_actual actual\n" +

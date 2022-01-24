@@ -56,7 +56,7 @@ public class MppwKafkaRequestFactory {
                             .requestId(context.getRequest().getQueryRequest().getRequestId())
                             .envName(context.getEnvName())
                             .datamartMnemonic(context.getRequest().getQueryRequest().getDatamartMnemonic())
-                            .isLoadStart(true)
+                            .loadStart(true)
                             .sysCn(context.getSysCn())
                             .destinationEntity(context.getDestinationEntity())
                             .sourceEntity(context.getSourceEntity())

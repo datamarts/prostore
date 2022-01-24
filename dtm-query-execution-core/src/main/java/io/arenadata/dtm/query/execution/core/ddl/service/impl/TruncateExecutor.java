@@ -52,7 +52,7 @@ public class TruncateExecutor extends QueryResultDdlExecutor {
     private final DeltaServiceDao deltaServiceDao;
 
     @Autowired
-    public TruncateExecutor(MetadataExecutor<DdlRequestContext> metadataExecutor,
+    public TruncateExecutor(MetadataExecutor metadataExecutor,
                             ServiceDbFacade serviceDbFacade,
                             @Qualifier("coreSqlDialect") SqlDialect sqlDialect,
                             DataSourcePluginService dataSourcePluginService,

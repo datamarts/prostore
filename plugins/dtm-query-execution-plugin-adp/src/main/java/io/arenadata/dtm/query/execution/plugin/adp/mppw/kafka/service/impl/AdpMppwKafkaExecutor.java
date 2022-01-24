@@ -17,7 +17,6 @@ package io.arenadata.dtm.query.execution.plugin.adp.mppw.kafka.service.impl;
 
 import io.arenadata.dtm.common.model.ddl.ExternalTableFormat;
 import io.arenadata.dtm.common.model.ddl.ExternalTableLocationType;
-import io.arenadata.dtm.common.reader.QueryResult;
 import io.arenadata.dtm.query.execution.plugin.adp.mppw.AdpMppwExecutor;
 import io.arenadata.dtm.query.execution.plugin.adp.mppw.kafka.service.AdpMppwRequestExecutor;
 import io.arenadata.dtm.query.execution.plugin.api.exception.MppwDatasourceException;
@@ -40,7 +39,7 @@ public class AdpMppwKafkaExecutor implements AdpMppwExecutor {
     }
 
     @Override
-    public Future<QueryResult> execute(MppwRequest request) {
+    public Future<String> execute(MppwRequest request) {
         return Future.future(promise -> {
             if (request.getUploadMetadata().getFormat() != ExternalTableFormat.AVRO) {
                 promise.fail(new MppwDatasourceException(String.format("Format %s not implemented",
@@ -48,7 +47,7 @@ public class AdpMppwKafkaExecutor implements AdpMppwExecutor {
                 return;
             }
 
-            if (request.getIsLoadStart()) {
+            if (request.isLoadStart()) {
                 adpStartMppwRequestExecutor.execute((MppwKafkaRequest) request)
                         .onComplete(promise);
             } else {

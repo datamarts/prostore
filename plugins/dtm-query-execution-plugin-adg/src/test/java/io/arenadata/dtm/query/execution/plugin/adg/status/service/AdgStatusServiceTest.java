@@ -17,7 +17,6 @@ package io.arenadata.dtm.query.execution.plugin.adg.status.service;
 
 import io.arenadata.dtm.common.plugin.status.kafka.KafkaPartitionInfo;
 import io.arenadata.dtm.kafka.core.service.kafka.KafkaConsumerMonitor;
-import io.arenadata.dtm.query.execution.plugin.adg.mppw.configuration.properties.MppwProperties;
 import io.vertx.core.Future;
 import lombok.val;
 import org.junit.jupiter.api.Test;
@@ -41,8 +40,6 @@ class AdgStatusServiceTest {
     private static final String TOPIC = "topic";
     @Mock
     private KafkaConsumerMonitor kafkaConsumerMonitor;
-    @Mock
-    private MppwProperties mppwProperties;
 
     @InjectMocks
     private AdgStatusService statusService;
@@ -59,9 +56,8 @@ class AdgStatusServiceTest {
                 .consumerGroup(CONSUMER_GROUP)
                 .topic(TOPIC)
                 .build();
-        when(mppwProperties.getConsumerGroup()).thenReturn(CONSUMER_GROUP);
         when(kafkaConsumerMonitor.getAggregateGroupConsumerInfo(anyString(), anyString())).thenReturn(Future.succeededFuture(kafkaPartitionInfo));
-        statusService.execute(TOPIC)
+        statusService.execute(TOPIC, CONSUMER_GROUP)
                 .onComplete(ar -> {
                     assertTrue(ar.succeeded());
                     assertEquals(CONSUMER_GROUP, ar.result().getPartitionInfo().getConsumerGroup());
@@ -76,9 +72,8 @@ class AdgStatusServiceTest {
     @Test
     void executeFail() {
         val errorMessage = "ERROR";
-        when(mppwProperties.getConsumerGroup()).thenReturn(CONSUMER_GROUP);
         when(kafkaConsumerMonitor.getAggregateGroupConsumerInfo(anyString(), anyString())).thenReturn(Future.failedFuture(errorMessage));
-        statusService.execute(TOPIC)
+        statusService.execute(TOPIC, CONSUMER_GROUP)
                 .onComplete(ar -> {
                     assertTrue(ar.failed());
                     assertEquals(errorMessage, ar.cause().getMessage());

@@ -29,7 +29,7 @@ import org.springframework.stereotype.Component;
 
 @Component("adbMppwTransferDataHandler")
 @Slf4j
-public class AdbMppwTransferDataHandler implements AdbMppwHandler {
+public class AdbMppwTransferDataHandler {
 
     private final DatabaseExecutor adbQueryExecutor;
     private final KafkaMppwSqlFactory kafkaMppwSqlFactory;
@@ -44,7 +44,6 @@ public class AdbMppwTransferDataHandler implements AdbMppwHandler {
         this.mppwDataTransferService = mppwDataTransferService;
     }
 
-    @Override
     public Future<Void> handle(MppwKafkaRequestContext requestContext) {
         return insertIntoStagingTable(requestContext.getMppwKafkaLoadRequest())
                 .compose(v -> commitKafkaMessages(requestContext))
@@ -71,8 +70,7 @@ public class AdbMppwTransferDataHandler implements AdbMppwHandler {
                     columns,
                     stagingTable,
                     extTable))
-                    .onSuccess(promise::complete)
-                    .onFailure(promise::fail);
+                    .onComplete(promise);
         });
     }
 }

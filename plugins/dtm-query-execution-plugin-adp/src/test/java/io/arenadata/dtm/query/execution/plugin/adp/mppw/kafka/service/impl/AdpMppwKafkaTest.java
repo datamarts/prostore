@@ -52,8 +52,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith({MockitoExtension.class, VertxExtension.class})
@@ -113,11 +112,12 @@ class AdpMppwKafkaTest {
         val request = getRequest(requestId,true, createEntity(), ExternalTableFormat.AVRO, SCHEMA, Collections.singletonList(ID_PK_FIELD));
 
         // act
-        Future<QueryResult> result = adpMppwKafkaExecutor.execute(request);
+        Future<String> result = adpMppwKafkaExecutor.execute(request);
 
         // assert
         result.onComplete(vertxTestContext.succeeding(ar ->
                 vertxTestContext.verify(() -> {
+                    assertEquals(CONSUMER_GROUP, ar);
                     verify(adpConnectorClient).startMppw(startRequestCaptor.capture());
                     val capture = startRequestCaptor.getValue();
                     assertEquals(requestId.toString(), capture.getRequestId());
@@ -141,7 +141,7 @@ class AdpMppwKafkaTest {
         when(adpConnectorClient.startMppw(Mockito.any())).thenReturn(Future.failedFuture(new RuntimeException("Exception")));
 
         // act
-        Future<QueryResult> result = adpMppwKafkaExecutor.execute(request);
+        Future<String> result = adpMppwKafkaExecutor.execute(request);
 
         // assert
         result.onComplete(vertxTestContext.failing(error ->
@@ -155,7 +155,7 @@ class AdpMppwKafkaTest {
         val request = getRequest(UUID.randomUUID(), true, createEntity(), ExternalTableFormat.AVRO, "{}", Collections.singletonList(ID_PK_FIELD));
 
         // act
-        Future<QueryResult> result = adpMppwKafkaExecutor.execute(request);
+        Future<String> result = adpMppwKafkaExecutor.execute(request);
 
         // assert
         result.onComplete(vertxTestContext.failing(error ->
@@ -170,11 +170,12 @@ class AdpMppwKafkaTest {
         val request = getRequest(requestId, false, createEntity(), ExternalTableFormat.AVRO, SCHEMA, Collections.singletonList(ID_PK_FIELD));
 
         // act
-        Future<QueryResult> result = adpMppwKafkaExecutor.execute(request);
+        Future<String> result = adpMppwKafkaExecutor.execute(request);
 
         // assert
         result.onComplete(vertxTestContext.succeeding(ar ->
                 vertxTestContext.verify(() -> {
+                    assertNull(ar);
                     verify(adpConnectorClient).stopMppw(stopRequestCaptor.capture());
                     val capture = stopRequestCaptor.getValue();
                     assertEquals(requestId.toString(), capture.getRequestId());
@@ -210,7 +211,7 @@ class AdpMppwKafkaTest {
         when(adpConnectorClient.stopMppw(Mockito.any())).thenReturn(Future.failedFuture(new RuntimeException("Exception")));
 
         // act
-        Future<QueryResult> result = adpMppwKafkaExecutor.execute(request);
+        Future<String> result = adpMppwKafkaExecutor.execute(request);
 
         // assert
         result.onComplete(vertxTestContext.failing(error ->
@@ -226,7 +227,7 @@ class AdpMppwKafkaTest {
         when(databaseExecutor.executeUpdate(Mockito.any())).thenReturn(Future.failedFuture(new RuntimeException("Exception")));
 
         // act
-        Future<QueryResult> result = adpMppwKafkaExecutor.execute(request);
+        Future<String> result = adpMppwKafkaExecutor.execute(request);
 
         // assert
         result.onComplete(vertxTestContext.failing(error ->
@@ -242,7 +243,7 @@ class AdpMppwKafkaTest {
         val request = getRequest(UUID.randomUUID(), false, entity, ExternalTableFormat.AVRO, SCHEMA, Collections.singletonList(ID_PK_FIELD));
 
         // act
-        Future<QueryResult> result = adpMppwKafkaExecutor.execute(request);
+        Future<String> result = adpMppwKafkaExecutor.execute(request);
 
         // assert
         result.onComplete(vertxTestContext.failing(error ->
@@ -256,7 +257,7 @@ class AdpMppwKafkaTest {
         val request = getRequest(UUID.randomUUID(), false, createEntity(), ExternalTableFormat.AVRO, SCHEMA, Collections.emptyList());
 
         // act
-        Future<QueryResult> result = adpMppwKafkaExecutor.execute(request);
+        Future<String> result = adpMppwKafkaExecutor.execute(request);
 
         // assert
         result.onComplete(vertxTestContext.failing(error ->
@@ -270,7 +271,7 @@ class AdpMppwKafkaTest {
         val request = getRequest(UUID.randomUUID(), false, createEntity(), ExternalTableFormat.CSV, SCHEMA, Collections.emptyList());
 
         // act
-        Future<QueryResult> result = adpMppwKafkaExecutor.execute(request);
+        Future<String> result = adpMppwKafkaExecutor.execute(request);
 
         // assert
         result.onComplete(

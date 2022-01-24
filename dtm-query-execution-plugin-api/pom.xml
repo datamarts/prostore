@@ -21,13 +21,13 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>dtm-query-execution-plugin-api</artifactId>
-    <version>5.3.0-SNAPSHOT</version>
+    <version>5.3.0</version>
     <name>DTM Core API</name>
 
     <parent>
         <groupId>io.arenadata.dtm</groupId>
         <artifactId>parent</artifactId>
-        <version>5.3.0-SNAPSHOT</version>
+        <version>5.3.0</version>
     </parent>
 
     <dependencies>

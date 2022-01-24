@@ -15,10 +15,36 @@
  */
 package io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.service.executor;
 
+import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.dto.AdbKafkaMppwTransferRequest;
 import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.dto.TransferDataRequest;
+import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.factory.MppwRequestFactory;
+import io.arenadata.dtm.query.execution.plugin.adb.query.service.DatabaseExecutor;
 import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Component;
 
-public interface AdbMppwDataTransferService {
+@Component
+@Slf4j
+public class AdbMppwDataTransferService {
 
-    Future<Void> execute(TransferDataRequest dataRequest);
+    private final MppwRequestFactory mppwRequestFactory;
+    private final DatabaseExecutor adbQueryExecutor;
+
+    @Autowired
+    public AdbMppwDataTransferService(MppwRequestFactory mppwRequestFactory,
+                                      @Qualifier("adbQueryExecutor") DatabaseExecutor adbQueryExecutor) {
+        this.mppwRequestFactory = mppwRequestFactory;
+        this.adbQueryExecutor = adbQueryExecutor;
+    }
+
+    public Future<Void> execute(TransferDataRequest dataRequest) {
+        return Future.future(promise -> {
+            AdbKafkaMppwTransferRequest transferRequest = mppwRequestFactory.create(dataRequest);
+            adbQueryExecutor.executeInTransaction(transferRequest.getFirstTransaction())
+                    .compose(v -> adbQueryExecutor.executeInTransaction(transferRequest.getSecondTransaction()))
+                    .onComplete(promise);
+        });
+    }
 }

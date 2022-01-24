@@ -15,9 +15,9 @@
  */
 package io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.verticle;
 
-import io.arenadata.dtm.query.execution.plugin.adb.mppw.configuration.properties.MppwProperties;
+import io.arenadata.dtm.query.execution.plugin.adb.mppw.configuration.properties.AdbMppwProperties;
 import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.dto.MppwKafkaRequestContext;
-import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.service.handler.AdbMppwHandler;
+import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.service.handler.AdbMppwTransferDataHandler;
 import io.arenadata.dtm.query.execution.plugin.adb.mppw.kafka.verticle.worker.AdbMppwWorker;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.DeploymentOptions;
@@ -37,18 +37,18 @@ public class AdbMppwVerticle extends AbstractVerticle {
 
     private final Map<String, MppwKafkaRequestContext> requestMap = new ConcurrentHashMap<>();
     private final Map<String, Future> resultMap = new ConcurrentHashMap<>();
-    private final MppwProperties mppwProperties;
-    private final AdbMppwHandler mppwTransferDataHandler;
+    private final AdbMppwProperties mppwProperties;
+    private final AdbMppwTransferDataHandler mppwTransferDataHandler;
 
     @Autowired
-    public AdbMppwVerticle(MppwProperties mppwProperties,
-                           @Qualifier("adbMppwTransferDataHandler") AdbMppwHandler mppwTransferDataHandler) {
-        this.mppwProperties = mppwProperties;
+    public AdbMppwVerticle(AdbMppwProperties adbMppwProperties,
+                           @Qualifier("adbMppwTransferDataHandler") AdbMppwTransferDataHandler mppwTransferDataHandler) {
+        this.mppwProperties = adbMppwProperties;
         this.mppwTransferDataHandler = mppwTransferDataHandler;
     }
 
     @Override
-    public void start() throws Exception {
+    public void start() {
         val options = new DeploymentOptions()
                 .setWorkerPoolSize(this.mppwProperties.getPoolSize())
                 .setWorker(true);

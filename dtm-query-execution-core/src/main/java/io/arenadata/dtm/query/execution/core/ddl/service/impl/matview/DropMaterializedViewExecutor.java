@@ -42,7 +42,7 @@ public class DropMaterializedViewExecutor extends DropTableExecutor {
 
     private final CacheService<EntityKey, MaterializedViewCacheValue> materializedViewCacheService;
 
-    public DropMaterializedViewExecutor(MetadataExecutor<DdlRequestContext> metadataExecutor,
+    public DropMaterializedViewExecutor(MetadataExecutor metadataExecutor,
                                         ServiceDbFacade serviceDbFacade,
                                         @Qualifier("coreSqlDialect") SqlDialect sqlDialect,
                                         @Qualifier("entityCacheService") CacheService<EntityKey, Entity> entityCacheService,

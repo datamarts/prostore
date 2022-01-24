@@ -127,13 +127,13 @@ public abstract class AbstractDtmDataSourcePlugin implements DtmDataSourcePlugin
     }
 
     @Override
-    public Future<QueryResult> mppw(MppwRequest request) {
+    public Future<String> mppw(MppwRequest request) {
         return mppwService.execute(request);
     }
 
     @Override
-    public Future<StatusQueryResult> status(String topic) {
-        return statusService.execute(topic);
+    public Future<StatusQueryResult> status(String topic, String consumerGroup) {
+        return statusService.execute(topic, consumerGroup);
     }
 
     @Override

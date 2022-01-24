@@ -63,8 +63,7 @@ public class ChangesDao {
     public Future<Void> allowChanges(String datamart, String denyCode) {
         return getImmutableNode(datamart)
                 .map(bytes -> checkDenyCode(bytes, denyCode, datamart))
-                .compose(ignore -> executor.delete(getImmutablePath(datamart), -1))
-                .mapEmpty();
+                .compose(ignore -> executor.delete(getImmutablePath(datamart), -1));
     }
 
     private String getImmutablePath(String datamart) {

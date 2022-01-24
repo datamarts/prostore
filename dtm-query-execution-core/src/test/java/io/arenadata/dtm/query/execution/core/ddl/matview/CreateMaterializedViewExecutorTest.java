@@ -43,8 +43,8 @@ import io.arenadata.dtm.query.execution.core.base.exception.view.ViewDisalowedOr
 import io.arenadata.dtm.query.execution.core.base.repository.ServiceDbFacade;
 import io.arenadata.dtm.query.execution.core.base.repository.zookeeper.*;
 import io.arenadata.dtm.query.execution.core.base.service.metadata.LogicalSchemaProvider;
+import io.arenadata.dtm.query.execution.core.base.service.metadata.MetadataCalciteGenerator;
 import io.arenadata.dtm.query.execution.core.base.service.metadata.MetadataExecutor;
-import io.arenadata.dtm.query.execution.core.base.service.metadata.impl.MetadataCalciteGeneratorImpl;
 import io.arenadata.dtm.query.execution.core.calcite.configuration.CalciteConfiguration;
 import io.arenadata.dtm.query.execution.core.calcite.factory.CoreCalciteSchemaFactory;
 import io.arenadata.dtm.query.execution.core.calcite.factory.CoreSchemaFactory;
@@ -54,7 +54,7 @@ import io.arenadata.dtm.query.execution.core.ddl.service.QueryResultDdlExecutor;
 import io.arenadata.dtm.query.execution.core.ddl.service.impl.matview.CreateMaterializedViewExecutor;
 import io.arenadata.dtm.query.execution.core.delta.dto.OkDelta;
 import io.arenadata.dtm.query.execution.core.delta.repository.zookeeper.DeltaServiceDao;
-import io.arenadata.dtm.query.execution.core.dml.service.impl.ColumnMetadataServiceImpl;
+import io.arenadata.dtm.query.execution.core.dml.service.ColumnMetadataService;
 import io.arenadata.dtm.query.execution.core.plugin.service.DataSourcePluginService;
 import io.arenadata.dtm.query.execution.core.query.utils.DefaultDatamartSetter;
 import io.arenadata.dtm.query.execution.model.metadata.Datamart;
@@ -106,7 +106,7 @@ class CreateMaterializedViewExecutorTest {
     @Mock
     private LogicalSchemaProvider logicalSchemaProvider;
     @Mock
-    private MetadataExecutor<DdlRequestContext> metadataExecutor;
+    private MetadataExecutor metadataExecutor;
     @Mock
     private ServiceDbFacade serviceDbFacade;
     @Mock
@@ -128,9 +128,9 @@ class CreateMaterializedViewExecutorTest {
     @Mock
     private DeltaServiceDao deltaServiceDao;
     @InjectMocks
-    private ColumnMetadataServiceImpl columnMetadataService;
+    private ColumnMetadataService columnMetadataService;
     @InjectMocks
-    private MetadataCalciteGeneratorImpl metadataCalciteGenerator;
+    private MetadataCalciteGenerator metadataCalciteGenerator;
     @InjectMocks
     private DefaultDatamartSetter defaultDatamartSetter;
 
@@ -1130,7 +1130,7 @@ class CreateMaterializedViewExecutorTest {
     void shouldFailWhenCharColumnHasNoSize() {
         testFailOnValidation("CREATE MATERIALIZED VIEW mat_view (id bigint, name char, enddate timestamp(5), PRIMARY KEY(id))\n" +
                         "DISTRIBUTED BY (id) DATASOURCE_TYPE (ADG) AS SELECT * FROM matviewdatamart.tbl DATASOURCE_TYPE = 'ADB'",
-                "Specifying the size for columns[name] with types[CHAR] is required",
+                "Specifying the size for columns[name] with types[CHAR/VARCHAR] is required",
                 ValidationDtmException.class);
     }
 
@@ -1226,7 +1226,7 @@ class CreateMaterializedViewExecutorTest {
         verifyNoInteractions(metadataExecutor, materializedViewCacheService);
 
         assertTrue(promise.future().failed());
-        assertException(EntityAlreadyExistsException.class, "Entity " + MAT_VIEW_ENTITY_NAME + " already exists", promise.future().cause());
+        assertException(EntityAlreadyExistsException.class, "Entity " + SCHEMA + "." + MAT_VIEW_ENTITY_NAME + " already exists", promise.future().cause());
     }
 
     @Test

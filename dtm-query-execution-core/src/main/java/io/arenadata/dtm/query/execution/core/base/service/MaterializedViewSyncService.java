@@ -16,6 +16,7 @@
 package io.arenadata.dtm.query.execution.core.base.service;
 
 import io.arenadata.dtm.cache.service.CacheService;
+import io.arenadata.dtm.cache.service.EvictQueryTemplateCacheService;
 import io.arenadata.dtm.common.configuration.core.CoreConstants;
 import io.arenadata.dtm.common.delta.DeltaData;
 import io.arenadata.dtm.common.exception.DtmException;
@@ -68,6 +69,7 @@ public class MaterializedViewSyncService {
     private final long maxConcurrent;
     private final AtomicInteger concurrentSyncCount = new AtomicInteger(0);
     private final AppConfiguration appConfiguration;
+    private final EvictQueryTemplateCacheService evictQueryTemplateCacheService;
 
     public MaterializedViewSyncService(DataSourcePluginService dataSourcePluginService,
                                        CacheService<EntityKey, MaterializedViewCacheValue> materializedViewCacheService,
@@ -78,7 +80,8 @@ public class MaterializedViewSyncService {
                                        LogicalSchemaProvider logicalSchemaProvider,
                                        @Qualifier("coreVertx") Vertx vertx,
                                        MatViewSyncProperties matViewSyncProperties,
-                                       AppConfiguration appConfiguration) {
+                                       AppConfiguration appConfiguration,
+                                       EvictQueryTemplateCacheService evictQueryTemplateCacheService) {
         this.dataSourcePluginService = dataSourcePluginService;
         this.materializedViewCacheService = materializedViewCacheService;
         this.deltaServiceDao = deltaServiceDao;
@@ -91,6 +94,7 @@ public class MaterializedViewSyncService {
         this.periodMs = matViewSyncProperties.getPeriodMs();
         this.maxConcurrent = matViewSyncProperties.getMaxConcurrent();
         this.appConfiguration = appConfiguration;
+        this.evictQueryTemplateCacheService = evictQueryTemplateCacheService;
     }
 
     public boolean isSyncEnabled() {
@@ -224,6 +228,7 @@ public class MaterializedViewSyncService {
             entity.setMaterializedDeltaNum(deltaNum);
             return entityDao.updateEntity(entity)
                     .map(v -> {
+                        evictQueryTemplateCacheService.evictByDatamartName(entity.getSchema());
                         cacheValue.resetFailsCount();
                         cacheValue.setStatus(MaterializedViewSyncStatus.READY);
                         return v;

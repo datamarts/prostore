@@ -30,7 +30,7 @@ import org.apache.calcite.util.Util;
 
 @AllArgsConstructor
 public abstract class QueryResultDdlExecutor implements DdlExecutor {
-    protected final MetadataExecutor<DdlRequestContext> metadataExecutor;
+    protected final MetadataExecutor metadataExecutor;
     protected final ServiceDbFacade serviceDbFacade;
     protected final SqlDialect sqlDialect;
 

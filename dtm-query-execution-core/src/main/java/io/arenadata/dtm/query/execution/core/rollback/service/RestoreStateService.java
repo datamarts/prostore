@@ -32,7 +32,7 @@ import io.arenadata.dtm.query.execution.core.delta.repository.zookeeper.DeltaSer
 import io.arenadata.dtm.query.execution.core.edml.dto.EdmlRequestContext;
 import io.arenadata.dtm.query.execution.core.edml.dto.EraseWriteOpResult;
 import io.arenadata.dtm.query.execution.core.edml.mppw.dto.WriteOperationStatus;
-import io.arenadata.dtm.query.execution.core.edml.mppw.service.EdmlUploadFailedExecutor;
+import io.arenadata.dtm.query.execution.core.edml.mppw.service.UploadFailedExecutor;
 import io.arenadata.dtm.query.execution.core.edml.mppw.service.impl.UploadExternalTableExecutor;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
@@ -59,7 +59,7 @@ public class RestoreStateService {
     private final DatamartDao datamartDao;
     private final EntityDao entityDao;
     private final DeltaServiceDao deltaServiceDao;
-    private final EdmlUploadFailedExecutor edmlUploadFailedExecutor;
+    private final UploadFailedExecutor uploadFailedExecutor;
     private final UploadExternalTableExecutor uploadExternalTableExecutor;
     private final DefinitionService<SqlNode> definitionService;
     private final String envName;
@@ -69,7 +69,7 @@ public class RestoreStateService {
 
     @Autowired
     public RestoreStateService(ServiceDbFacade serviceDbFacade,
-                               EdmlUploadFailedExecutor edmlUploadFailedExecutor,
+                               UploadFailedExecutor uploadFailedExecutor,
                                UploadExternalTableExecutor uploadExternalTableExecutor,
                                @Qualifier("coreCalciteDefinitionService") DefinitionService<SqlNode> definitionService,
                                @Value("${core.env.name}") String envName,
@@ -77,7 +77,7 @@ public class RestoreStateService {
         this.datamartDao = serviceDbFacade.getServiceDbDao().getDatamartDao();
         this.entityDao = serviceDbFacade.getServiceDbDao().getEntityDao();
         this.deltaServiceDao = serviceDbFacade.getDeltaServiceDao();
-        this.edmlUploadFailedExecutor = edmlUploadFailedExecutor;
+        this.uploadFailedExecutor = uploadFailedExecutor;
         this.uploadExternalTableExecutor = uploadExternalTableExecutor;
         this.definitionService = definitionService;
         this.envName = envName;
@@ -159,7 +159,7 @@ public class RestoreStateService {
 
     private Future<Optional<EraseWriteOpResult>> eraseWriteOperation(Entity dest, DeltaWriteOp op) {
         EdmlRequestContext context = createDeleteContext(dest, op);
-        return edmlUploadFailedExecutor.execute(context)
+        return uploadFailedExecutor.execute(context)
                 .map(v -> Optional.of(new EraseWriteOpResult(dest.getName(), op.getSysCn())));
 
     }

@@ -16,7 +16,6 @@
 package io.arenadata.dtm.query.execution.core.edml.configuration;
 
 
-import io.arenadata.dtm.common.reader.SourceType;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -25,7 +24,6 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties("core.datasource.edml")
 @Data
 public class EdmlProperties {
-    private SourceType sourceType;
     private Integer defaultChunkSize;
     private Integer pluginStatusCheckPeriodMs;
     private Integer firstOffsetTimeoutMs;

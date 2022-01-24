@@ -90,7 +90,7 @@ class MppwStartRequestHandlerTest {
                         "AS SELECT es.column1, es.column2, es.column3, es.column4, 101 AS sys_from, 9223372036854775807 as sys_to, 0 as sys_op_load, '9999-12-31 00:00:00' as sys_close_date, 1 AS sign  FROM dev__shares.accounts_ext_shard es WHERE es.sys_op <> 1")
         ), mockData, false);
 
-        MockStatusReporter mockReporter = createMockReporter(TEST_CONSUMER_GROUP + "dev__shares.accounts");
+        MockStatusReporter mockReporter = createMockReporter(TEST_CONSUMER_GROUP + "_dev__shares.accounts");
         RestLoadClient mockInitiator = Mockito.mock(RestLoadClient.class);
         KafkaMppwRequestHandler handler = new MppwStartRequestHandler(executor, ddlProperties,
                 createMppwProperties(KAFKA),
@@ -185,7 +185,7 @@ class MppwStartRequestHandlerTest {
                 .requestId(UUID.randomUUID())
                 .datamartMnemonic("shares")
                 .envName("dev")
-                .isLoadStart(true)
+                .loadStart(true)
                 .sysCn(101L)
                 .destinationEntity(getEntity())
                 .topic(TEST_TOPIC)

@@ -37,7 +37,7 @@ import io.arenadata.dtm.query.execution.core.edml.configuration.EdmlProperties;
 import io.arenadata.dtm.query.execution.core.edml.dto.EdmlRequestContext;
 import io.arenadata.dtm.query.execution.core.edml.mppw.dto.MppwStopReason;
 import io.arenadata.dtm.query.execution.core.edml.mppw.factory.MppwKafkaRequestFactory;
-import io.arenadata.dtm.query.execution.core.edml.mppw.factory.impl.MppwErrorMessageFactory;
+import io.arenadata.dtm.query.execution.core.edml.mppw.factory.MppwErrorMessageFactory;
 import io.arenadata.dtm.query.execution.core.edml.mppw.service.EdmlUploadExecutor;
 import io.arenadata.dtm.query.execution.core.edml.mppw.service.impl.BreakMppwContext;
 import io.arenadata.dtm.query.execution.core.edml.mppw.service.impl.UploadKafkaExecutor;
@@ -68,13 +68,12 @@ import java.util.stream.LongStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(VertxExtension.class)
 class UploadKafkaExecutorTest {
+    private final static String CONSUMER_GROUP = "consumer_group";
     private final QueryParserService parserService = mock(QueryParserService.class);
     private final RelRoot relNode = mock(RelRoot.class);
     private final DataSourcePluginService pluginService = mock(DataSourcePluginServiceImpl.class);
@@ -97,11 +96,12 @@ class UploadKafkaExecutorTest {
             .envName("env")
             .datamartMnemonic("test")
             .sysCn(1L)
-            .isLoadStart(true)
+            .loadStart(true)
             .build();
 
     @BeforeEach
     void setUp() {
+        when(edmlProperties.getFirstOffsetTimeoutMs()).thenReturn(firstOffsetTimeoutMs);
         uploadKafkaExecutor = new UploadKafkaExecutor(parserService,
                 pluginService,
                 mppwKafkaRequestFactory,
@@ -143,15 +143,17 @@ class UploadKafkaExecutorTest {
 
         when(pluginService.getSourceTypes()).thenReturn(sourceTypes);
         when(edmlProperties.getPluginStatusCheckPeriodMs()).thenReturn(pluginStatusCheckPeriodMs);
-        when(edmlProperties.getFirstOffsetTimeoutMs()).thenReturn(firstOffsetTimeoutMs);
+        when(edmlProperties.getFirstOffsetTimeoutMs())
+                .thenReturn(firstOffsetTimeoutMs)
+                .thenReturn(firstOffsetTimeoutMs);
         when(edmlProperties.getChangeOffsetTimeoutMs()).thenReturn(changeOffsetTimeoutMs);
         when(kafkaProperties.getAdmin()).thenReturn(kafkaAdminProperty);
         when(mppwKafkaRequestFactory.create(edmlRequestContext))
                 .thenReturn(Future.succeededFuture(mppwContextQueue.poll()));
         when(pluginService.mppw(eq(SourceType.ADB), any(), eq(pluginRequest)))
-                .thenReturn(Future.succeededFuture());
+                .thenReturn(Future.succeededFuture(CONSUMER_GROUP));
         when(pluginService.mppw(eq(SourceType.ADG), any(), eq(pluginRequest)))
-                .thenReturn(Future.succeededFuture());
+                .thenReturn(Future.succeededFuture(CONSUMER_GROUP));
 
         Mockito.doAnswer(invocation -> {
             final SourceType ds = invocation.getArgument(0);
@@ -161,14 +163,14 @@ class UploadKafkaExecutorTest {
                 return Future.succeededFuture(adgStatusResultQueue.poll());
             }
             return null;
-        }).when(pluginService).status(any(), any(), any());
+        }).when(pluginService).status(any(), any(), any(), any());
 
         Mockito.doAnswer(invocation -> {
             final SourceType ds = invocation.getArgument(0);
             if (ds.equals(SourceType.ADB)) {
-                return Future.succeededFuture(new QueryResult());
+                return Future.succeededFuture();
             } else if (ds.equals(SourceType.ADG)) {
-                return Future.succeededFuture(new QueryResult());
+                return Future.succeededFuture();
             }
             return null;
         }).when(pluginService).mppw(any(), any(), any());
@@ -204,29 +206,15 @@ class UploadKafkaExecutorTest {
         when(mppwKafkaRequestFactory.create(edmlRequestContext))
                 .thenReturn(Future.succeededFuture(mppwContextQueue.poll()));
         when(pluginService.mppw(eq(SourceType.ADB), any(), eq(pluginRequest)))
-                .thenReturn(Future.succeededFuture());
+                .thenReturn(Future.succeededFuture(CONSUMER_GROUP));
         when(pluginService.mppw(eq(SourceType.ADG), any(), eq(pluginRequest)))
-                .thenReturn(Future.succeededFuture());
+                .thenReturn(Future.succeededFuture(CONSUMER_GROUP));
 
-        Mockito.doAnswer(invocation -> {
-            final SourceType ds = invocation.getArgument(0);
-            if (ds.equals(SourceType.ADB)) {
-                return Future.succeededFuture(adbStatusResultQueue.poll());
-            } else if (ds.equals(SourceType.ADG)) {
-                return Future.succeededFuture(adgStatusResultQueue.poll());
-            }
-            return null;
-        }).when(pluginService).status(any(), any(), any());
+        when(pluginService.status(eq(SourceType.ADB), any(), any(), any())).thenReturn(Future.succeededFuture(adbStatusResultQueue.poll()));
+        when(pluginService.status(eq(SourceType.ADG), any(), any(), any())).thenReturn(Future.succeededFuture(adgStatusResultQueue.poll()));
 
-        Mockito.doAnswer(invocation -> {
-            final SourceType ds = invocation.getArgument(0);
-            if (ds.equals(SourceType.ADB)) {
-                return Future.succeededFuture(new QueryResult());
-            } else if (ds.equals(SourceType.ADG)) {
-                return Future.succeededFuture(new QueryResult());
-            }
-            return null;
-        }).when(pluginService).mppw(any(), any(), any());
+        when(pluginService.mppw(eq(SourceType.ADB), any(), any())).thenReturn(Future.succeededFuture(CONSUMER_GROUP));
+        when(pluginService.mppw(eq(SourceType.ADG), any(), any())).thenReturn(Future.succeededFuture(CONSUMER_GROUP));
 
         BreakMppwContext.requestRollback(pluginRequest.getDatamartMnemonic(),
                 pluginRequest.getSysCn(),
@@ -269,14 +257,14 @@ class UploadKafkaExecutorTest {
                 return Future.succeededFuture(adgStatusResultQueue.poll());
             }
             return null;
-        }).when(pluginService).status(any(), any(), any());
+        }).when(pluginService).status(any(), any(), anyString(), anyString());
 
         Mockito.doAnswer(invocation -> {
             final SourceType ds = invocation.getArgument(0);
             final MppwRequest requestContext = invocation.getArgument(2);
-            if (ds.equals(SourceType.ADB) && requestContext.getIsLoadStart()) {
+            if (ds.equals(SourceType.ADB) && requestContext.isLoadStart()) {
                 return Future.failedFuture(new DtmException("Start mppw error"));
-            } else if (ds.equals(SourceType.ADB) && !requestContext.getIsLoadStart()) {
+            } else if (ds.equals(SourceType.ADB) && !requestContext.isLoadStart()) {
                 return Future.succeededFuture(new QueryResult());
             } else if (ds.equals(SourceType.ADG)) {
                 return Future.succeededFuture(new QueryResult());
@@ -322,21 +310,15 @@ class UploadKafkaExecutorTest {
         Mockito.doAnswer(invocation -> {
             final SourceType ds = invocation.getArgument(0);
             final MppwRequest requestContext = invocation.getArgument(2);
-            if (ds.equals(SourceType.ADB) && requestContext.getIsLoadStart()) {
+            if (ds.equals(SourceType.ADB) && requestContext.isLoadStart()) {
                 return Future.failedFuture(new DtmException("Start mppw error"));
-            } else if (ds.equals(SourceType.ADB) && !requestContext.getIsLoadStart()) {
+            } else if (ds.equals(SourceType.ADB) && !requestContext.isLoadStart()) {
                 return Future.succeededFuture(new QueryResult());
             }
             return null;
         }).when(pluginService).mppw(any(), any(), any());
 
-        Mockito.doAnswer(invocation -> {
-            final SourceType ds = invocation.getArgument(0);
-            if (ds.equals(SourceType.ADB)) {
-                return Future.succeededFuture(adbStatusResultQueue.poll());
-            }
-            return null;
-        }).when(pluginService).status(any(), any(), any());
+        when(pluginService.status(eq(SourceType.ADB), any(), any(), any())).thenReturn(Future.succeededFuture(adbStatusResultQueue.poll()));
 
         uploadKafkaExecutor.execute(edmlRequestContext)
                 .onComplete(testContext.failing(error -> testContext.verify(() -> {
@@ -368,32 +350,18 @@ class UploadKafkaExecutorTest {
 
         when(pluginService.getSourceTypes()).thenReturn(sourceTypes);
         when(edmlProperties.getPluginStatusCheckPeriodMs()).thenReturn(pluginStatusCheckPeriodMs);
-        when(edmlProperties.getFirstOffsetTimeoutMs()).thenReturn(firstOffsetTimeoutMs);
+        when(edmlProperties.getFirstOffsetTimeoutMs()).thenReturn(firstOffsetTimeoutMs).thenReturn(firstOffsetTimeoutMs);
         when(edmlProperties.getChangeOffsetTimeoutMs()).thenReturn(changeOffsetTimeoutMs);
         when(kafkaProperties.getAdmin()).thenReturn(kafkaAdminProperty);
 
         when(mppwKafkaRequestFactory.create(edmlRequestContext))
                 .thenReturn(Future.succeededFuture(mppwContextQueue.poll()));
 
-        Mockito.doAnswer(invocation -> {
-            final SourceType ds = invocation.getArgument(0);
-            if (ds.equals(SourceType.ADB)) {
-                return Future.failedFuture(exception);
-            } else if (ds.equals(SourceType.ADG)) {
-                return Future.failedFuture(exception);
-            }
-            return null;
-        }).when(pluginService).status(any(), any(), any());
+        when(pluginService.status(eq(SourceType.ADB), any(), any(), any())).thenReturn(Future.failedFuture(exception));
+        when(pluginService.status(eq(SourceType.ADG), any(), any(), any())).thenReturn(Future.failedFuture(exception));
 
-        Mockito.doAnswer(invocation -> {
-            final SourceType ds = invocation.getArgument(0);
-            if (ds.equals(SourceType.ADB)) {
-                return Future.succeededFuture(new QueryResult());
-            } else if (ds.equals(SourceType.ADG)) {
-                return Future.succeededFuture(new QueryResult());
-            }
-            return null;
-        }).when(pluginService).mppw(any(), any(), any());
+        when(pluginService.mppw(eq(SourceType.ADB), any(), any())).thenReturn(Future.succeededFuture(CONSUMER_GROUP));
+        when(pluginService.mppw(eq(SourceType.ADG), any(), any())).thenReturn(Future.succeededFuture(CONSUMER_GROUP));
 
         uploadKafkaExecutor.execute(edmlRequestContext)
                 .onComplete(testContext.failing(error -> testContext.verify(() ->
@@ -426,25 +394,11 @@ class UploadKafkaExecutorTest {
         when(mppwKafkaRequestFactory.create(edmlRequestContext))
                 .thenReturn(Future.succeededFuture(mppwContextQueue.poll()));
 
-        Mockito.doAnswer(invocation -> {
-            final SourceType ds = invocation.getArgument(0);
-            if (ds.equals(SourceType.ADB)) {
-                return Future.succeededFuture(adbStatusResultQueue.poll());
-            } else if (ds.equals(SourceType.ADG)) {
-                return Future.succeededFuture(adgStatusResultQueue.poll());
-            }
-            return null;
-        }).when(pluginService).status(any(), any(), any());
+        when(pluginService.status(eq(SourceType.ADB), any(), any(), any())).thenReturn(Future.succeededFuture(adbStatusResultQueue.poll()));
+        when(pluginService.status(eq(SourceType.ADG), any(), any(), any())).thenReturn(Future.succeededFuture(adgStatusResultQueue.poll()));
 
-        Mockito.doAnswer(invocation -> {
-            final SourceType ds = invocation.getArgument(0);
-            if (ds.equals(SourceType.ADB)) {
-                return Future.succeededFuture(new QueryResult());
-            } else if (ds.equals(SourceType.ADG)) {
-                return Future.succeededFuture(new QueryResult());
-            }
-            return null;
-        }).when(pluginService).mppw(any(), any(), any());
+        when(pluginService.mppw(eq(SourceType.ADB), any(), any())).thenReturn(Future.succeededFuture(CONSUMER_GROUP));
+        when(pluginService.mppw(eq(SourceType.ADG), any(), any())).thenReturn(Future.succeededFuture(CONSUMER_GROUP));
 
         uploadKafkaExecutor.execute(edmlRequestContext)
                 .onComplete(testContext.failing(error -> testContext.verify(() -> {
@@ -490,14 +444,14 @@ class UploadKafkaExecutorTest {
                 return Future.succeededFuture(adgStatusResultQueue.poll());
             }
             return null;
-        }).when(pluginService).status(any(), any(), any());
+        }).when(pluginService).status(any(), any(), any(), any());
 
         Mockito.doAnswer(invocation -> {
             final SourceType ds = invocation.getArgument(0);
             if (ds.equals(SourceType.ADB)) {
-                return Future.succeededFuture(new QueryResult());
+                return Future.succeededFuture(CONSUMER_GROUP);
             } else if (ds.equals(SourceType.ADG)) {
-                return Future.succeededFuture(new QueryResult());
+                return Future.succeededFuture(CONSUMER_GROUP);
             }
             return null;
         }).when(pluginService).mppw(any(), any(), any());
@@ -538,25 +492,11 @@ class UploadKafkaExecutorTest {
         when(mppwKafkaRequestFactory.create(edmlRequestContext))
                 .thenReturn(Future.succeededFuture(mppwContextQueue.poll()));
 
-        Mockito.doAnswer(invocation -> {
-            final SourceType ds = invocation.getArgument(0);
-            if (ds.equals(SourceType.ADB)) {
-                return Future.succeededFuture(adbStatusResultQueue.poll());
-            } else if (ds.equals(SourceType.ADG)) {
-                return Future.succeededFuture(adgStatusResultQueue.poll());
-            }
-            return null;
-        }).when(pluginService).status(any(), any(), any());
+        when(pluginService.status(eq(SourceType.ADB), any(), any(), any())).thenReturn(Future.succeededFuture(adbStatusResultQueue.poll()));
+        when(pluginService.status(eq(SourceType.ADG), any(), any(), any())).thenReturn(Future.succeededFuture(adgStatusResultQueue.poll()));
 
-        Mockito.doAnswer(invocation -> {
-            final SourceType ds = invocation.getArgument(0);
-            if (ds.equals(SourceType.ADB)) {
-                return Future.succeededFuture(new QueryResult());
-            } else if (ds.equals(SourceType.ADG)) {
-                return Future.succeededFuture(new QueryResult());
-            }
-            return null;
-        }).when(pluginService).mppw(any(), any(), any());
+        when(pluginService.mppw(eq(SourceType.ADB), any(), any())).thenReturn(Future.succeededFuture(CONSUMER_GROUP));
+        when(pluginService.mppw(eq(SourceType.ADG), any(), any())).thenReturn(Future.succeededFuture(CONSUMER_GROUP));
 
         uploadKafkaExecutor.execute(edmlRequestContext)
                 .onComplete(testContext.failing(error -> testContext.verify(() -> {

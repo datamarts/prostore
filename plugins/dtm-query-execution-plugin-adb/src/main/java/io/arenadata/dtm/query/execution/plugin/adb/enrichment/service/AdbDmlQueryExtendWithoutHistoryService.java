@@ -107,7 +107,7 @@ public class AdbDmlQueryExtendWithoutHistoryService implements QueryExtendServic
                 .proto(tableScan.getCluster().getPlanner().getContext())
                 .create(tableScan.getCluster(), tableScan.getTable().getRelOptSchema());
         val qualifiedName = tableScan.getTable().getQualifiedName();
-        val mutableQualifiedName = new ArrayList<String>(qualifiedName);
+        val mutableQualifiedName = new ArrayList<>(qualifiedName);
         val rexBuilder = relBuilder.getCluster().getRexBuilder();
         val rexNodes = createTableRexNodes(tableScan, rexBuilder);
         RelNode subRelNode = createExtendedRelNode(deltaInfo, relBuilder, mutableQualifiedName, rexNodes);
@@ -145,7 +145,7 @@ public class AdbDmlQueryExtendWithoutHistoryService implements QueryExtendServic
     }
 
     private void initActualTableName(List<String> mutableQualifiedName, StringBuilder name) {
-        mutableQualifiedName.set(mutableQualifiedName.size() - 1, name + TABLE_PREFIX + ACTUAL_TABLE);
+        mutableQualifiedName.set(mutableQualifiedName.size() - 1, name + ACTUAL_TABLE_SUFFIX);
     }
 
     private RelNode createRelNodeDeltaStartedIn(DeltaInformation deltaInfo,

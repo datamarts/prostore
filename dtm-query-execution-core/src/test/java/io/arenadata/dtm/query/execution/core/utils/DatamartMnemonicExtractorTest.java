@@ -18,7 +18,7 @@ package io.arenadata.dtm.query.execution.core.utils;
 import io.arenadata.dtm.common.exception.DtmException;
 import io.arenadata.dtm.query.calcite.core.configuration.CalciteCoreConfiguration;
 import io.arenadata.dtm.query.calcite.core.service.DefinitionService;
-import io.arenadata.dtm.query.execution.core.base.service.delta.impl.DeltaInformationExtractorImpl;
+import io.arenadata.dtm.query.execution.core.base.service.delta.DeltaInformationExtractor;
 import io.arenadata.dtm.query.execution.core.calcite.configuration.CalciteConfiguration;
 import io.arenadata.dtm.query.execution.core.calcite.service.CoreCalciteDefinitionService;
 import io.arenadata.dtm.query.execution.core.query.utils.DatamartMnemonicExtractor;
@@ -36,7 +36,7 @@ class DatamartMnemonicExtractorTest {
     private final DefinitionService<SqlNode> definitionService =
             new CoreCalciteDefinitionService(config.configEddlParser(calciteCoreConfiguration.eddlParserImplFactory()));
     private final DatamartMnemonicExtractor extractor = new DatamartMnemonicExtractor(
-            new DeltaInformationExtractorImpl());
+            new DeltaInformationExtractor());
 
     @Test
     void extractFromSelect() {

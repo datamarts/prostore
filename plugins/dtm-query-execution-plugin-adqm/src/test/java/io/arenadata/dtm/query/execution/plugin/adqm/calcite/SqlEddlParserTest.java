@@ -31,8 +31,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class SqlEddlParserTest {
+    private static final CalciteConfiguration calciteConfiguration = new CalciteConfiguration();
     private static final SqlDialect SQL_DIALECT = new SqlDialect(SqlDialect.EMPTY_CONTEXT);
-    private final CalciteConfiguration calciteConfiguration = new CalciteConfiguration();
     private final AdqmCalciteConfiguration calciteCoreConfiguration = new AdqmCalciteConfiguration();
     private final SqlParser.Config parserConfig = calciteConfiguration.configDdlParser(
             calciteCoreConfiguration.eddlParserImplFactory()
