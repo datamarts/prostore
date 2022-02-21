@@ -22,13 +22,13 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>dtm-cache</artifactId>
-    <version>5.3.0</version>
+    <version>5.4.0</version>
     <name>DTM Cache</name>
 
     <parent>
         <artifactId>parent</artifactId>
-        <groupId>io.arenadata.dtm</groupId>
-        <version>5.3.0</version>
+        <groupId>ru.datamart.prostore</groupId>
+        <version>5.4.0</version>
     </parent>
 
     <properties>
@@ -38,7 +38,7 @@
     <dependencies>
         <!--DTM-->
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-common</artifactId>
             <version>${project.version}</version>
             <exclusions>
@@ -106,6 +106,12 @@
             <groupId>org.testcontainers</groupId>
             <artifactId>junit-jupiter</artifactId>
             <version>1.15.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-junit5</artifactId>
+            <version>${vertx.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>

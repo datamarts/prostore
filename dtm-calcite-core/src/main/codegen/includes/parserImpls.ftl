@@ -460,7 +460,7 @@ SqlNode SqlConfigShow() :
         [ parameterName = StringLiteral() ]
     <RPAREN>
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.config.function.SqlConfigShow(parserPos, parameterName);
+        return new ru.datamart.prostore.query.calcite.core.extension.config.function.SqlConfigShow(parserPos, parameterName);
     }
 }
 SqlNode SqlAllowChanges() :
@@ -488,7 +488,7 @@ SqlNode SqlAllowChanges() :
         )
     <RPAREN>
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.ddl.SqlAllowChanges(parserPos, datamart, denyCode);
+        return new ru.datamart.prostore.query.calcite.core.extension.ddl.SqlAllowChanges(parserPos, datamart, denyCode);
     }
 }
 SqlNode SqlDenyChanges() :
@@ -516,7 +516,7 @@ SqlNode SqlDenyChanges() :
         )
     <RPAREN>
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.ddl.SqlDenyChanges(parserPos, datamart, denyCode);
+        return new ru.datamart.prostore.query.calcite.core.extension.ddl.SqlDenyChanges(parserPos, datamart, denyCode);
     }
 }
 SqlNode SqlGetChanges() :
@@ -535,7 +535,7 @@ SqlNode SqlGetChanges() :
         )
     <RPAREN>
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.check.SqlGetChanges(parserPos, datamart);
+        return new ru.datamart.prostore.query.calcite.core.extension.check.SqlGetChanges(parserPos, datamart);
     }
 }
 private void FunctionJarDef(SqlNodeList usingList) :
@@ -710,7 +710,7 @@ SqlNode SqlUseSchema() :
         pos = getPos();
 }
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.dml.SqlUseSchema(pos, id);
+        return new ru.datamart.prostore.query.calcite.core.extension.dml.SqlUseSchema(pos, id);
     }
 }
 SqlNode SqlGetDeltaOk() :
@@ -724,7 +724,7 @@ SqlNode SqlGetDeltaOk() :
     }
     <LPAREN> <RPAREN>
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.delta.function.SqlGetDeltaOk(pos);
+        return new ru.datamart.prostore.query.calcite.core.extension.delta.function.SqlGetDeltaOk(pos);
     }
 }
 SqlNode SqlGetDeltaHot() :
@@ -738,7 +738,7 @@ SqlNode SqlGetDeltaHot() :
     }
     <LPAREN> <RPAREN>
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.delta.function.SqlGetDeltaHot(pos);
+        return new ru.datamart.prostore.query.calcite.core.extension.delta.function.SqlGetDeltaHot(pos);
     }
 }
 SqlNode SqlGetDeltaByDateTime() :
@@ -755,7 +755,7 @@ SqlNode SqlGetDeltaByDateTime() :
         deltaDateTime = StringLiteral()
     <RPAREN>
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.delta.function.SqlGetDeltaByDateTime(s.end(this), deltaDateTime);
+        return new ru.datamart.prostore.query.calcite.core.extension.delta.function.SqlGetDeltaByDateTime(s.end(this), deltaDateTime);
     }
 }
 SqlNode SqlGetDeltaByNum() :
@@ -772,7 +772,7 @@ SqlNode SqlGetDeltaByNum() :
         deltaNum = NumericLiteral()
     <RPAREN>
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.delta.function.SqlGetDeltaByNum(s.end(this), deltaNum);
+        return new ru.datamart.prostore.query.calcite.core.extension.delta.function.SqlGetDeltaByNum(s.end(this), deltaNum);
     }
 }
 SqlNode SqlConfigStorageAdd() :
@@ -789,7 +789,7 @@ SqlNode SqlConfigStorageAdd() :
         sourceType = StringLiteral()
     <RPAREN>
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.config.function.SqlConfigStorageAdd(s.end(this), sourceType);
+        return new ru.datamart.prostore.query.calcite.core.extension.config.function.SqlConfigStorageAdd(s.end(this), sourceType);
     }
 }
 SqlNode SqlCheckDatabase() :
@@ -808,7 +808,7 @@ SqlNode SqlCheckDatabase() :
         {id = null;}
     )
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.check.SqlCheckDatabase(s.end(this), id);
+        return new ru.datamart.prostore.query.calcite.core.extension.check.SqlCheckDatabase(s.end(this), id);
     }
 }
 SqlNode SqlCheckTable() :
@@ -823,7 +823,7 @@ SqlNode SqlCheckTable() :
     }
     <LPAREN> id = CompoundIdentifier() <RPAREN>
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.check.SqlCheckTable(s.end(this), id);
+        return new ru.datamart.prostore.query.calcite.core.extension.check.SqlCheckTable(s.end(this), id);
     }
 }
 
@@ -839,7 +839,7 @@ SqlNode SqlCheckMaterializedView() :
     }
     <LPAREN> [id = CompoundIdentifier()] <RPAREN>
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.check.SqlCheckMaterializedView(s.end(this), id);
+        return new ru.datamart.prostore.query.calcite.core.extension.check.SqlCheckMaterializedView(s.end(this), id);
     }
 }
 
@@ -863,7 +863,7 @@ SqlNode SqlCheckData() :
     [ <COMMA> <LBRACKET> tableElementList = SelectList() <RBRACKET> ]
     <RPAREN>
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.check.SqlCheckData(s.end(this), id, deltaNum, normalization, tableElementList);
+        return new ru.datamart.prostore.query.calcite.core.extension.check.SqlCheckData(s.end(this), id, deltaNum, normalization, tableElementList);
     }
 }
 SqlNode SqlCheckVersions() :
@@ -877,7 +877,7 @@ SqlNode SqlCheckVersions() :
     }
     <LPAREN> <RPAREN>
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.check.SqlCheckVersions(pos);
+        return new ru.datamart.prostore.query.calcite.core.extension.check.SqlCheckVersions(pos);
     }
 }
 SqlNode SqlTruncateHistory() :
@@ -896,7 +896,7 @@ SqlNode SqlTruncateHistory() :
     <FOR> <SYSTEM_TIME> <AS> <OF> datetime = StringLiteral()
     [<WHERE> conditions = SqlExpressionEof()]
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.ddl.truncate.SqlTruncateHistory(s.end(this), id, datetime, conditions);
+        return new ru.datamart.prostore.query.calcite.core.extension.ddl.truncate.SqlTruncateHistory(s.end(this), id, datetime, conditions);
     }
 }
 SqlNode SqlRollbackCrashedWriteOps() :
@@ -909,7 +909,7 @@ SqlNode SqlRollbackCrashedWriteOps() :
             pos = getPos();
     }
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.edml.SqlRollbackCrashedWriteOps(pos);
+        return new ru.datamart.prostore.query.calcite.core.extension.edml.SqlRollbackCrashedWriteOps(pos);
     }
 }
 SqlNode SqlCheckSum() :
@@ -933,7 +933,32 @@ SqlNode SqlCheckSum() :
     ]
     <RPAREN>
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.check.SqlCheckSum(s.end(this), deltaNum, normalization, table, tableElementList);
+        return new ru.datamart.prostore.query.calcite.core.extension.check.SqlCheckSumBasic(s.end(this), deltaNum, normalization, table, tableElementList);
+    }
+}
+
+SqlNode SqlCheckSumSnapshot() :
+{
+    Span s;
+    final SqlLiteral deltaNum;
+    SqlLiteral normalization = null;
+    SqlIdentifier table = null;
+    List<SqlNode> tableElementList = null;
+}
+{
+    <CHECK_SUM_SNAPSHOT>
+    {
+        s = span();
+    }
+    <LPAREN> deltaNum = NumericLiteral()
+    [ <COMMA> normalization = NumericLiteral() ]
+    [ <COMMA>
+        table = CompoundIdentifier()
+        [ <COMMA> <LBRACKET> tableElementList = SelectList() <RBRACKET> ]
+    ]
+    <RPAREN>
+    {
+        return new ru.datamart.prostore.query.calcite.core.extension.check.SqlCheckSumSnapshot(s.end(this), deltaNum, normalization, table, tableElementList);
     }
 }
 SqlNode SqlGetEntityDdl() :
@@ -949,6 +974,6 @@ SqlNode SqlGetEntityDdl() :
 <LPAREN>  id = CompoundIdentifier()
     <RPAREN>
     {
-        return new io.arenadata.dtm.query.calcite.core.extension.check.SqlGetEntityDdl(s.end(this), id);
+        return new ru.datamart.prostore.query.calcite.core.extension.check.SqlGetEntityDdl(s.end(this), id);
     }
 }

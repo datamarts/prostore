@@ -1,6 +1,6 @@
 logging:
   level:
-    io.arenadata.dtm.query.execution: ${DTM_LOGGING_LEVEL:TRACE}
+    ru.datamart.prostore.query.execution: ${DTM_LOGGING_LEVEL:TRACE}
 
 server:
   port: ${DTM_METRICS_PORT:8080}
@@ -85,6 +85,7 @@ core:
     admin:
       inputStreamTimeoutMs: ${KAFKA_INPUT_STREAM_TIMEOUT_MS:2000}
     status.event.publish:
+      topic: ${KAFKA_STATUS_EVENT_TOPIC:status.event.topic}
       enabled: ${KAFKA_STATUS_EVENT_ENABLED:false}
     statusMonitor:
       statusUrl: ${STATUS_MONITOR_URL:http://localhost:9095/status}

@@ -3,9 +3,9 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>io.arenadata.dtm</groupId>
+    <groupId>ru.datamart.prostore</groupId>
     <artifactId>parent</artifactId>
-    <version>5.3.0</version>
+    <version>5.4.0</version>
     <packaging>pom</packaging>
     <name>DTM Parent</name>
 
@@ -64,9 +64,10 @@
             ${project.basedir}/../reports/target/site/jacoco-aggregate/jacoco.xml,${project.basedir}/target/site/jacoco/jacoco.xml
         </sonar.coverage.jacoco.xmlReportPaths>
         <sonar.exclusions>
-            **/configuration/**/*,**/dto/**/*,**/extension/parser/**/*,**/model/**/*,**/properties/**/*,**/dtm/common/**/*,**/extension/**/*,**/AbstractDtmDataSourcePlugin.java,**/*Result.java,**/db/verticle/AdgExecutorTopic.java
+            **/configuration/**/*,**/dto/**/*,**/extension/parser/**/*,**/model/**/*,**/properties/**/*,**/prostore/common/**/*,**/extension/**/*,**/AbstractDtmDataSourcePlugin.java,**/*Result.java,**/db/verticle/AdgExecutorTopic.java,**/jdbc/ext/DtmDatabaseMetaData.java
         </sonar.exclusions>
-        <sonar.test.exclusions>**/io/**/*</sonar.test.exclusions>
+        <sonar.coverage.exclusions>${sonar.exclusions}</sonar.coverage.exclusions>
+        <sonar.test.exclusions>**/ru/**/*</sonar.test.exclusions>
     </properties>
 
     <build>
@@ -84,17 +85,6 @@
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>${jacoco.version}</version>
-                <configuration>
-                    <excludes>
-                        <exclude>**/configuration/**/*</exclude>
-                        <exclude>**/dto/**/*</exclude>
-                        <exclude>**/extension/parser/**/*</exclude>
-                        <exclude>**/model/**/*</exclude>
-                        <exclude>**/properties/**/*</exclude>
-                        <exclude>**/dtm/common/**/*</exclude>
-                        <exclude>**/extension/**/*</exclude>
-                    </excludes>
-                </configuration>
                 <executions>
                     <execution>
                         <id>default-prepare-agent</id>

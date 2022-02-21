@@ -21,68 +21,68 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>dtm-query-execution-plugin-adqm</artifactId>
-    <version>5.3.0</version>
+    <version>5.4.0</version>
     <packaging>jar</packaging>
     <name>DTM ClickHouse Plugin</name>
     <description>Plugin for ADQM (ClickHouse) Query Execution</description>
 
     <parent>
-        <groupId>io.arenadata.dtm</groupId>
+        <groupId>ru.datamart.prostore</groupId>
         <artifactId>plugins</artifactId>
-        <version>5.3.0</version>
+        <version>5.4.0</version>
     </parent>
 
     <dependencies>
         <!-- DTM-->
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-common</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-calcite-adqm</artifactId>
             <version>${project.version}</version>
             <exclusions>
                 <exclusion>
-                    <groupId>io.arenadata</groupId>
+                    <groupId>ru.datamart.prostore</groupId>
                     <artifactId>dtm-common</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-kafka-core</artifactId>
             <version>${project.version}</version>
             <exclusions>
                 <exclusion>
-                    <groupId>io.arenadata</groupId>
+                    <groupId>ru.datamart.prostore</groupId>
                     <artifactId>dtm-common</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-query-execution-plugin-api</artifactId>
             <version>${project.version}</version>
             <exclusions>
                 <exclusion>
-                    <groupId>io.arenadata</groupId>
+                    <groupId>ru.datamart.prostore</groupId>
                     <artifactId>dtm-common</artifactId>
                 </exclusion>
                 <exclusion>
-                    <groupId>io.arenadata.dtm</groupId>
+                    <groupId>ru.datamart.prostore</groupId>
                     <artifactId>dtm-calcite-core</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-cache</artifactId>
             <version>${project.version}</version>
             <exclusions>
                 <exclusion>
-                    <groupId>io.arenadata</groupId>
+                    <groupId>ru.datamart.prostore</groupId>
                     <artifactId>dtm-common</artifactId>
                 </exclusion>
             </exclusions>

@@ -39,4 +39,4 @@ kafka:
 
 logging:
   level:
-    io.arenadata.dtm.query.execution: ${WRITER_LOG_LEVEL:INFO}
+    ru.datamart.prostore.query.execution: ${WRITER_LOG_LEVEL:INFO}

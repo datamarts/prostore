@@ -4,9 +4,9 @@ JDBC driver for connecting to the core.
 
 ### Connection via SQL clients
 
-Driver class ``io.arenadata.dtm.jdbc.DtmDriver``
+Driver class ``ru.datamart.prostore.jdbc.Driver``
 
-Connection string : ``jdbc:adtm://{host}:{port}/{datamartMnemonics}``
+Connection string : ``jdbc:prostore://{host}:{port}/{datamartMnemonics}``
 
 ``host`` - ip address where core is deployed
 

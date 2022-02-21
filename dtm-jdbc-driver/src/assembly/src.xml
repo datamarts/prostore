@@ -33,11 +33,11 @@
                 <include>org.apache.httpcomponents:httpclient</include>
                 <include>org.apache.httpcomponents:httpcore</include>
                 <include>commons-logging:commons-logging</include>
-                <include>io.arenadata.dtm:dtm-common</include>
+                <include>ru.datamart.prostore:dtm-common</include>
                 <include>ch.qos.logback:logback-classic</include>
                 <include>ch.qos.logback:logback-core</include>
                 <include>org.slf4j:slf4j-api</include>
-                <include>io.arenadata.dtm:dtm-jdbc</include>
+                <include>ru.datamart.prostore:dtm-jdbc</include>
                 <include>org.apache.commons:commons-lang3</include>
             </includes>
         </dependencySet>

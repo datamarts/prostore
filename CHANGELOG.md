@@ -1,3 +1,28 @@
+### Prostore 5.4.0, 2022-02-21
+
+#### New functionality
+* A canonical behavior for `UPSERT VALUES` for ADP, ADB
+* The LL-W queries `INSERT VALUES`, `INSERT SELECT`
+* The `CHECK_SUM_SNAPSHOT` query for a data snapshot in ADB, ADQM, and ADP
+
+#### Fixes
+* The int-boolean casting in the JOIN expression of the `CREATE MATERIALIZED VIEW` query
+* Creation of multiple deltas within a single second resulting in the same delta_date value
+* NullPointerException for `GET_ENTITY_DDL` used on hidden system entities of `INFORMATION_SCHEMA` 
+* No data aggregation via the `COUNT` operator in a MPP-R query to the ADQM datasource
+* The `UUID` type parsing in the condition `WHERE uuid_col IN ('uuid_value')`
+* Ignoring without a respective error an incorrect field name within a Kafka topic
+* An unintended error while converting relation node during an aggregate query to an ADQM-datasourced logical table with a singular UUID-typed primary key
+* An error during a SHARDING CATEGORY determination
+* An error in a JDBC serialization of `NULL` values
+
+#### Changes
+* The JDBC-connection URL is now `jdbc:prostore://...`
+* The classpaths (for JDBC-driver etc) are now like `'ru.datamart.prostore'`
+* Processing of `COALESCE` is delegated  to target DBMSs (ADB, ADQM, ADG, ADP)
+* The entity naming convention allows only Latin letters, decimal digits, and underscore
+* The `GET_CHANGES` query for the non-existing changelog is improved to return the empty result set instead of an error
+
 ### Prostore 5.3.0, 2022-01-14
 
 #### New functionality

@@ -1,1 +1,1 @@
-io.arenadata.dtm.query.execution.plugin.extension.CalciteCharsetPropsExtension
+ru.datamart.prostore.query.execution.plugin.extension.CalciteCharsetPropsExtension

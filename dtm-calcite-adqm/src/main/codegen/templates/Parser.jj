@@ -645,7 +645,7 @@ SqlNode OrderedQueryOrExpr(ExprContext exprContext) :
             if (orderBy == null) {
                 orderBy = SqlNodeList.EMPTY;
             }
-            e = new io.arenadata.dtm.calcite.adqm.extension.dml.LimitableSqlOrderBy(getPos(), e, orderBy, count, start, datasourceType, estimate);
+            e = new ru.datamart.prostore.calcite.adqm.extension.dml.LimitableSqlOrderBy(getPos(), e, orderBy, count, start, datasourceType, estimate);
 
         }
         return e;
@@ -2240,7 +2240,7 @@ SqlNode TableFinal(SqlNode tableRef) :
     <FINAL>
 
     {
-        return new io.arenadata.dtm.calcite.adqm.extension.dml.SqlFinalTable(getPos(), tableRef);
+        return new ru.datamart.prostore.calcite.adqm.extension.dml.SqlFinalTable(getPos(), tableRef);
     }
 }
 
@@ -4917,7 +4917,7 @@ SqlTypeNameSpec SqlTypeName1(Span s) :
     |
         <BOOLEAN> { sqlTypeName = SqlTypeName.BOOLEAN; }
     |
-        ( <INTEGER> | <INT> ) { sqlTypeName = SqlTypeName.INTEGER; }
+        <INTEGER> { sqlTypeName = SqlTypeName.INTEGER; }
     |
         <TINYINT> { sqlTypeName = SqlTypeName.TINYINT; }
     |
@@ -6995,7 +6995,6 @@ SqlPostfixOperator PostfixRowOperator() :
 |   < INSERT: "INSERT" >
 |   < INSTANCE: "INSTANCE" >
 |   < INSTANTIABLE: "INSTANTIABLE" >
-|   < INT: "INT" >
 |   < INTEGER: "INTEGER" >
 |   < INTERSECT: "INTERSECT" >
 |   < INTERSECTION: "INTERSECTION" >

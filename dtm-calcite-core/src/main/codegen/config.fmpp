@@ -16,7 +16,7 @@
 data: {
   parser: {
     # Generated parser implementation class package and name
-    package: "io.arenadata.dtm.query.calcite.core.extension.parser",
+    package: "ru.datamart.prostore.query.calcite.core.extension.parser",
     class: "SqlEddlParserImpl",
 
     # List of import statements.
@@ -65,6 +65,7 @@ data: {
       "CHECK_DATA"
       "CHECK_VERSIONS"
       "CHECK_SUM"
+      "CHECK_SUM_SNAPSHOT"
       "HISTORY"
       "CRASHED_WRITE_OPERATIONS"
       "GET_WRITE_OPERATIONS"
@@ -436,6 +437,7 @@ data: {
         "SqlCheckData()"
         "SqlCheckVersions()"
         "SqlCheckSum()"
+        "SqlCheckSumSnapshot()"
         "SqlTruncateHistory()"
         "SqlRollbackCrashedWriteOps()"
         "SqlConfigShow()"

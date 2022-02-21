@@ -8,7 +8,7 @@
     </encoder>
   </appender>
 
-  <logger name="io.arenadata.dtm" level="trace"/>
+  <logger name="ru.datamart.prostore" level="trace"/>
 
   <root level="warn">
     <appender-ref ref="CONSOLE"/>

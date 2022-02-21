@@ -20,57 +20,57 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>dtm-query-execution-plugin-adg</artifactId>
-    <version>5.3.0</version>
+    <version>5.4.0</version>
     <name>DTM Tarantool Plugin</name>
     <packaging>jar</packaging>
     <description>Plugin for ADG (Tarantool) Query Execution</description>
 
     <parent>
-        <groupId>io.arenadata.dtm</groupId>
+        <groupId>ru.datamart.prostore</groupId>
         <artifactId>plugins</artifactId>
-        <version>5.3.0</version>
+        <version>5.4.0</version>
     </parent>
 
     <dependencies>
         <!-- DTM-->
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-common</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-kafka-core</artifactId>
             <version>${project.version}</version>
             <exclusions>
                 <exclusion>
-                    <groupId>io.arenadata</groupId>
+                    <groupId>ru.datamart.prostore</groupId>
                     <artifactId>dtm-common</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-query-execution-plugin-api</artifactId>
             <version>${project.version}</version>
             <exclusions>
                 <exclusion>
-                    <groupId>io.arenadata</groupId>
+                    <groupId>ru.datamart.prostore</groupId>
                     <artifactId>dtm-common</artifactId>
                 </exclusion>
                 <exclusion>
-                    <groupId>io.arenadata.dtm</groupId>
+                    <groupId>ru.datamart.prostore</groupId>
                     <artifactId>dtm-calcite-core</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-calcite-core</artifactId>
             <version>${project.version}</version>
             <exclusions>
                 <exclusion>
-                    <groupId>io.arenadata</groupId>
+                    <groupId>ru.datamart.prostore</groupId>
                     <artifactId>dtm-common</artifactId>
                 </exclusion>
             </exclusions>
@@ -166,10 +166,6 @@
         <dependency>
             <groupId>com.fasterxml.jackson.dataformat</groupId>
             <artifactId>jackson-dataformat-yaml</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.datatype</groupId>
-            <artifactId>jackson-datatype-jsr310</artifactId>
         </dependency>
 
         <dependency>

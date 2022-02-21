@@ -23,12 +23,12 @@
 
     <parent>
         <artifactId>plugins</artifactId>
-        <groupId>io.arenadata.dtm</groupId>
-        <version>5.3.0</version>
+        <groupId>ru.datamart.prostore</groupId>
+        <version>5.4.0</version>
     </parent>
 
     <artifactId>dtm-query-execution-plugin-adp</artifactId>
-    <version>5.3.0</version>
+    <version>5.4.0</version>
     <name>DTM Postgresql Plugin</name>
     <packaging>jar</packaging>
     <description>Plugin for Postgresql Query Execution</description>
@@ -41,17 +41,17 @@
     <dependencies>
         <!--DTM-->
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-kafka-core</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-query-execution-plugin-api</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-calcite-core</artifactId>
             <version>${project.version}</version>
         </dependency>

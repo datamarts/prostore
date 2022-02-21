@@ -2,7 +2,7 @@
 Prostore is an open-source integration system providing a temporal DB unified interface to the heterogenous data store. It’s purposed for a datamart implementation.
 
 ## Useful links
-[Documentation (Rus)](https://arenadata.github.io/docs_prostore/)
+[Documentation (Rus)](https://datamarts.github.io/docs_prostore/)
 
 ## Local deployment
 The main prerequisites include git, Java and Apache Maven.
@@ -10,7 +10,7 @@ The main prerequisites include git, Java and Apache Maven.
 ### The cloning and building of the Prostore repository
 ```shell script
 # clone
-git clone https://github.com/arenadata/prostore
+git clone https://github.com/datamarts/prostore
 # build without any tests
 cd ~/prostore
 mvn clean
@@ -32,9 +32,9 @@ If no configuration file is located, then the Prostore application uses its inte
 #### Run prerequisite obligatory supporting services
 -    Zookeeper,
 -    Kafka,
--    set of respective DBMS,
--    kafka-DBMS connectors (e.g. see [kafka-postgres-connector](https://github.com/arenadata/kafka-postgres-connector)),
--    [Prostore status monitor](https://github.com/arenadata/prostore/tree/master/dtm-status-monitor).
+- set of respective DBMS,
+- kafka-DBMS connectors (e.g. see [kafka-postgres-connector](https://github.com/datamarts/kafka-postgres-connector)),
+- [Prostore status monitor](https://github.com/datamarts/prostore/tree/master/dtm-status-monitor).
 
 #### Run main service as a single jar on the default port 8080
 ```shell script
@@ -48,8 +48,8 @@ java -jar dtm-query-execution-core-<version>.jar
 ## Setup JDBC test client
 
 Use [DTM JDBC driver](dtm-jdbc-driver/README.md).
-URL is `jdbc:adtm://<host>:<port>/`:
+URL is `jdbc:prostore://<host>:<port>/`:
 - `host` is host of dtm-query-execution-core (`localhost`)
 - `port` is port of dtm-query-execution-core (see actual `application.yml` for dtm-query-execution-core)
 
-See also [connection with JDBC-client (Rus)](https://arenadata.github.io/docs_prostore/working_with_system/connection/connection_via_sql_client/connection_via_sql_client.html)
+See also [connection with JDBC-client (Rus)](https://datamarts.github.io/docs_prostore/working_with_system/connection/connection_via_sql_client/connection_via_sql_client.html)

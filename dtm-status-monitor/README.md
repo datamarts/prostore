@@ -3,7 +3,7 @@ An obligatory supporting service to the Prostore main service `dtm-query-executi
 actually subscribes on `__consumer_offsets` and provides information about status for specified `group.id` and `topic`
 
 ## Useful links
-[Documentation (Rus)](https://arenadata.github.io/docs_prostore/getting_started/getting_started.html)
+[Documentation (Rus)](https://datamarts.github.io/docs_prostore/getting_started/getting_started.html)
 
 ## Local deployment
 The cloning and building of this service is the part of the [Prostore deployment](../README.md).

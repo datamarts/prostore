@@ -21,13 +21,13 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>dtm-calcite-core</artifactId>
-    <version>5.3.0</version>
+    <version>5.4.0</version>
     <name>DTM Calcite Core</name>
 
     <parent>
-        <groupId>io.arenadata.dtm</groupId>
+        <groupId>ru.datamart.prostore</groupId>
         <artifactId>parent</artifactId>
-        <version>5.3.0</version>
+        <version>5.4.0</version>
     </parent>
 
     <dependencies>
@@ -49,7 +49,7 @@
         </dependency>
 
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-common</artifactId>
             <version>${project.version}</version>
             <exclusions>

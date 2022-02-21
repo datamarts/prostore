@@ -21,14 +21,14 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>dtm-query-execution-core</artifactId>
-    <version>5.3.0</version>
+    <version>5.4.0</version>
     <packaging>jar</packaging>
     <name>DTM Core</name>
 
     <parent>
-        <groupId>io.arenadata.dtm</groupId>
+        <groupId>ru.datamart.prostore</groupId>
         <artifactId>parent</artifactId>
-        <version>5.3.0</version>
+        <version>5.4.0</version>
     </parent>
 
     <properties>
@@ -39,34 +39,34 @@
     <dependencies>
         <!-- DTM -->
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-common</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-query-execution-plugin-api</artifactId>
             <version>${project.version}</version>
             <exclusions>
                 <exclusion>
-                    <groupId>io.arenadata</groupId>
+                    <groupId>ru.datamart.prostore</groupId>
                     <artifactId>dtm-common</artifactId>
                 </exclusion>
                 <exclusion>
-                    <groupId>io.arenadata.dtm</groupId>
+                    <groupId>ru.datamart.prostore</groupId>
                     <artifactId>dtm-calcite-core</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-jdbc</artifactId>
             <version>${project.version}</version>
             <scope>test</scope>
         </dependency>
         <!-- Plugins -->
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-query-execution-plugin-adg</artifactId>
             <version>${project.version}</version>
             <exclusions>
@@ -77,7 +77,7 @@
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-query-execution-plugin-adb</artifactId>
             <version>${project.version}</version>
             <exclusions>
@@ -88,7 +88,7 @@
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-query-execution-plugin-adqm</artifactId>
             <version>${project.version}</version>
             <exclusions>
@@ -99,7 +99,7 @@
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-query-execution-plugin-adp</artifactId>
             <version>${project.version}</version>
             <exclusions>
@@ -110,34 +110,34 @@
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-calcite-core</artifactId>
             <version>${project.version}</version>
             <exclusions>
                 <exclusion>
-                    <groupId>io.arenadata</groupId>
+                    <groupId>ru.datamart.prostore</groupId>
                     <artifactId>dtm-common</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-kafka-core</artifactId>
             <version>${project.version}</version>
             <exclusions>
                 <exclusion>
-                    <groupId>io.arenadata</groupId>
+                    <groupId>ru.datamart.prostore</groupId>
                     <artifactId>dtm-common</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
         <dependency>
-            <groupId>io.arenadata.dtm</groupId>
+            <groupId>ru.datamart.prostore</groupId>
             <artifactId>dtm-cache</artifactId>
             <version>${project.version}</version>
             <exclusions>
                 <exclusion>
-                    <groupId>io.arenadata</groupId>
+                    <groupId>ru.datamart.prostore</groupId>
                     <artifactId>dtm-common</artifactId>
                 </exclusion>
             </exclusions>
@@ -195,11 +195,6 @@
         <dependency>
             <groupId>io.vertx</groupId>
             <artifactId>vertx-web-client</artifactId>
-            <version>${vertx.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.vertx</groupId>
-            <artifactId>vertx-mysql-client</artifactId>
             <version>${vertx.version}</version>
         </dependency>
         <dependency>
@@ -406,7 +401,7 @@
                         <configuration>
                             <artifactItems>
                                 <artifactItem>
-                                    <groupId>io.arenadata.dtm</groupId>
+                                    <groupId>ru.datamart.prostore</groupId>
                                     <artifactId>dtm-query-execution-plugin-adb</artifactId>
                                     <type>jar</type>
                                     <overWrite>false</overWrite>
@@ -416,7 +411,7 @@
                                     <excludes>**/*.class,**/*.xml,**/*test.class</excludes>
                                 </artifactItem>
                                 <artifactItem>
-                                    <groupId>io.arenadata.dtm</groupId>
+                                    <groupId>ru.datamart.prostore</groupId>
                                     <artifactId>dtm-query-execution-plugin-adg</artifactId>
                                     <type>jar</type>
                                     <overWrite>false</overWrite>
@@ -426,7 +421,7 @@
                                     <excludes>**/*.class,**/*.xml,**/*test.class</excludes>
                                 </artifactItem>
                                 <artifactItem>
-                                    <groupId>io.arenadata.dtm</groupId>
+                                    <groupId>ru.datamart.prostore</groupId>
                                     <artifactId>dtm-query-execution-plugin-adqm</artifactId>
                                     <type>jar</type>
                                     <overWrite>false</overWrite>

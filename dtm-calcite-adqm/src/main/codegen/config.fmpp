@@ -16,7 +16,7 @@
 data: {
   parser: {
     # Generated parser implementation class package and name
-    package: "io.arenadata.dtm.calcite.adqm.extension.parser",
+    package: "ru.datamart.prostore.calcite.adqm.extension.parser",
     class: "SqlEddlParserImpl",
 
     # List of import statements.
