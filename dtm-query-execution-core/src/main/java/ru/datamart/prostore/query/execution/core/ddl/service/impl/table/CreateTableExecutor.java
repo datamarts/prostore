@@ -15,6 +15,13 @@
  */
 package ru.datamart.prostore.query.execution.core.ddl.service.impl.table;
 
+import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.calcite.sql.SqlDialect;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Component;
 import ru.datamart.prostore.common.model.ddl.Entity;
 import ru.datamart.prostore.common.model.ddl.EntityType;
 import ru.datamart.prostore.common.reader.QueryResult;
@@ -32,15 +39,6 @@ import ru.datamart.prostore.query.execution.core.ddl.dto.DdlRequestContext;
 import ru.datamart.prostore.query.execution.core.ddl.dto.DdlType;
 import ru.datamart.prostore.query.execution.core.ddl.service.QueryResultDdlExecutor;
 import ru.datamart.prostore.query.execution.core.plugin.service.DataSourcePluginService;
-import io.vertx.core.Future;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.apache.calcite.sql.SqlDialect;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Component;
-
-import java.util.Optional;
 
 import static ru.datamart.prostore.query.execution.core.ddl.utils.ValidationUtils.*;
 
@@ -77,8 +75,7 @@ public class CreateTableExecutor extends QueryResultDdlExecutor {
             val entity = metadataCalciteGenerator.generateTableMetadata(sqlCreate);
             entity.setEntityType(EntityType.TABLE);
             val requestDestination = ((SqlCreateTable) context.getSqlNode()).getDestination().getDatasourceTypes();
-            val destination = Optional.ofNullable(requestDestination)
-                    .orElse(dataSourcePluginService.getSourceTypes());
+            val destination = requestDestination.isEmpty() ? dataSourcePluginService.getSourceTypes() : requestDestination;
             entity.setDestination(destination);
             validateFields(entity);
             context.setEntity(entity);

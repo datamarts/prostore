@@ -16,10 +16,12 @@
 package ru.datamart.prostore.query.execution.plugin.adqm.enrichment.dto;
 
 import lombok.Data;
+import org.apache.calcite.rel.core.TableScan;
 import ru.datamart.prostore.common.delta.DeltaInformation;
 
 @Data
 public class DeltaToAdd {
     private final DeltaInformation deltaInformation;
     private final int depth;
+    private final TableScan target;
 }

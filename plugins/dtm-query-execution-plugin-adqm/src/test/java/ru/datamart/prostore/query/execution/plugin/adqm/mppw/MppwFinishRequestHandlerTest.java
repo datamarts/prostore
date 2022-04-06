@@ -15,6 +15,18 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adqm.mppw;
 
+import io.vertx.core.Future;
+import io.vertx.junit5.VertxExtension;
+import io.vertx.junit5.VertxTestContext;
+import lombok.val;
+import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import ru.datamart.prostore.common.model.ddl.ColumnType;
 import ru.datamart.prostore.common.model.ddl.Entity;
 import ru.datamart.prostore.common.model.ddl.EntityField;
@@ -24,28 +36,34 @@ import ru.datamart.prostore.query.execution.plugin.adqm.factory.AdqmProcessingSq
 import ru.datamart.prostore.query.execution.plugin.adqm.mppw.kafka.service.MppwFinishRequestHandler;
 import ru.datamart.prostore.query.execution.plugin.adqm.mppw.kafka.service.load.RestLoadClient;
 import ru.datamart.prostore.query.execution.plugin.adqm.query.service.DatabaseExecutor;
-import ru.datamart.prostore.query.execution.plugin.adqm.service.mock.MockDatabaseExecutor;
 import ru.datamart.prostore.query.execution.plugin.adqm.service.mock.MockStatusReporter;
 import ru.datamart.prostore.query.execution.plugin.adqm.status.dto.StatusReportDto;
 import ru.datamart.prostore.query.execution.plugin.adqm.utils.TestUtils;
 import ru.datamart.prostore.query.execution.plugin.api.edml.BaseExternalEntityMetadata;
 import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
-import io.vertx.core.Future;
-import lombok.val;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test;
 
-import java.util.*;
-import java.util.function.Predicate;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.regex.Pattern;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
+@ExtendWith({VertxExtension.class, MockitoExtension.class})
 class MppwFinishRequestHandlerTest {
     private static final DdlProperties ddlProperties = new DdlProperties();
     private static final String TEST_TOPIC = "adqm_topic";
+
+    @Mock
+    private RestLoadClient restLoadClient;
+
+    @Mock
+    private DatabaseExecutor executor;
+
+    @Captor
+    private ArgumentCaptor<String> queryCaptor;
 
     @BeforeAll
     public static void setup() {
@@ -53,54 +71,18 @@ class MppwFinishRequestHandlerTest {
     }
 
     @Test
-    void testFinishRequestCallOrder() {
-        Map<Predicate<String>, List<Map<String, Object>>> mockData = new HashMap<>();
-        mockData.put(t -> t.contains(" from system.columns"),
-                Arrays.asList(
-                        createRowMap("name", "column1"),
-                        createRowMap("name", "column2"),
-                        createRowMap("name", "column3"),
-                        createRowMap("name", "sys_from"),
-                        createRowMap("name", "sys_to"),
-                        createRowMap("name", "sys_op"),
-                        createRowMap("name", "sys_close_date"),
-                        createRowMap("name", "sign")
-                ));
-        mockData.put(t -> t.contains("select sorting_key from system.tables"),
-                Collections.singletonList(
-                        createRowMap("sorting_key", "column1, column2")
-                ));
-
-        DatabaseExecutor executor = new MockDatabaseExecutor(Arrays.asList(
-                t -> t.equalsIgnoreCase("DROP TABLE IF EXISTS dev__shares.accounts_ext_shard ON CLUSTER test_arenadata"),
-                t -> t.equalsIgnoreCase("DROP TABLE IF EXISTS dev__shares.accounts_actual_loader_shard ON CLUSTER test_arenadata"),
-                t -> t.equalsIgnoreCase("DROP TABLE IF EXISTS dev__shares.accounts_buffer_loader_shard ON CLUSTER test_arenadata"),
-                t -> t.equalsIgnoreCase("SYSTEM FLUSH DISTRIBUTED dev__shares.accounts_buffer"),
-                t -> t.equalsIgnoreCase("SYSTEM FLUSH DISTRIBUTED dev__shares.accounts_actual"),
-                t -> t.contains("column1, column2, column3, sys_from, 100, 1") && t.contains("dev__shares.accounts_actual") &&
-                        t.contains("WHERE sys_from < 101 AND sys_to > 101 AND (column1, column2) IN (") &&
-                        t.contains("SELECT column1, column2") &&
-                        t.contains("FROM dev__shares.accounts_buffer_shard"),
-                t -> t.contains("column1, column2, column3, sys_from, 100, 0") && t.contains("dev__shares.accounts_actual") &&
-                        t.contains("WHERE sys_from < 101 AND sys_to > 101 AND (column1, column2) IN (") &&
-                        t.contains("SELECT column1, column2") &&
-                        t.contains("FROM dev__shares.accounts_actual_shard") &&
-                        t.contains("WHERE sys_from = 101"),
-                t -> t.contains("SYSTEM FLUSH DISTRIBUTED dev__shares.accounts_actual"),
-                t -> t.equalsIgnoreCase("DROP TABLE IF EXISTS dev__shares.accounts_buffer ON CLUSTER test_arenadata"),
-                t -> t.equalsIgnoreCase("DROP TABLE IF EXISTS dev__shares.accounts_buffer_shard ON CLUSTER test_arenadata"),
-                t -> t.equalsIgnoreCase("OPTIMIZE TABLE dev__shares.accounts_actual_shard ON CLUSTER test_arenadata FINAL")
-        ), mockData);
+    void testFinishRequestCallOrder(VertxTestContext testContext) {
+        // arrange
+        when(executor.executeUpdate(queryCaptor.capture())).thenReturn(Future.succeededFuture());
+        when(restLoadClient.stopLoading(any())).thenReturn(Future.succeededFuture());
 
         MockStatusReporter mockReporter = getMockReporter();
-        RestLoadClient restLoadClient = mock(RestLoadClient.class);
-        when(restLoadClient.stopLoading(any())).thenReturn(Future.succeededFuture());
         val adqmCommonSqlFactory = new AdqmProcessingSqlFactory(ddlProperties, TestUtils.CALCITE_CONFIGURATION.adqmSqlDialect());
         val handler = new MppwFinishRequestHandler(restLoadClient, executor,
                 ddlProperties,
                 mockReporter, adqmCommonSqlFactory);
 
-        MppwKafkaRequest request = MppwKafkaRequest.builder()
+        val request = MppwKafkaRequest.builder()
                 .requestId(UUID.randomUUID())
                 .datamartMnemonic("shares")
                 .envName("dev")
@@ -110,10 +92,95 @@ class MppwFinishRequestHandlerTest {
                 .topic(TEST_TOPIC)
                 .uploadMetadata(new BaseExternalEntityMetadata("", "", ExternalTableFormat.AVRO, ""))
                 .build();
-        handler.execute(request).onComplete(ar -> {
-            assertTrue(ar.succeeded(), ar.cause() != null ? ar.cause().getMessage() : "");
+
+        // act
+        handler.execute(request).onComplete(ar -> testContext.verify(() -> {
+            // assert
+            if (ar.failed()) {
+                fail(ar.cause());
+            }
+
+            val expected = Arrays.asList(
+                    Pattern.compile("DROP TABLE IF EXISTS dev__shares.accounts_ext_shard ON CLUSTER test_arenadata"),
+                    Pattern.compile("DROP TABLE IF EXISTS dev__shares.accounts_actual_loader_shard ON CLUSTER test_arenadata"),
+                    Pattern.compile("DROP TABLE IF EXISTS dev__shares.accounts_buffer_loader_shard ON CLUSTER test_arenadata"),
+                    Pattern.compile("SYSTEM FLUSH DISTRIBUTED dev__shares.accounts_buffer"),
+                    Pattern.compile("SYSTEM FLUSH DISTRIBUTED dev__shares.accounts_actual"),
+                    Pattern.compile("INSERT INTO dev__shares.accounts_actual\n" +
+                            "  SELECT column1, column2, column3, sys_from, 100, 1, '.+', arrayJoin\\(\\[-1, 1\\]\\)\n" +
+                            "  FROM dev__shares.accounts_actual\n" +
+                            "  WHERE sys_from < 101 AND sys_to > 101 AND \\(column1, column2\\) IN \\(\n" +
+                            "    SELECT column1, column2\n" +
+                            "    FROM dev__shares.accounts_buffer_shard\n" +
+                            "  \\)"),
+                    Pattern.compile("INSERT INTO dev__shares.accounts_actual \\(column1, column2, column3, sys_from, sys_to, sys_op, sys_close_date, sign\\)\n" +
+                            "  SELECT column1, column2, column3, sys_from, 100, 0, '.+', arrayJoin\\(\\[-1, 1\\]\\)\n" +
+                            "  FROM dev__shares.accounts_actual\n" +
+                            "  WHERE sys_from < 101 AND sys_to > 101 AND \\(column1, column2\\) IN \\(\n" +
+                            "    SELECT column1, column2\n" +
+                            "    FROM dev__shares.accounts_actual_shard\n" +
+                            "    WHERE sys_from = 101\n" +
+                            "  \\)"),
+                    Pattern.compile("SYSTEM FLUSH DISTRIBUTED dev__shares.accounts_actual"),
+                    Pattern.compile("DROP TABLE IF EXISTS dev__shares.accounts_buffer ON CLUSTER test_arenadata"),
+                    Pattern.compile("DROP TABLE IF EXISTS dev__shares.accounts_buffer_shard ON CLUSTER test_arenadata"),
+                    Pattern.compile("OPTIMIZE TABLE dev__shares.accounts_actual_shard ON CLUSTER test_arenadata FINAL")
+            );
+
+            for (int i = 0; i < expected.size(); i++) {
+                Assertions.assertThat(queryCaptor.getAllValues().get(i)).containsPattern(expected.get(i));
+            }
+
             assertTrue(mockReporter.wasCalled("finish"));
-        });
+
+            verify(restLoadClient).stopLoading(any());
+        }).completeNow());
+    }
+
+    @Test
+    void testFinishRequestCallOrderWhenNullSysCn(VertxTestContext testContext) {
+        // arrange
+        when(executor.executeUpdate(queryCaptor.capture())).thenReturn(Future.succeededFuture());
+        when(restLoadClient.stopLoading(any())).thenReturn(Future.succeededFuture());
+
+        MockStatusReporter mockReporter = getMockReporter();
+        val adqmCommonSqlFactory = new AdqmProcessingSqlFactory(ddlProperties, TestUtils.CALCITE_CONFIGURATION.adqmSqlDialect());
+        val handler = new MppwFinishRequestHandler(restLoadClient, executor,
+                ddlProperties,
+                mockReporter, adqmCommonSqlFactory);
+
+        val request = MppwKafkaRequest.builder()
+                .requestId(UUID.randomUUID())
+                .datamartMnemonic("shares")
+                .envName("dev")
+                .loadStart(true)
+                .sysCn(null)
+                .destinationEntity(Entity.builder()
+                        .externalTableLocationPath("standalone.table")
+                        .build())
+                .topic(TEST_TOPIC)
+                .uploadMetadata(new BaseExternalEntityMetadata("", "", ExternalTableFormat.AVRO, ""))
+                .build();
+
+        // act
+        handler.execute(request).onComplete(ar -> testContext.verify(() -> {
+            // assert
+            if (ar.failed()) {
+                fail(ar.cause());
+            }
+
+            val expected = Arrays.asList(
+                    Pattern.compile("SYSTEM FLUSH DISTRIBUTED standalone.table")
+            );
+
+            assertEquals(expected.size(), queryCaptor.getAllValues().size(), "Some invocations are not expected");
+            for (int i = 0; i < expected.size(); i++) {
+                Assertions.assertThat(queryCaptor.getAllValues().get(i)).containsPattern(expected.get(i));
+            }
+
+            assertTrue(mockReporter.wasCalled("finish"));
+            verify(restLoadClient).stopLoading(any());
+        }).completeNow());
     }
 
     private Entity getEntity() {

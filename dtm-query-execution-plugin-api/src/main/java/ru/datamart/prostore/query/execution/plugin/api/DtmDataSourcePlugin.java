@@ -66,6 +66,14 @@ public interface DtmDataSourcePlugin extends Plugin<SourceType> {
     Future<Void> ddl(DdlRequest request);
 
     /**
+     * <p>execute EDDL operation</p>
+     *
+     * @param request EDDL context
+     * @return void
+     */
+    Future<Void> eddl(EddlRequest request);
+
+    /**
      * <p>execute Low Latency Reading</p>
      *
      * @param request LLR context

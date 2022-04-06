@@ -15,6 +15,12 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.service.executor.impl;
 
+import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Component;
 import ru.datamart.prostore.common.model.ddl.ExternalTableFormat;
 import ru.datamart.prostore.common.model.ddl.ExternalTableLocationType;
 import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.service.executor.AdbMppwExecutor;
@@ -22,11 +28,6 @@ import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.service.execut
 import ru.datamart.prostore.query.execution.plugin.api.exception.MppwDatasourceException;
 import ru.datamart.prostore.query.execution.plugin.api.mppw.MppwRequest;
 import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
-import io.vertx.core.Future;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Component;
 
 import java.util.EnumMap;
 import java.util.Map;
@@ -56,7 +57,8 @@ public class AdbMppwKafkaService implements AdbMppwExecutor {
         }
 
         return Future.future(promise -> {
-            final LoadType loadType = LoadType.valueOf(request.isLoadStart());
+            val loadType = LoadType.valueOf(request.isLoadStart());
+            log.debug("[ADB] mppw trying to {}", loadType);
             mppwExecutors.get(loadType).execute((MppwKafkaRequest) request)
                     .onComplete(promise);
         });

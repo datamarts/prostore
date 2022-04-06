@@ -16,12 +16,6 @@
 package ru.datamart.prostore.query.execution.core.query.verticle;
 
 import com.google.common.net.HttpHeaders;
-import ru.datamart.prostore.query.execution.core.base.configuration.properties.CoreHttpProperties;
-import ru.datamart.prostore.query.execution.core.base.dto.request.RequestParam;
-import ru.datamart.prostore.query.execution.core.metrics.controller.MetricsController;
-import ru.datamart.prostore.query.execution.core.query.controller.DatamartMetaController;
-import ru.datamart.prostore.query.execution.core.query.controller.QueryController;
-import ru.datamart.prostore.query.execution.core.query.utils.ExceptionUtils;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.JsonObject;
@@ -31,6 +25,12 @@ import io.vertx.ext.web.handler.BodyHandler;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.springframework.util.MimeTypeUtils;
+import ru.datamart.prostore.query.execution.core.base.configuration.properties.CoreHttpProperties;
+import ru.datamart.prostore.query.execution.core.base.dto.request.RequestParam;
+import ru.datamart.prostore.query.execution.core.metrics.controller.MetricsController;
+import ru.datamart.prostore.query.execution.core.query.controller.DatamartMetaController;
+import ru.datamart.prostore.query.execution.core.query.controller.QueryController;
+import ru.datamart.prostore.query.execution.core.query.utils.ExceptionUtils;
 
 import static org.springframework.util.MimeTypeUtils.APPLICATION_JSON_VALUE;
 
@@ -83,8 +83,7 @@ public class QueryVerticle extends AbstractVerticle {
     }
 
     private void failureHandler(RoutingContext ctx) {
-        val failure = ctx.failure();
-        val failureMessage = ExceptionUtils.prepareMessage(failure);
+        val failureMessage = ExceptionUtils.prepareMessage(ctx.failure());
         val error = new JsonObject().put("exceptionMessage", failureMessage);
         ctx.response().setStatusCode(ctx.statusCode());
         ctx.response().putHeader(HttpHeaders.CONTENT_TYPE, MimeTypeUtils.APPLICATION_JSON_VALUE);

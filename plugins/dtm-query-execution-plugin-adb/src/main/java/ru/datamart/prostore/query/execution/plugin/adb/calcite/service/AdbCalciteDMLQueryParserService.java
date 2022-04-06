@@ -15,12 +15,13 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.calcite.service;
 
-import ru.datamart.prostore.query.calcite.core.provider.CalciteContextProvider;
-import ru.datamart.prostore.query.calcite.core.service.impl.CalciteDMLQueryParserService;
 import io.vertx.core.Vertx;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import ru.datamart.prostore.query.calcite.core.provider.CalciteContextProvider;
+import ru.datamart.prostore.query.calcite.core.service.SchemaExtender;
+import ru.datamart.prostore.query.calcite.core.service.impl.CalciteDMLQueryParserService;
 
 @Service("adbCalciteDMLQueryParserService")
 public class AdbCalciteDMLQueryParserService extends CalciteDMLQueryParserService {
@@ -28,7 +29,8 @@ public class AdbCalciteDMLQueryParserService extends CalciteDMLQueryParserServic
     @Autowired
     public AdbCalciteDMLQueryParserService(
             @Qualifier("adbCalciteContextProvider") CalciteContextProvider contextProvider,
-            @Qualifier("coreVertx") Vertx vertx) {
-        super(contextProvider, vertx);
+            @Qualifier("coreVertx") Vertx vertx,
+            @Qualifier("adbSchemaExtender") SchemaExtender schemaExtender) {
+        super(contextProvider, vertx, schemaExtender);
     }
 }

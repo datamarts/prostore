@@ -15,31 +15,7 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adqm.mppw.kafka.dto;
 
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import ru.datamart.prostore.common.dto.KafkaBrokerInfo;
-import ru.datamart.prostore.common.schema.SchemaDeserializer;
-import ru.datamart.prostore.common.schema.SchemaSerializer;
-import lombok.Builder;
-import lombok.Data;
-import org.apache.avro.Schema;
-
 import java.io.Serializable;
-import java.util.List;
 
-@Data
-@Builder
-public class RestMppwKafkaLoadRequest implements Serializable {
-    private String requestId;
-    private long hotDelta;
-    private String datamart;
-    private String tableName;
-    private List<KafkaBrokerInfo> kafkaBrokers;
-    private String kafkaTopic;
-    private String consumerGroup;
-    private String format;
-    @JsonDeserialize(using = SchemaDeserializer.class)
-    @JsonSerialize(using = SchemaSerializer.class)
-    private Schema schema;
-    private int messageProcessingLimit;
+public interface RestMppwKafkaLoadRequest extends Serializable {
 }

@@ -35,6 +35,7 @@ import ru.datamart.prostore.common.reader.QueryResult;
 import ru.datamart.prostore.common.request.DatamartRequest;
 import ru.datamart.prostore.query.calcite.core.extension.check.SqlCheckCall;
 import ru.datamart.prostore.query.calcite.core.extension.config.SqlConfigCall;
+import ru.datamart.prostore.query.calcite.core.extension.ddl.EraseChangeOperation;
 import ru.datamart.prostore.query.calcite.core.extension.ddl.SqlChanges;
 import ru.datamart.prostore.query.calcite.core.extension.delta.SqlDeltaCall;
 import ru.datamart.prostore.query.calcite.core.extension.dml.SqlUseSchema;
@@ -44,7 +45,7 @@ import ru.datamart.prostore.query.calcite.core.extension.edml.SqlRollbackCrashed
 import ru.datamart.prostore.query.calcite.core.service.DefinitionService;
 import ru.datamart.prostore.query.execution.core.base.dto.request.CoreRequestContext;
 import ru.datamart.prostore.query.execution.core.query.factory.QueryRequestFactory;
-import ru.datamart.prostore.query.execution.core.query.factory.RequestContextFactory;
+import ru.datamart.prostore.query.execution.core.query.request.RequestContextPreparer;
 import ru.datamart.prostore.query.execution.core.query.utils.DatamartMnemonicExtractor;
 import ru.datamart.prostore.query.execution.core.query.utils.DefaultDatamartSetter;
 
@@ -55,28 +56,19 @@ public class QueryAnalyzer {
     private final QueryDispatcher queryDispatcher;
     private final DefinitionService<SqlNode> definitionService;
     private final Vertx vertx;
-    private final RequestContextFactory requestContextFactory;
-    private final DatamartMnemonicExtractor datamartMnemonicExtractor;
-    private final DefaultDatamartSetter defaultDatamartSetter;
+    private final RequestContextPreparer requestContextPreparer;
     private final QuerySemicolonRemover querySemicolonRemover;
-    private final QueryRequestFactory queryRequestFactory;
 
     @Autowired
     public QueryAnalyzer(QueryDispatcher queryDispatcher,
                          @Qualifier("coreCalciteDefinitionService") DefinitionService<SqlNode> definitionService,
-                         RequestContextFactory requestContextFactory,
+                         RequestContextPreparer requestContextPreparer,
                          @Qualifier("coreVertx") Vertx vertx,
-                         DatamartMnemonicExtractor datamartMnemonicExtractor,
-                         DefaultDatamartSetter defaultDatamartSetter,
-                         QuerySemicolonRemover querySemicolonRemover,
-                         QueryRequestFactory queryRequestFactory) {
+                         QuerySemicolonRemover querySemicolonRemover) {
         this.queryDispatcher = queryDispatcher;
         this.definitionService = definitionService;
-        this.requestContextFactory = requestContextFactory;
         this.vertx = vertx;
-        this.datamartMnemonicExtractor = datamartMnemonicExtractor;
-        this.defaultDatamartSetter = defaultDatamartSetter;
-        this.queryRequestFactory = queryRequestFactory;
+        this.requestContextPreparer = requestContextPreparer;
         this.querySemicolonRemover = querySemicolonRemover;
     }
 
@@ -91,7 +83,8 @@ public class QueryAnalyzer {
     private Future<ParsedQueryResponse> getParsedQuery(InputQueryRequest inputQueryRequest) {
         return Future.future(promise -> vertx.executeBlocking(it -> {
             try {
-                val request = querySemicolonRemover.remove(queryRequestFactory.create(inputQueryRequest));
+                val initialRequest = QueryRequestFactory.create(inputQueryRequest);
+                val request = querySemicolonRemover.remove(initialRequest);
                 SqlNode node = definitionService.processingQuery(request.getSql());
                 it.complete(new ParsedQueryResponse(request, node));
             } catch (Exception e) {
@@ -102,17 +95,17 @@ public class QueryAnalyzer {
 
     private Future<CoreRequestContext<? extends DatamartRequest, ? extends SqlNode>> createRequestContext(ParsedQueryResponse parsedQueryResponse) {
         return Future.future(promise -> {
-            SqlNode sqlNode = parsedQueryResponse.getSqlNode();
-            QueryRequest queryRequest = parsedQueryResponse.getQueryRequest();
+            val sqlNode = parsedQueryResponse.getSqlNode();
+            val queryRequest = parsedQueryResponse.getQueryRequest();
             if (hasSchema(sqlNode)) {
                 if (!Strings.isEmpty(queryRequest.getDatamartMnemonic())) {
-                    sqlNode = defaultDatamartSetter.set(sqlNode, queryRequest.getDatamartMnemonic());
+                    DefaultDatamartSetter.mutateNode(sqlNode, queryRequest.getDatamartMnemonic());
                 }
-                val datamartMnemonic = datamartMnemonicExtractor.extract(sqlNode);
+                val datamartMnemonic = DatamartMnemonicExtractor.extract(sqlNode);
                 queryRequest.setDatamartMnemonic(datamartMnemonic);
             }
 
-            requestContextFactory.create(queryRequest, sqlNode)
+            requestContextPreparer.prepare(queryRequest, sqlNode)
                     .onComplete(promise);
         });
     }
@@ -127,7 +120,8 @@ public class QueryAnalyzer {
                 && !(sqlNode instanceof SqlCheckCall)
                 && !(sqlNode instanceof SqlRollbackCrashedWriteOps)
                 && !(sqlNode instanceof SqlConfigCall)
-                && !(sqlNode instanceof SqlChanges);
+                && !(sqlNode instanceof SqlChanges)
+                && !(sqlNode instanceof EraseChangeOperation);
     }
 
     @Data

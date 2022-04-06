@@ -66,4 +66,16 @@ public class SqlCreateDownloadExternalTable extends SqlCreate {
         formatOperator.unparse(writer, leftPrec, rightPrec);
         chunkSizeOperator.unparse(writer, leftPrec, rightPrec);
     }
+
+    public LocationOperator getLocationOperator() {
+        return locationOperator;
+    }
+
+    public FormatOperator getFormatOperator() {
+        return formatOperator;
+    }
+
+    public ChunkSizeOperator getChunkSizeOperator() {
+        return chunkSizeOperator;
+    }
 }

@@ -34,6 +34,7 @@ public class AdqmDataSourcePluginConfig {
     @Bean("adqmDtmDataSourcePlugin")
     public AdqmDtmDataSourcePlugin adqmDataSourcePlugin(
             @Qualifier("adqmDdlService") DdlService<Void> ddlService,
+            @Qualifier("adqmEddlService") EddlService eddlService,
             @Qualifier("adqmLlrService") LlrService<QueryResult> llrService,
             @Qualifier("adqmInsertValuesService") InsertValuesService insertValuesService,
             @Qualifier("adqmInsertSelectService") InsertSelectService insertSelectService,
@@ -51,6 +52,7 @@ public class AdqmDataSourcePluginConfig {
             @Qualifier("adqmSynchronizeService") SynchronizeService synchronizeService) {
         return new AdqmDtmDataSourcePlugin(
                 ddlService,
+                eddlService,
                 llrService,
                 insertValuesService,
                 insertSelectService,

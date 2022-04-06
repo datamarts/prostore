@@ -15,16 +15,17 @@
  */
 package ru.datamart.prostore.query.calcite.core.util;
 
-import ru.datamart.prostore.common.reader.SourceType;
-import ru.datamart.prostore.query.calcite.core.extension.parser.ParseException;
-import ru.datamart.prostore.query.calcite.core.node.SqlSelectTree;
-import ru.datamart.prostore.query.calcite.core.visitors.SqlAggregateFinder;
 import lombok.val;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlOrderBy;
 import org.apache.calcite.sql.SqlSelect;
+import ru.datamart.prostore.common.reader.SourceType;
+import ru.datamart.prostore.query.calcite.core.extension.parser.ParseException;
+import ru.datamart.prostore.query.calcite.core.node.SqlSelectTree;
+import ru.datamart.prostore.query.calcite.core.visitors.SqlAggregateFinder;
 
+import java.util.Collections;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -53,7 +54,7 @@ public final class SqlNodeUtil {
 
     public static Set<SourceType> extractSourceTypes(SqlNodeList sourceTypesSqlList) {
         if (sourceTypesSqlList == null) {
-            return null;
+            return Collections.emptySet();
         }
 
         return sourceTypesSqlList.getList().stream()

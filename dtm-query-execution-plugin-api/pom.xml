@@ -21,13 +21,13 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>dtm-query-execution-plugin-api</artifactId>
-    <version>5.4.0</version>
+    <version>5.5.0</version>
     <name>DTM Core API</name>
 
     <parent>
         <groupId>ru.datamart.prostore</groupId>
         <artifactId>parent</artifactId>
-        <version>5.4.0</version>
+        <version>5.5.0</version>
     </parent>
 
     <dependencies>

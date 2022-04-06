@@ -15,16 +15,16 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adg.utils;
 
+import com.google.common.collect.Lists;
+import lombok.val;
 import org.apache.calcite.sql.SqlNode;
 import org.junit.jupiter.api.Assertions;
-import ru.datamart.prostore.common.model.ddl.ColumnType;
-import ru.datamart.prostore.common.model.ddl.Entity;
-import ru.datamart.prostore.common.model.ddl.EntityField;
-import ru.datamart.prostore.common.model.ddl.EntityFieldUtils;
+import ru.datamart.prostore.common.model.ddl.*;
 import ru.datamart.prostore.query.calcite.core.service.DefinitionService;
 import ru.datamart.prostore.query.calcite.core.service.impl.CalciteDefinitionService;
 import ru.datamart.prostore.query.execution.plugin.adg.base.model.cartridge.schema.*;
 import ru.datamart.prostore.query.execution.plugin.adg.calcite.configuration.AdgCalciteConfiguration;
+import ru.datamart.prostore.query.execution.plugin.api.request.EddlRequest;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -33,6 +33,9 @@ import static ru.datamart.prostore.query.execution.plugin.adg.base.factory.AdgTa
 import static ru.datamart.prostore.query.execution.plugin.adg.base.utils.ColumnFields.*;
 
 public class TestUtils {
+    private static final String SCHEMA = "test_schema";
+    private static final String ENTITY_TABLE_NAME = "test_table";
+    private static final String LOCATION_PATH = "test_path";
     public static final AdgCalciteConfiguration CALCITE_CONFIGURATION = new AdgCalciteConfiguration();
     public static final DefinitionService<SqlNode> DEFINITION_SERVICE =
             new CalciteDefinitionService(CALCITE_CONFIGURATION.configDdlParser(CALCITE_CONFIGURATION.ddlParserImplFactory())) {
@@ -68,7 +71,9 @@ public class TestUtils {
             fields.add(builder.build());
         }
         fields.addAll(keyFields);
-        return new Entity("test_schema.test_table", fields);
+        val entity = new Entity("test_schema.test_table", fields);
+        entity.setExternalTableLocationPath(LOCATION_PATH);
+        return entity;
     }
 
     public static Map<String, Space> getSpaces(Entity entity) {
@@ -143,6 +148,62 @@ public class TestUtils {
     private static SpaceAttribute createAttribute(EntityField field, boolean overrideNullable) {
         return new SpaceAttribute(overrideNullable || field.getNullable(), field.getName(),
                 SpaceAttributeTypeUtil.toAttributeType(field.getType()));
+    }
+
+    public static EddlRequest createEddlRequest() {
+        return EddlRequest.builder()
+                .createRequest(true)
+                .requestId(UUID.randomUUID())
+                .entity(getEntity())
+                .build();
+    }
+
+    public static EddlRequest createEddlRequestWithBucket() {
+        return EddlRequest.builder()
+                .createRequest(true)
+                .requestId(UUID.randomUUID())
+                .entity(createEntityWithBucketField())
+                .build();
+    }
+
+    public static Entity createEntityWithBucketField(){
+        val idCol = EntityField.builder()
+                .ordinalPosition(0)
+                .name("ID")
+                .type(ColumnType.INT)
+                .nullable(false)
+                .primaryOrder(1)
+                .shardingOrder(1)
+                .build();
+        val descriptionCol = EntityField.builder()
+                .ordinalPosition(1)
+                .name("DESCRIPTION")
+                .type(ColumnType.VARCHAR)
+                .size(200)
+                .nullable(false)
+                .primaryOrder(2)
+                .build();
+        val textCol = EntityField.builder()
+                .ordinalPosition(2)
+                .name("TEXT")
+                .type(ColumnType.VARCHAR)
+                .size(10)
+                .nullable(true)
+                .build();
+        val bucketCol = EntityField.builder()
+                .ordinalPosition(3)
+                .name("BUCKET_ID")
+                .type(ColumnType.INT)
+                .nullable(false)
+                .build();
+        val tableFields = Lists.newArrayList(idCol, descriptionCol, textCol, bucketCol);
+        return Entity.builder()
+                .name(ENTITY_TABLE_NAME)
+                .entityType(EntityType.WRITEABLE_EXTERNAL_TABLE)
+                .schema(SCHEMA)
+                .fields(tableFields)
+                .externalTableLocationPath(LOCATION_PATH)
+                .build();
     }
 
     public static void assertNormalizedEquals(String actual, String expected) {

@@ -57,14 +57,16 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(VertxExtension.class)
 class InsertValuesExecutorTest {
+
+    private static final String INSERT_INTO_SQL = "INSERT INTO users(id, name) values(1, 'Name')";
+    private static final String RETRY_INSERT_INTO_SQL = "RETRY INSERT INTO users(id, name) values(1, 'Name')";
 
     @Mock
     private DataSourcePluginService pluginService;
@@ -80,7 +82,8 @@ class InsertValuesExecutorTest {
     private ServiceDbDao serviceDbDao;
 
     private InsertValuesExecutor executor;
-    private Entity entity;
+    private Entity logicalEntity;
+    private Entity writeableExternalEntity;
     private DmlRequestContext requestContext;
 
     @BeforeEach
@@ -92,7 +95,7 @@ class InsertValuesExecutorTest {
 
         val updateColumnsValidator = new WithNullableCheckUpdateColumnsValidator(new BasicUpdateColumnsValidator());
         executor = new InsertValuesExecutor(pluginService, serviceDbFacade, restoreStateService, updateColumnsValidator);
-        entity = Entity.builder()
+        logicalEntity = Entity.builder()
                 .schema("datamart")
                 .name("users")
                 .fields(Arrays.asList(
@@ -110,8 +113,26 @@ class InsertValuesExecutorTest {
                 .destination(Collections.singleton(SourceType.ADB))
                 .entityType(EntityType.TABLE)
                 .build();
+        writeableExternalEntity = Entity.builder()
+                .schema("datamart")
+                .name("users")
+                .fields(Arrays.asList(
+                        EntityField.builder()
+                                .name("id")
+                                .type(ColumnType.INT)
+                                .primaryOrder(1)
+                                .nullable(false)
+                                .build(),
+                        EntityField.builder()
+                                .name("name")
+                                .type(ColumnType.VARCHAR)
+                                .nullable(true)
+                                .build()))
+                .destination(Collections.singleton(SourceType.ADB))
+                .entityType(EntityType.WRITEABLE_EXTERNAL_TABLE)
+                .build();
 
-        String sql = "INSERT INTO users(id, name) values(1, 'Name')";
+        String sql = INSERT_INTO_SQL;
         SqlNode sqlNode = TestUtils.DEFINITION_SERVICE.processingQuery(sql);
         QueryRequest queryRequest = QueryRequest.builder()
                 .requestId(UUID.randomUUID())
@@ -129,7 +150,7 @@ class InsertValuesExecutorTest {
     @Test
     void insertSuccess(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.succeededFuture(1L));
         when(deltaServiceDao.writeOperationSuccess("datamart", 1L)).thenReturn(Future.succeededFuture());
         when(pluginService.insert(eq(SourceType.ADB), any(), any(InsertValuesRequest.class))).thenReturn(Future.succeededFuture());
@@ -146,9 +167,22 @@ class InsertValuesExecutorTest {
     }
 
     @Test
-    void insertSuccessWhenResumableOperation(VertxTestContext testContext) {
+    void insertSuccessForWriteableExternalTable(VertxTestContext testContext) {
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(writeableExternalEntity));
+        when(pluginService.insert(eq(SourceType.ADB), any(), any(InsertValuesRequest.class))).thenReturn(Future.succeededFuture());
+        when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
+
+        executor.execute(requestContext)
+                .onSuccess(ar -> testContext.verify(() -> {
+                    verifyNoInteractions(deltaServiceDao, restoreStateService);
+                }).completeNow())
+                .onFailure(testContext::failNow);
+    }
+
+    @Test
+    void insertSuccessWhenRetryAndResumableOperation(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new TableBlockedException("tbl", new RuntimeException())));
         when(deltaServiceDao.writeOperationSuccess("datamart", 1L)).thenReturn(Future.succeededFuture());
         when(pluginService.insert(eq(SourceType.ADB), any(), any(InsertValuesRequest.class))).thenReturn(Future.succeededFuture());
@@ -161,6 +195,7 @@ class InsertValuesExecutorTest {
                 .sysCn(1L)
                 .build();
         when(deltaServiceDao.getDeltaWriteOperations("datamart")).thenReturn(Future.succeededFuture(Arrays.asList(existWriteOp)));
+        requestContext.setSqlNode(TestUtils.DEFINITION_SERVICE.processingQuery(RETRY_INSERT_INTO_SQL));
 
         executor.execute(requestContext)
                 .onSuccess(ar -> testContext.verify(() -> {
@@ -174,9 +209,41 @@ class InsertValuesExecutorTest {
     }
 
     @Test
+    void insertSuccessWhenNotRetryAndResumableOperation(VertxTestContext testContext) {
+        when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
+        when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new TableBlockedException("tbl", new RuntimeException("Exception"))));
+        when(deltaServiceDao.writeOperationSuccess("datamart", 1L)).thenReturn(Future.succeededFuture());
+        when(pluginService.insert(eq(SourceType.ADB), any(), any(InsertValuesRequest.class))).thenReturn(Future.succeededFuture());
+        when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
+
+        DeltaWriteOp existWriteOp = DeltaWriteOp.builder()
+                .query("INSERT INTO users (id, name) VALUES ca37a04282d9b18bf2a47122618b1594")
+                .tableName("users")
+                .status(WriteOperationStatus.EXECUTING.getValue())
+                .sysCn(1L)
+                .build();
+        when(deltaServiceDao.getDeltaWriteOperations("datamart")).thenReturn(Future.succeededFuture(Arrays.asList(existWriteOp)));
+
+        executor.execute(requestContext)
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.succeeded()) {
+                        fail("Unexpected success");
+                    }
+                    assertEquals("Table[tbl] blocked: Exception", ar.cause().getMessage());
+                    verify(deltaServiceDao, never()).getDeltaWriteOperations("datamart");
+                    verify(deltaServiceDao, never()).writeOperationSuccess("datamart", 1L);
+                    verify(deltaServiceDao, never()).deleteWriteOperation("datamart", 1L);
+                    verify(deltaServiceDao, never()).writeOperationError("datamart", 1L);
+                    verify(restoreStateService, never()).restoreErase(any());
+                }).completeNow())
+                .onFailure(testContext::failNow);
+    }
+
+    @Test
     void insertFailWhenNotTableBlockedException(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new RuntimeException("Exception")));
         when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
 
@@ -202,10 +269,39 @@ class InsertValuesExecutorTest {
     }
 
     @Test
-    void insertFailWhenNotEqualExistWriteOpTable(VertxTestContext testContext) {
+    void insertFailWhenRetryAndNotEqualExistWriteOpTable(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new TableBlockedException("tbl", new RuntimeException())));
+        when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
+
+        DeltaWriteOp existWriteOp = DeltaWriteOp.builder()
+                .query("INSERT INTO users (id, name) VALUES ca37a04282d9b18bf2a47122618b1594")
+                .tableName("unknown")
+                .status(WriteOperationStatus.EXECUTING.getValue())
+                .sysCn(1L)
+                .build();
+        when(deltaServiceDao.getDeltaWriteOperations("datamart")).thenReturn(Future.succeededFuture(Arrays.asList(existWriteOp)));
+        requestContext.setSqlNode(TestUtils.DEFINITION_SERVICE.processingQuery(RETRY_INSERT_INTO_SQL));
+
+        executor.execute(requestContext)
+                .onSuccess(ar -> testContext.failNow("Unexpected success"))
+                .onFailure(t -> testContext.verify(() -> {
+                    assertEquals("Table blocked and could not find equal writeOp for resume", t.getMessage());
+                    verify(deltaServiceDao).getDeltaWriteOperations("datamart");
+                    verify(deltaServiceDao, never()).deleteWriteOperation("datamart", 1L);
+                    verify(deltaServiceDao, never()).writeOperationError("datamart", 1L);
+                    verify(restoreStateService, never()).restoreErase(any());
+                    verify(pluginService).hasSourceType(any());
+                    verifyNoMoreInteractions(pluginService);
+                }).completeNow());
+    }
+
+    @Test
+    void insertFailWhenNotRetryAndNotEqualExistWriteOpTable(VertxTestContext testContext) {
+        when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
+        when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new TableBlockedException("tbl", new RuntimeException("Exception"))));
         when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
 
         DeltaWriteOp existWriteOp = DeltaWriteOp.builder()
@@ -219,6 +315,35 @@ class InsertValuesExecutorTest {
         executor.execute(requestContext)
                 .onSuccess(ar -> testContext.failNow("Unexpected success"))
                 .onFailure(t -> testContext.verify(() -> {
+                    assertEquals("Table[tbl] blocked: Exception", t.getMessage());
+                    verify(deltaServiceDao, never()).getDeltaWriteOperations("datamart");
+                    verify(deltaServiceDao, never()).deleteWriteOperation("datamart", 1L);
+                    verify(deltaServiceDao, never()).writeOperationError("datamart", 1L);
+                    verify(restoreStateService, never()).restoreErase(any());
+                    verify(pluginService).hasSourceType(any());
+                    verifyNoMoreInteractions(pluginService);
+                }).completeNow());
+    }
+
+    @Test
+    void insertFailWhenRetryAndNotEqualExistWriteOpStatus(VertxTestContext testContext) {
+        when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
+        when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new TableBlockedException("tbl", new RuntimeException())));
+        when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
+
+        DeltaWriteOp existWriteOp = DeltaWriteOp.builder()
+                .query("INSERT INTO users (id, name) VALUES ca37a04282d9b18bf2a47122618b1594")
+                .tableName("users")
+                .status(WriteOperationStatus.ERROR.getValue())
+                .sysCn(1L)
+                .build();
+        when(deltaServiceDao.getDeltaWriteOperations("datamart")).thenReturn(Future.succeededFuture(Arrays.asList(existWriteOp)));
+        requestContext.setSqlNode(TestUtils.DEFINITION_SERVICE.processingQuery(RETRY_INSERT_INTO_SQL));
+
+        executor.execute(requestContext)
+                .onSuccess(ar -> testContext.failNow("Unexpected success"))
+                .onFailure(t -> testContext.verify(() -> {
                     assertEquals("Table blocked and could not find equal writeOp for resume", t.getMessage());
                     verify(deltaServiceDao).getDeltaWriteOperations("datamart");
                     verify(deltaServiceDao, never()).deleteWriteOperation("datamart", 1L);
@@ -230,10 +355,10 @@ class InsertValuesExecutorTest {
     }
 
     @Test
-    void insertFailWhenNotEqualExistWriteOpStatus(VertxTestContext testContext) {
+    void insertFailWhenNotRetryAndNotEqualExistWriteOpStatus(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
-        when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new TableBlockedException("tbl", new RuntimeException())));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
+        when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new TableBlockedException("tbl", new RuntimeException("Exception"))));
         when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
 
         DeltaWriteOp existWriteOp = DeltaWriteOp.builder()
@@ -247,8 +372,8 @@ class InsertValuesExecutorTest {
         executor.execute(requestContext)
                 .onSuccess(ar -> testContext.failNow("Unexpected success"))
                 .onFailure(t -> testContext.verify(() -> {
-                    assertEquals("Table blocked and could not find equal writeOp for resume", t.getMessage());
-                    verify(deltaServiceDao).getDeltaWriteOperations("datamart");
+                    assertEquals("Table[tbl] blocked: Exception", t.getMessage());
+                    verify(deltaServiceDao, never()).getDeltaWriteOperations("datamart");
                     verify(deltaServiceDao, never()).deleteWriteOperation("datamart", 1L);
                     verify(deltaServiceDao, never()).writeOperationError("datamart", 1L);
                     verify(restoreStateService, never()).restoreErase(any());
@@ -258,9 +383,9 @@ class InsertValuesExecutorTest {
     }
 
     @Test
-    void insertFailWhenNotEqualExistWriteOpQuery(VertxTestContext testContext) {
+    void insertFailWhenRetryAndNotEqualExistWriteOpQuery(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new TableBlockedException("tbl", new RuntimeException())));
         when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
 
@@ -271,6 +396,7 @@ class InsertValuesExecutorTest {
                 .sysCn(1L)
                 .build();
         when(deltaServiceDao.getDeltaWriteOperations("datamart")).thenReturn(Future.succeededFuture(Arrays.asList(existWriteOp)));
+        requestContext.setSqlNode(TestUtils.DEFINITION_SERVICE.processingQuery(RETRY_INSERT_INTO_SQL));
 
         executor.execute(requestContext)
                 .onSuccess(ar -> testContext.failNow("Unexpected success"))
@@ -286,11 +412,39 @@ class InsertValuesExecutorTest {
     }
 
     @Test
+    void insertFailWhenNotRetryAndNotEqualExistWriteOpQuery(VertxTestContext testContext) {
+        when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
+        when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new TableBlockedException("tbl", new RuntimeException("Exception"))));
+        when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
+
+        DeltaWriteOp existWriteOp = DeltaWriteOp.builder()
+                .query("INSERT INTO users (id, name) VALUES NOT_RIGHT")
+                .tableName("users")
+                .status(WriteOperationStatus.EXECUTING.getValue())
+                .sysCn(1L)
+                .build();
+        when(deltaServiceDao.getDeltaWriteOperations("datamart")).thenReturn(Future.succeededFuture(Arrays.asList(existWriteOp)));
+
+        executor.execute(requestContext)
+                .onSuccess(ar -> testContext.failNow("Unexpected success"))
+                .onFailure(t -> testContext.verify(() -> {
+                    assertEquals("Table[tbl] blocked: Exception", t.getMessage());
+                    verify(deltaServiceDao, never()).getDeltaWriteOperations("datamart");
+                    verify(deltaServiceDao, never()).deleteWriteOperation("datamart", 1L);
+                    verify(deltaServiceDao, never()).writeOperationError("datamart", 1L);
+                    verify(restoreStateService, never()).restoreErase(any());
+                    verify(pluginService).hasSourceType(any());
+                    verifyNoMoreInteractions(pluginService);
+                }).completeNow());
+    }
+
+    @Test
     void insertIntoMatView(VertxTestContext testContext) {
-        entity.setEntityType(EntityType.MATERIALIZED_VIEW);
+        logicalEntity.setEntityType(EntityType.MATERIALIZED_VIEW);
 
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.succeededFuture(1L));
         when(deltaServiceDao.writeOperationSuccess("datamart", 1L)).thenReturn(Future.succeededFuture());
         when(pluginService.insert(eq(SourceType.ADB), any(), any(InsertValuesRequest.class))).thenReturn(Future.succeededFuture());
@@ -299,7 +453,7 @@ class InsertValuesExecutorTest {
         executor.execute(requestContext)
                 .onSuccess(ar -> testContext.failNow("Should have been failed to insert into mat view"))
                 .onFailure(ar -> testContext.verify(() -> {
-                    assertEquals("Forbidden. Write operations allowed for logical tables only.", ar.getMessage());
+                    assertEquals("Forbidden. Write operations allowed for logical and writeable external tables only.", ar.getMessage());
                     verify(deltaServiceDao, never()).writeOperationSuccess("datamart", 1L);
                     verify(deltaServiceDao, never()).deleteWriteOperation("datamart", 1L);
                     verify(deltaServiceDao, never()).writeOperationError("datamart", 1L);
@@ -324,7 +478,7 @@ class InsertValuesExecutorTest {
                 .build();
 
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.succeededFuture(1L));
         when(deltaServiceDao.writeOperationSuccess("datamart", 1L)).thenReturn(Future.succeededFuture());
         when(pluginService.insert(eq(SourceType.ADB), any(), any(InsertValuesRequest.class))).thenReturn(Future.succeededFuture());
@@ -336,6 +490,33 @@ class InsertValuesExecutorTest {
                     verify(deltaServiceDao, never()).deleteWriteOperation("datamart", 1L);
                     verify(deltaServiceDao, never()).writeOperationError("datamart", 1L);
                     verify(restoreStateService, never()).restoreErase(any());
+                }).completeNow())
+                .onFailure(testContext::failNow);
+    }
+
+    @Test
+    void insertSuccessWithoutColumnsForWriteableExternalTable(VertxTestContext testContext) {
+        String sql = "INSERT INTO users values(1, 'Name')";
+        SqlNode sqlNode = TestUtils.DEFINITION_SERVICE.processingQuery(sql);
+        QueryRequest queryRequest = QueryRequest.builder()
+                .requestId(UUID.randomUUID())
+                .datamartMnemonic("datamart")
+                .sql(sql)
+                .build();
+        DmlRequestContext context = DmlRequestContext.builder()
+                .envName("dev")
+                .request(new DmlRequest(queryRequest))
+                .sourceType(SourceType.ADB)
+                .sqlNode(sqlNode)
+                .build();
+
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(writeableExternalEntity));
+        when(pluginService.insert(eq(SourceType.ADB), any(), any(InsertValuesRequest.class))).thenReturn(Future.succeededFuture());
+        when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
+
+        executor.execute(context)
+                .onSuccess(ar -> testContext.verify(() -> {
+                    verifyNoInteractions(deltaServiceDao, restoreStateService);
                 }).completeNow())
                 .onFailure(testContext::failNow);
     }
@@ -357,7 +538,7 @@ class InsertValuesExecutorTest {
                 .build();
 
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
 
         executor.execute(context)
                 .onSuccess(ar -> testContext.failNow("Should have been failed because query contains non existed column"))
@@ -381,7 +562,7 @@ class InsertValuesExecutorTest {
                 .build();
 
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
 
         executor.execute(context)
                 .onSuccess(ar -> testContext.failNow("Should have been failed because query contains non existed column"))
@@ -404,7 +585,7 @@ class InsertValuesExecutorTest {
                 .sqlNode(sqlNode)
                 .build();
 
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
 
         executor.execute(context)
                 .onSuccess(ar -> testContext.failNow("Should have been failed because query doesn't contains non nullable column"))
@@ -413,7 +594,7 @@ class InsertValuesExecutorTest {
 
     @Test
     void testWithNoDeltaHotFound(VertxTestContext testContext) {
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.failedFuture(new DeltaException("Delta hot not found")));
 
@@ -425,7 +606,7 @@ class InsertValuesExecutorTest {
     @Test
     void testSourceTypeNotConfigured(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(false);
 
         executor.execute(requestContext)
@@ -458,7 +639,7 @@ class InsertValuesExecutorTest {
     @Test
     void testPluginLlwFailedWithDtmException(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.succeededFuture(1L));
         when(deltaServiceDao.writeOperationError("datamart", 1L)).thenReturn(Future.succeededFuture());
         when(deltaServiceDao.deleteWriteOperation("datamart", 1L)).thenReturn(Future.succeededFuture());
@@ -477,9 +658,23 @@ class InsertValuesExecutorTest {
     }
 
     @Test
+    void testPluginLlwFailedWithDtmExceptionForWriteableExternalTable(VertxTestContext testContext) {
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(writeableExternalEntity));
+        when(pluginService.insert(eq(SourceType.ADB), any(), any(InsertValuesRequest.class))).thenReturn(Future.failedFuture(new DtmException("Llw failed")));
+        when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
+
+        executor.execute(requestContext)
+                .onSuccess(ar -> testContext.failNow("Should have been failed because of llw fail"))
+                .onFailure(error -> testContext.verify(() -> {
+                    assertEquals("Llw failed", error.getMessage());
+                    verifyNoInteractions(deltaServiceDao, restoreStateService);
+                }).completeNow());
+    }
+
+    @Test
     void testPluginLlwFailedWithUnexpectedExceptionWithMessage(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.succeededFuture(1L));
         when(deltaServiceDao.writeOperationError("datamart", 1L)).thenReturn(Future.succeededFuture());
         when(deltaServiceDao.deleteWriteOperation("datamart", 1L)).thenReturn(Future.succeededFuture());
@@ -498,9 +693,23 @@ class InsertValuesExecutorTest {
     }
 
     @Test
+    void testPluginLlwFailedWithUnexpectedExceptionWithMessageForWriteableExternalTable(VertxTestContext testContext) {
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(writeableExternalEntity));
+        when(pluginService.insert(eq(SourceType.ADB), any(), any(InsertValuesRequest.class))).thenReturn(Future.failedFuture(new RuntimeException("Llw failed")));
+        when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
+
+        executor.execute(requestContext)
+                .onSuccess(ar -> testContext.failNow("Should have been failed because of llw fail"))
+                .onFailure(error -> testContext.verify(() -> {
+                    assertEquals("Llw failed", error.getMessage());
+                    verifyNoInteractions(deltaServiceDao, restoreStateService);
+                }).completeNow());
+    }
+
+    @Test
     void testPluginLlwFailedWithUnexpectedExceptionWithoutMessage(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.succeededFuture(1L));
         when(deltaServiceDao.writeOperationError("datamart", 1L)).thenReturn(Future.succeededFuture());
         when(deltaServiceDao.deleteWriteOperation("datamart", 1L)).thenReturn(Future.succeededFuture());
@@ -515,6 +724,20 @@ class InsertValuesExecutorTest {
                     verify(deltaServiceDao, never()).writeOperationSuccess("datamart", 1L);
                     verify(deltaServiceDao).writeOperationError("datamart", 1L);
                     verify(restoreStateService).restoreErase(any());
+                }).completeNow());
+    }
+
+    @Test
+    void testPluginLlwFailedWithUnexpectedExceptionWithoutMessageForWriteableExternalTable(VertxTestContext testContext) {
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(writeableExternalEntity));
+        when(pluginService.insert(eq(SourceType.ADB), any(), any(InsertValuesRequest.class))).thenReturn(Future.failedFuture(new RuntimeException()));
+        when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
+
+        executor.execute(requestContext)
+                .onSuccess(ar -> testContext.failNow("Should have been failed because of llw fail"))
+                .onFailure(error -> testContext.verify(() -> {
+                    assertSame(RuntimeException.class, error.getClass());
+                    verifyNoInteractions(deltaServiceDao, restoreStateService);
                 }).completeNow());
     }
 

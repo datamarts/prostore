@@ -15,10 +15,12 @@
  */
 package ru.datamart.prostore.common.reader;
 
+import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.common.exception.InvalidSourceTypeException;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import ru.datamart.prostore.common.model.ddl.ExternalTableLocationType;
 
 import java.util.Arrays;
 
@@ -43,5 +45,20 @@ public enum SourceType {
                 .filter(type -> type.isAvailable() && type.name().equalsIgnoreCase(typeName))
                 .findAny()
                 .orElseThrow(() -> new InvalidSourceTypeException(typeName));
+    }
+
+    public static SourceType fromExternalTableLocationType(ExternalTableLocationType type) {
+        switch (type) {
+            case CORE_ADG:
+                return ADG;
+            case CORE_ADB:
+                return ADB;
+            case CORE_ADP:
+                return ADP;
+            case CORE_ADQM:
+                return ADQM;
+            default:
+                throw new DtmException(String.format("Invalid source type of external table location %s", type));
+        }
     }
 }

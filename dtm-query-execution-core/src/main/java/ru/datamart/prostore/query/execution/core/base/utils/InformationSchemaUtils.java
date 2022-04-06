@@ -123,12 +123,4 @@ public class InformationSchemaUtils {
 
     public static final String DROP_VIEW = "DROP VIEW IF EXISTS %s.%s";
     public static final String DROP_TABLE = "DROP TABLE IF EXISTS %s.%s";
-    public static final String CHECK_VIEW_BY_TABLE_NAME =
-            "SELECT VIEW_NAME\n" +
-            "FROM   INFORMATION_SCHEMA.VIEW_TABLE_USAGE\n" +
-            "WHERE  TABLE_SCHEMA = '%s' AND TABLE_NAME = '%s';";
-    public static final String CHECK_VIEW_BY_TABLE_SCHEMA =
-            "SELECT VIEW_SCHEMA, VIEW_NAME\n" +
-                    "FROM   INFORMATION_SCHEMA.VIEW_TABLE_USAGE\n" +
-                    "WHERE  TABLE_SCHEMA = '%s' AND VIEW_SCHEMA != '%s';";
 }

@@ -38,6 +38,7 @@ public class AdgDtmTable extends DtmTable {
                 relOptTable.getRelOptSchema(),
                 relOptTable.getRowType(),
                 getTableNameWithoutSchema(relOptTable),
+                this,
                 relOptTable.getExpression(AdgDtmTable.class)
         ), new ArrayList<>());
     }

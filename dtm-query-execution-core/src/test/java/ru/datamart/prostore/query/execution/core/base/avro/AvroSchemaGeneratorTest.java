@@ -15,14 +15,14 @@
  */
 package ru.datamart.prostore.query.execution.core.base.avro;
 
-import ru.datamart.prostore.common.model.ddl.ColumnType;
-import ru.datamart.prostore.common.model.ddl.Entity;
-import ru.datamart.prostore.common.model.ddl.EntityField;
-import ru.datamart.prostore.query.execution.core.base.service.avro.AvroSchemaGenerator;
 import org.apache.avro.Schema;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
+import ru.datamart.prostore.common.model.ddl.ColumnType;
+import ru.datamart.prostore.common.model.ddl.Entity;
+import ru.datamart.prostore.common.model.ddl.EntityField;
+import ru.datamart.prostore.query.execution.core.base.service.avro.AvroSchemaGenerator;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -76,21 +76,21 @@ class AvroSchemaGeneratorTest {
                 "{\"name\":\"linkvalue\",\"type\":[\"null\",{\"type\":\"string\",\"avro.java.string\":\"String\"}],\"default\":null}," +
                 "{\"name\":\"int32value\",\"type\":[\"null\",\"int\"],\"default\":null}," +
                 "{\"name\":\"sys_op\",\"type\":\"int\",\"default\":0}]}";
-        Schema tableSchema = avroSchemaGenerator.generateTableSchema(table);
+        Schema tableSchema = avroSchemaGenerator.generateTableSchema(table, true);
         assertEquals(avroResult, tableSchema.toString());
     }
 
     @Test
     void generateTableSchemaUnsupportedType() {
         table.getFields().add(new EntityField(0, "any", ColumnType.ANY, true));
-        Executable executable = () -> avroSchemaGenerator.generateTableSchema(table);
+        Executable executable = () -> avroSchemaGenerator.generateTableSchema(table, true);
         assertThrows(IllegalArgumentException.class,
             executable, "Unsupported data type: " + ColumnType.ANY);
     }
 
     @Test
     void testCheckSysOpFieldAlreadyInFields() {
-        Schema tableSchema = avroSchemaGenerator.generateTableSchema(table);
+        Schema tableSchema = avroSchemaGenerator.generateTableSchema(table, true);
         assertEquals(1, tableSchema.getFields().stream().filter(f -> f.name().equalsIgnoreCase("sys_op")).count());
     }
 

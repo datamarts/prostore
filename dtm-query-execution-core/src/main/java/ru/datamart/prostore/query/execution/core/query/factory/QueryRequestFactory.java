@@ -17,12 +17,12 @@ package ru.datamart.prostore.query.execution.core.query.factory;
 
 import ru.datamart.prostore.common.reader.InputQueryRequest;
 import ru.datamart.prostore.common.reader.QueryRequest;
-import org.springframework.stereotype.Component;
 
-@Component
-public class QueryRequestFactory {
+public final class QueryRequestFactory {
+    private QueryRequestFactory() {
+    }
 
-    public QueryRequest create(InputQueryRequest inputQueryRequest) {
+    public static QueryRequest create(InputQueryRequest inputQueryRequest) {
         return QueryRequest.builder()
                 .requestId(inputQueryRequest.getRequestId())
                 .datamartMnemonic(inputQueryRequest.getDatamartMnemonic())

@@ -15,17 +15,17 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adqm.mppw.kafka.service;
 
+import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Service;
 import ru.datamart.prostore.common.model.ddl.ExternalTableFormat;
 import ru.datamart.prostore.common.model.ddl.ExternalTableLocationType;
 import ru.datamart.prostore.query.execution.plugin.adqm.mppw.AdqmMppwExecutor;
 import ru.datamart.prostore.query.execution.plugin.api.exception.MppwDatasourceException;
 import ru.datamart.prostore.query.execution.plugin.api.mppw.MppwRequest;
 import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
-import io.vertx.core.Future;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Service;
 
 import java.util.EnumMap;
 import java.util.Map;
@@ -70,7 +70,7 @@ public class AdqmMppwKafkaService implements AdqmMppwExecutor {
                         request.getUploadMetadata().getFormat())));
             }
             LoadType loadType = LoadType.valueOf(request.isLoadStart());
-            log.debug("Mppw {}", loadType);
+            log.debug("[ADQM] mppw trying to {}", loadType);
             handlers.get(loadType).execute((MppwKafkaRequest) request)
                     .onComplete(promise);
         });

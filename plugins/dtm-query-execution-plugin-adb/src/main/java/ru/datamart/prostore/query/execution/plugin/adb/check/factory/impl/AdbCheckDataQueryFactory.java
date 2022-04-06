@@ -52,6 +52,8 @@ public class AdbCheckDataQueryFactory {
                     " COALESCE(sys_to, 9223372036854775807) >= %d" +
                     ") AS tmp";
 
+    private static final String COLUMN_DELIMITER = ",';',";
+
     public String createCheckDataByCountQuery(CheckDataByCountRequest request, String resultColumnName) {
         return String.format(CHECK_DATA_BY_COUNT_TEMPLATE,
                 resultColumnName,
@@ -66,7 +68,7 @@ public class AdbCheckDataQueryFactory {
 
     public String createCheckDataByHashInt32Query(CheckDataByHashInt32Request request, String resultColumnName) {
         val fieldsConcat = getFieldsConcat(request);
-        val columnsList = String.join(",';',", request.getColumns());
+        val columnsList = String.join(COLUMN_DELIMITER, request.getColumns());
         val datamart = request.getEntity().getSchema();
         val table = request.getEntity().getName();
         val normalization = request.getNormalization();
@@ -86,7 +88,7 @@ public class AdbCheckDataQueryFactory {
 
     public String createCheckDataSnapshotByHashInt32Query(CheckDataByHashInt32Request request, String resultColumnName) {
         val fieldsConcat = getFieldsConcat(request);
-        val columnsList = String.join(",';',", request.getColumns());
+        val columnsList = String.join(COLUMN_DELIMITER, request.getColumns());
         val datamart = request.getEntity().getSchema();
         val table = request.getEntity().getName();
         val normalization = request.getNormalization();
@@ -108,7 +110,7 @@ public class AdbCheckDataQueryFactory {
         return request.getColumns().stream()
                 .map(fields::get)
                 .map(this::create)
-                .collect(Collectors.joining(",';',"));
+                .collect(Collectors.joining(COLUMN_DELIMITER));
     }
 
     private String create(EntityField field) {

@@ -15,29 +15,34 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adg.enrichment.service;
 
-import ru.datamart.prostore.common.delta.DeltaInformation;
-import ru.datamart.prostore.common.delta.DeltaType;
-import ru.datamart.prostore.query.execution.plugin.adg.base.factory.AdgHelperTableNamesFactory;
-import ru.datamart.prostore.query.execution.plugin.api.exception.DataSourceException;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.QueryGeneratorContext;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryExtendService;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.apache.calcite.prepare.CalciteCatalogReader;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.logical.LogicalFilter;
+import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexSubQuery;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.tools.RelBuilder;
 import org.springframework.stereotype.Service;
+import ru.datamart.prostore.common.delta.DeltaInformation;
+import ru.datamart.prostore.common.delta.DeltaType;
+import ru.datamart.prostore.common.exception.DtmException;
+import ru.datamart.prostore.query.execution.plugin.adg.base.dto.AdgHelperTableNames;
+import ru.datamart.prostore.query.execution.plugin.adg.base.factory.AdgHelperTableNamesFactory;
+import ru.datamart.prostore.query.execution.plugin.adg.calcite.model.schema.AdgDtmTable;
+import ru.datamart.prostore.query.execution.plugin.api.exception.DataSourceException;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.QueryGeneratorContext;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryExtendService;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.IntStream;
+import java.util.stream.Collectors;
 
 import static ru.datamart.prostore.query.execution.plugin.adg.base.utils.ColumnFields.*;
 
@@ -52,10 +57,9 @@ public class AdgDmlQueryExtendService implements QueryExtendService {
     }
 
     public RelNode extendQuery(QueryGeneratorContext context) {
-        context.getRelBuilder().clear();
-        RelNode relNode = iterateTree(context, context.getRelNode().rel);
-        context.getRelBuilder().clear();
-        return relNode;
+        val relBuilder = context.getRelBuilder();
+        relBuilder.clear();
+        return iterateTree(context, context.getRelNode().rel);
     }
 
     private RelNode iterateTree(QueryGeneratorContext context, RelNode node) {
@@ -108,25 +112,43 @@ public class AdgDmlQueryExtendService implements QueryExtendService {
 
     private RelNode insertModifiedTableScan(QueryGeneratorContext context, RelNode tableScan, DeltaInformation deltaInfo) {
         val relBuilder = RelBuilder.proto(tableScan.getCluster().getPlanner().getContext())
-            .create(tableScan.getCluster(),
-                ((CalciteCatalogReader) context.getRelBuilder().getRelOptSchema())
-                    .withSchemaPath(Collections.singletonList(deltaInfo.getSchemaName())));
+                .create(tableScan.getCluster(),
+                        ((CalciteCatalogReader) context.getRelBuilder().getRelOptSchema())
+                                .withSchemaPath(Collections.singletonList(deltaInfo.getSchemaName())));
 
         val rexBuilder = relBuilder.getCluster().getRexBuilder();
-        List<RexNode> rexNodes = new ArrayList<>();
-        IntStream.range(0, tableScan.getTable().getRowType().getFieldList().size()).forEach(index ->
-            rexNodes.add(rexBuilder.makeInputRef(tableScan, index))
-        );
+        val rexNodes = getRexNodes(tableScan, rexBuilder);
 
         val qualifiedName = tableScan.getTable().getQualifiedName();
         val tableName = qualifiedName.get(qualifiedName.size() > 1 ? 1 : 0);
         val schemaName = deltaInfo.getSchemaName();
-        val enrichQueryRequest = context.getEnrichQueryRequest();
-        val tableNames = helperTableNamesFactory.create(enrichQueryRequest.getEnvName(),
-            schemaName, tableName);
+        val tableNames = helperTableNamesFactory.create(context.getEnvName(),
+                schemaName, tableName);
+
+        val entity = tableScan.getTable().unwrap(AdgDtmTable.class).getEntity();
+        switch (entity.getEntityType()) {
+            case WRITEABLE_EXTERNAL_TABLE:
+                throw new DtmException("Enriched query should not contain WRITABLE EXTERNAL tables");
+            case READABLE_EXTERNAL_TABLE:
+                if (deltaInfo.getType() != DeltaType.WITHOUT_SNAPSHOT) {
+                    throw new DtmException("FOR SYSTEM_TIME clause is not supported for external tables");
+                }
+                val standaloneTableName = entity.getExternalTableLocationPath();
+                return relBuilder.scan(standaloneTableName).project(rexNodes).build();
+            default:
+                return getExtendedRelNode(deltaInfo, relBuilder, rexNodes, tableNames);
+        }
+    }
+
+    private List<RexNode> getRexNodes(RelNode tableScan, RexBuilder rexBuilder) {
+        return tableScan.getTable().getRowType().getFieldList().stream()
+                .map(relDataTypeField -> rexBuilder.makeInputRef(tableScan, relDataTypeField.getIndex()))
+                .collect(Collectors.toList());
+    }
+
+    private RelNode getExtendedRelNode(DeltaInformation deltaInfo, RelBuilder relBuilder, List<RexNode> rexNodes, AdgHelperTableNames tableNames) {
         RelNode topRelNode;
         RelNode bottomRelNode;
-
         switch (deltaInfo.getType()) {
             case STARTED_IN:
                 topRelNode = createRelNodeDeltaStartedIn(deltaInfo, relBuilder, rexNodes, tableNames.getHistory());
@@ -143,7 +165,7 @@ public class AdgDmlQueryExtendService implements QueryExtendService {
                 break;
             default:
                 throw new DataSourceException(String.format("Incorrect delta type %s, expected values: %s!",
-                    deltaInfo.getType(), DeltaType.values()));
+                        deltaInfo.getType(), Arrays.toString(DeltaType.values())));
         }
 
         return relBuilder.push(topRelNode).push(bottomRelNode).union(true).build();
@@ -154,14 +176,14 @@ public class AdgDmlQueryExtendService implements QueryExtendService {
                                                 List<RexNode> rexNodes,
                                                 String tableName) {
         return relBuilder.scan(tableName).filter(
-            relBuilder.call(SqlStdOperatorTable.AND,
-                relBuilder.call(SqlStdOperatorTable.GREATER_THAN_OR_EQUAL,
-                    relBuilder.field(SYS_FROM_FIELD),
-                    relBuilder.literal(deltaInfo.getSelectOnInterval().getSelectOnFrom())),
-                relBuilder.call(SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
-                    relBuilder.field(SYS_FROM_FIELD),
-                    relBuilder.literal(deltaInfo.getSelectOnInterval().getSelectOnTo()))
-            )
+                relBuilder.call(SqlStdOperatorTable.AND,
+                        relBuilder.call(SqlStdOperatorTable.GREATER_THAN_OR_EQUAL,
+                                relBuilder.field(SYS_FROM_FIELD),
+                                relBuilder.literal(deltaInfo.getSelectOnInterval().getSelectOnFrom())),
+                        relBuilder.call(SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
+                                relBuilder.field(SYS_FROM_FIELD),
+                                relBuilder.literal(deltaInfo.getSelectOnInterval().getSelectOnTo()))
+                )
         ).project(rexNodes).build();
     }
 
@@ -170,17 +192,17 @@ public class AdgDmlQueryExtendService implements QueryExtendService {
                                                  List<RexNode> rexNodes,
                                                  String tableName) {
         return relBuilder.scan(tableName).filter(
-            relBuilder.call(SqlStdOperatorTable.AND,
-                relBuilder.call(SqlStdOperatorTable.GREATER_THAN_OR_EQUAL,
-                    relBuilder.field(SYS_TO_FIELD),
-                    relBuilder.literal(deltaInfo.getSelectOnInterval().getSelectOnFrom() - 1)),
-                relBuilder.call(SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
-                    relBuilder.field(SYS_TO_FIELD),
-                    relBuilder.literal(deltaInfo.getSelectOnInterval().getSelectOnTo() - 1)),
-                relBuilder.call(SqlStdOperatorTable.EQUALS,
-                    relBuilder.field(SYS_OP_FIELD),
-                    relBuilder.literal(1))
-            )
+                relBuilder.call(SqlStdOperatorTable.AND,
+                        relBuilder.call(SqlStdOperatorTable.GREATER_THAN_OR_EQUAL,
+                                relBuilder.field(SYS_TO_FIELD),
+                                relBuilder.literal(deltaInfo.getSelectOnInterval().getSelectOnFrom() - 1)),
+                        relBuilder.call(SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
+                                relBuilder.field(SYS_TO_FIELD),
+                                relBuilder.literal(deltaInfo.getSelectOnInterval().getSelectOnTo() - 1)),
+                        relBuilder.call(SqlStdOperatorTable.EQUALS,
+                                relBuilder.field(SYS_OP_FIELD),
+                                relBuilder.literal(1))
+                )
         ).project(rexNodes).build();
     }
 
@@ -189,14 +211,14 @@ public class AdgDmlQueryExtendService implements QueryExtendService {
                                              List<RexNode> rexNodes,
                                              String tableName) {
         return relBuilder.scan(tableName).filter(
-            relBuilder.call(SqlStdOperatorTable.AND,
-                relBuilder.call(SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
-                    relBuilder.field(SYS_FROM_FIELD),
-                    relBuilder.literal(deltaInfo.getSelectOnNum())),
-                relBuilder.call(SqlStdOperatorTable.GREATER_THAN_OR_EQUAL,
-                    relBuilder.field(SYS_TO_FIELD),
-                    relBuilder.literal(deltaInfo.getSelectOnNum()))
-            )
+                relBuilder.call(SqlStdOperatorTable.AND,
+                        relBuilder.call(SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
+                                relBuilder.field(SYS_FROM_FIELD),
+                                relBuilder.literal(deltaInfo.getSelectOnNum())),
+                        relBuilder.call(SqlStdOperatorTable.GREATER_THAN_OR_EQUAL,
+                                relBuilder.field(SYS_TO_FIELD),
+                                relBuilder.literal(deltaInfo.getSelectOnNum()))
+                )
         ).project(rexNodes).build();
     }
 
@@ -205,9 +227,9 @@ public class AdgDmlQueryExtendService implements QueryExtendService {
                                                 List<RexNode> rexNodes,
                                                 String tableName) {
         return relBuilder.scan(tableName).filter(
-            relBuilder.call(SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
-                relBuilder.field(SYS_FROM_FIELD),
-                relBuilder.literal(deltaInfo.getSelectOnNum()))).project(rexNodes).build();
+                relBuilder.call(SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
+                        relBuilder.field(SYS_FROM_FIELD),
+                        relBuilder.literal(deltaInfo.getSelectOnNum()))).project(rexNodes).build();
     }
 
 }

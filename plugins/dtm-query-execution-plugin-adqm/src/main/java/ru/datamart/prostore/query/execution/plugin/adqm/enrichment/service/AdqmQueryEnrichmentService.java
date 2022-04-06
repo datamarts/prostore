@@ -15,83 +15,101 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adqm.enrichment.service;
 
-import ru.datamart.prostore.common.dto.QueryParserResponse;
-import ru.datamart.prostore.query.calcite.core.service.QueryParserService;
-import ru.datamart.prostore.query.execution.model.metadata.Datamart;
-import ru.datamart.prostore.query.execution.plugin.adqm.calcite.service.AdqmCalciteContextProvider;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.SchemaExtender;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.EnrichQueryRequest;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryEnrichmentService;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryGenerator;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import lombok.var;
+import org.apache.calcite.sql.SqlDialect;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.util.Util;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import ru.datamart.prostore.common.calcite.CalciteContext;
+import ru.datamart.prostore.common.model.ddl.EntityType;
+import ru.datamart.prostore.query.calcite.core.node.SqlKindKey;
+import ru.datamart.prostore.query.calcite.core.node.SqlSelectTree;
+import ru.datamart.prostore.query.calcite.core.rel2sql.DtmRelToSqlConverter;
+import ru.datamart.prostore.query.execution.plugin.adqm.calcite.model.schema.AdqmDtmTable;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.EnrichQueryRequest;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.QueryGeneratorContext;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryEnrichmentService;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryExtendService;
 
-import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Arrays;
 
 @Slf4j
 @Service("adqmQueryEnrichmentService")
 public class AdqmQueryEnrichmentService implements QueryEnrichmentService {
-    private final AdqmCalciteContextProvider contextProvider;
-    private final QueryGenerator adqmQueryGenerator;
-    private final SchemaExtender schemaExtender;
+    private static final SqlKindKey UNION_KEY = new SqlKindKey(SqlKind.UNION, 1);
+    private final QueryExtendService queryExtendService;
+    private final SqlDialect sqlDialect;
+    private final DtmRelToSqlConverter relToSqlConverter;
 
     @Autowired
-    public AdqmQueryEnrichmentService(@Qualifier("adqmCalciteDMLQueryParserService") QueryParserService queryParserService,
-                                      AdqmCalciteContextProvider contextProvider,
-                                      @Qualifier("adqmQueryGenerator") QueryGenerator adqmQueryGenerator,
-                                      SchemaExtender adqmSchemaExtender) {
-        this.contextProvider = contextProvider;
-        this.adqmQueryGenerator = adqmQueryGenerator;
-        this.schemaExtender = adqmSchemaExtender;
+    public AdqmQueryEnrichmentService(@Qualifier("adqmDmlQueryExtendService") QueryExtendService queryExtendService,
+                                      @Qualifier("adqmSqlDialect") SqlDialect sqlDialect,
+                                      @Qualifier("adqmRelToSqlConverter") DtmRelToSqlConverter relToSqlConverter) {
+        this.queryExtendService = queryExtendService;
+        this.sqlDialect = sqlDialect;
+        this.relToSqlConverter = relToSqlConverter;
     }
 
     @Override
-    public Future<String> enrich(EnrichQueryRequest request, QueryParserResponse parserResponse) {
-        return modifyQuery(parserResponse, request);
+    public Future<String> enrich(EnrichQueryRequest request) {
+        return getEnrichedSqlNode(request)
+                .map(sqlNodeResult -> {
+                    val queryResult = Util.toLinux(sqlNodeResult.toSqlString(sqlDialect).getSql())
+                            .replace("\n", " ");
+                    log.debug("sql = " + queryResult);
+                    return queryResult;
+                })
+                .onSuccess(enrichedQueryResult -> log.debug("Request generated: {}", enrichedQueryResult));
     }
 
     @Override
-    public Future<SqlNode> getEnrichedSqlNode(EnrichQueryRequest request, QueryParserResponse parserResponse) {
+    public Future<SqlNode> getEnrichedSqlNode(EnrichQueryRequest request) {
         return Future.future(promise -> {
-            contextProvider.enrichContext(parserResponse.getCalciteContext(),
-                    generatePhysicalSchema(request.getSchema(), request.getEnvName()));
-            // form a new sql query
-            adqmQueryGenerator.getMutatedSqlNode(parserResponse.getRelNode(),
-                    request.getDeltaInformations(),
-                    parserResponse.getCalciteContext(),
-                    request)
-                    .onComplete(promise);
+            val generatorContext = getContext(request);
+            var extendedQuery = queryExtendService.extendQuery(generatorContext);
+            val sqlNodeResult = relToSqlConverter.convert(extendedQuery);
+            val sqlTree = new SqlSelectTree(sqlNodeResult);
+            addFinalOperatorTopUnionTables(sqlTree, request.getCalciteContext());
+            promise.complete(sqlNodeResult);
         });
     }
 
-    private Future<String> modifyQuery(QueryParserResponse parserResponse, EnrichQueryRequest request) {
-        return Future.future(promise -> {
-            contextProvider.enrichContext(parserResponse.getCalciteContext(),
-                    generatePhysicalSchema(request.getSchema(), request.getEnvName()));
-            // form a new sql query
-            adqmQueryGenerator.mutateQuery(parserResponse.getRelNode(),
-                    request.getDeltaInformations(),
-                    parserResponse.getCalciteContext(),
-                    request)
-                    .onComplete(enrichedQueryResult -> {
-                        if (enrichedQueryResult.succeeded()) {
-                            log.debug("Request generated: {}", enrichedQueryResult.result());
-                            promise.complete(enrichedQueryResult.result());
-                        } else {
-                            promise.fail(enrichedQueryResult.cause());
-                        }
-                    });
-        });
+    private void addFinalOperatorTopUnionTables(SqlSelectTree tree, CalciteContext calciteContext) {
+        tree.findAllTableAndSnapshots()
+                .stream()
+                .filter(n -> n.getKindPath().stream()
+                        .noneMatch(sqlKindKey -> sqlKindKey.getSqlKind() == SqlKind.SCALAR_QUERY || sqlKindKey.equals(UNION_KEY)))
+                .forEach(node -> {
+                    val identifier = (SqlIdentifier) node.getNode();
+                    val schema = identifier.names.get(0);
+                    val tableName = identifier.names.get(1);
+                    val adqmTable = (AdqmDtmTable) calciteContext.getSchema().getSubSchema(schema).getTable(tableName);
+                    if (adqmTable.getEntity().getEntityType() == EntityType.WRITEABLE_EXTERNAL_TABLE || adqmTable.getEntity().getEntityType() == EntityType.READABLE_EXTERNAL_TABLE) {
+                        return;
+                    }
+                    val names = Arrays.asList(
+                            schema,
+                            tableName + " FINAL"
+                    );
+                    node.getSqlNodeSetter().accept(new SqlIdentifier(names, identifier.getParserPosition()));
+                });
     }
 
-    private List<Datamart> generatePhysicalSchema(List<Datamart> logicalSchemas, String envName) {
-        return logicalSchemas.stream()
-                .map(ls -> schemaExtender.createPhysicalSchema(ls, envName))
-                .collect(Collectors.toList());
+    private QueryGeneratorContext getContext(EnrichQueryRequest enrichQueryRequest) {
+        return new QueryGeneratorContext(
+                enrichQueryRequest.getDeltaInformations().iterator(),
+                enrichQueryRequest.getCalciteContext().getRelBuilder(),
+                enrichQueryRequest.getRelNode(),
+                enrichQueryRequest.getEnvName(),
+                enrichQueryRequest.isLocal()
+        );
     }
+
 }

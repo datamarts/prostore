@@ -15,6 +15,12 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adg.mppr.kafka.service;
 
+import io.vertx.core.Future;
+import io.vertx.core.json.JsonObject;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Service;
 import ru.datamart.prostore.common.dto.QueryParserRequest;
 import ru.datamart.prostore.common.model.ddl.ExternalTableLocationType;
 import ru.datamart.prostore.common.reader.QueryResult;
@@ -28,12 +34,6 @@ import ru.datamart.prostore.query.execution.plugin.api.mppr.kafka.DownloadExtern
 import ru.datamart.prostore.query.execution.plugin.api.mppr.kafka.MpprKafkaRequest;
 import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.EnrichQueryRequest;
 import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryEnrichmentService;
-import io.vertx.core.Future;
-import io.vertx.core.json.JsonObject;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service("adgMpprKafkaService")
@@ -53,14 +53,16 @@ public class AdgMpprKafkaService implements AdgMpprExecutor {
     @Override
     public Future<QueryResult> execute(MpprRequest request) {
         return Future.future(promise -> {
-            EnrichQueryRequest enrichQueryRequest = EnrichQueryRequest.builder()
-                    .query(((MpprKafkaRequest) request).getDmlSubQuery())
-                    .deltaInformations(request.getDeltaInformations())
-                    .envName(request.getEnvName())
-                    .schema(request.getLogicalSchema())
-                    .build();
-            queryParserService.parse(new QueryParserRequest(((MpprKafkaRequest) request).getDmlSubQuery(), request.getLogicalSchema()))
-                    .compose(parserResponse -> adgQueryEnrichmentService.enrich(enrichQueryRequest, parserResponse))
+            queryParserService.parse(new QueryParserRequest(((MpprKafkaRequest) request).getDmlSubQuery(), request.getLogicalSchema(), request.getEnvName()))
+                    .compose(parserResponse -> {
+                        val enrichRequest = EnrichQueryRequest.builder()
+                                .envName(request.getEnvName())
+                                .deltaInformations(request.getDeltaInformations())
+                                .calciteContext(parserResponse.getCalciteContext())
+                                .relNode(parserResponse.getRelNode())
+                                .build();
+                        return adgQueryEnrichmentService.enrich(enrichRequest);
+                    })
                     .compose(enrichQuery -> uploadData((MpprKafkaRequest) request, enrichQuery))
                     .onComplete(promise);
         });

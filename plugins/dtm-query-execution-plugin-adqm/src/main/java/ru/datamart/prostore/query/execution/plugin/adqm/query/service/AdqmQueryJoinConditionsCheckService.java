@@ -39,6 +39,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class AdqmQueryJoinConditionsCheckService {
 
+    private static final String WRONG_INPUT_NODES_ERROR = "ADQM join has wrong input nodes.";
     private final SqlJoinConditionExtractor joinConditionExtractor;
 
     @Autowired
@@ -152,17 +153,17 @@ public class AdqmQueryJoinConditionsCheckService {
         if (relNode instanceof Project) {
             List<RelNode> inputs = relNode.getInputs();
             if (inputs.size() != 1) {
-                throw new DtmException("ADQM join has wrong input nodes.");
+                throw new DtmException(WRONG_INPUT_NODES_ERROR);
             }
 
             RelNode inputRel = inputs.get(0);
             if (!(inputRel instanceof TableScan)) {
-                throw new DtmException("ADQM join has wrong input nodes.");
+                throw new DtmException(WRONG_INPUT_NODES_ERROR);
             }
 
             return String.join(".", inputRel.getTable().getQualifiedName());
         }
 
-        throw new DtmException("ADQM join has wrong input nodes.");
+        throw new DtmException(WRONG_INPUT_NODES_ERROR);
     }
 }

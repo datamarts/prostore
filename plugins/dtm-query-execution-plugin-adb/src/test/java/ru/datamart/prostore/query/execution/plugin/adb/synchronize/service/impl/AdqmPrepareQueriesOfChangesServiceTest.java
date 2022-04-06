@@ -19,6 +19,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
+import lombok.val;
 import org.apache.calcite.sql.SqlDialect;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParser;
@@ -26,9 +27,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
-import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import ru.datamart.prostore.common.calcite.CalciteContext;
 import ru.datamart.prostore.common.delta.DeltaData;
@@ -39,6 +38,7 @@ import ru.datamart.prostore.common.model.ddl.EntityField;
 import ru.datamart.prostore.common.model.ddl.EntityType;
 import ru.datamart.prostore.query.calcite.core.configuration.CalciteCoreConfiguration;
 import ru.datamart.prostore.query.calcite.core.provider.CalciteContextProvider;
+import ru.datamart.prostore.query.calcite.core.rel2sql.DtmRelToSqlConverter;
 import ru.datamart.prostore.query.calcite.core.service.QueryParserService;
 import ru.datamart.prostore.query.execution.model.metadata.Datamart;
 import ru.datamart.prostore.query.execution.plugin.adb.base.service.castservice.AdqmColumnsCastService;
@@ -48,16 +48,17 @@ import ru.datamart.prostore.query.execution.plugin.adb.calcite.factory.AdbCalcit
 import ru.datamart.prostore.query.execution.plugin.adb.calcite.factory.AdbSchemaFactory;
 import ru.datamart.prostore.query.execution.plugin.adb.calcite.service.AdbCalciteContextProvider;
 import ru.datamart.prostore.query.execution.plugin.adb.calcite.service.AdbCalciteDMLQueryParserService;
+import ru.datamart.prostore.query.execution.plugin.adb.enrichment.service.AdbDmlQueryExtendWithoutHistoryService;
+import ru.datamart.prostore.query.execution.plugin.adb.enrichment.service.AdbQueryEnrichmentService;
+import ru.datamart.prostore.query.execution.plugin.adb.enrichment.service.AdbSchemaExtender;
 import ru.datamart.prostore.query.execution.plugin.adb.synchronize.service.PrepareQueriesOfChangesServiceBase;
 import ru.datamart.prostore.query.execution.plugin.adb.synchronize.service.PrepareRequestOfChangesRequest;
 import ru.datamart.prostore.query.execution.plugin.adb.synchronize.service.PrepareRequestOfChangesResult;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.EnrichQueryRequest;
 import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryEnrichmentService;
 
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -145,6 +146,27 @@ class AdqmPrepareQueriesOfChangesServiceTest {
                                             .nullable(true)
                                             .ordinalPosition(1)
                                             .build()
+                            )).build(),
+                    Entity.builder()
+                            .entityType(EntityType.READABLE_EXTERNAL_TABLE)
+                            .name("standalone")
+                            .schema("datamart1")
+                            .externalTableLocationPath("datamart1.std_tbl")
+                            .fields(Arrays.asList(
+                                    EntityField.builder()
+                                            .name("id")
+                                            .type(ColumnType.BIGINT)
+                                            .nullable(false)
+                                            .ordinalPosition(0)
+                                            .primaryOrder(1)
+                                            .build(),
+                                    EntityField.builder()
+                                            .name("description")
+                                            .type(ColumnType.VARCHAR)
+                                            .size(100)
+                                            .ordinalPosition(1)
+                                            .nullable(true)
+                                            .build()
                             )).build()
             ))
             .isDefault(true)
@@ -164,11 +186,7 @@ class AdqmPrepareQueriesOfChangesServiceTest {
     private final SqlDialect sqlDialect = calciteConfiguration.adbSqlDialect();
     private final ColumnsCastService adqmColumnsCastService = new AdqmColumnsCastService(sqlDialect);
 
-    @Mock
     private QueryEnrichmentService queryEnrichmentService;
-
-    @Captor
-    private ArgumentCaptor<EnrichQueryRequest> enrichQueryRequestArgumentCaptor;
 
     private QueryParserService queryParserService;
 
@@ -176,11 +194,11 @@ class AdqmPrepareQueriesOfChangesServiceTest {
 
     @BeforeEach
     void setUp(Vertx vertx) {
-        lenient().when(queryEnrichmentService.enrich(any(), any())).thenAnswer(invocationOnMock -> {
-            EnrichQueryRequest argument = invocationOnMock.getArgument(0);
-            return Future.succeededFuture(argument.getQuery().toSqlString(sqlDialect).toString());
-        });
-        queryParserService = new AdbCalciteDMLQueryParserService(contextProvider, vertx);
+        val queryExtendService = new AdbDmlQueryExtendWithoutHistoryService();
+        val relToSqlConverter = new DtmRelToSqlConverter(sqlDialect);
+        queryEnrichmentService = Mockito.spy(new AdbQueryEnrichmentService(queryExtendService, sqlDialect, relToSqlConverter));
+        val schemaExtender = new AdbSchemaExtender();
+        queryParserService = new AdbCalciteDMLQueryParserService(contextProvider, vertx, schemaExtender);
         queriesOfChangesService = new AdqmPrepareQueriesOfChangesService(queryParserService, adqmColumnsCastService, queryEnrichmentService);
     }
 
@@ -230,10 +248,8 @@ class AdqmPrepareQueriesOfChangesServiceTest {
         Future<PrepareRequestOfChangesResult> result = queriesOfChangesService.prepare(new PrepareRequestOfChangesRequest(DATAMART_LIST, "dev", new DeltaData(DELTA_NUM, DELTA_NUM_CN_FROM, DELTA_NUM_CN_TO), PREVIOUS_DELTA_NUM_CN_TO, query, matView));
 
         // assert
-        String expectedNewQuery = "SELECT dates.id, CAST(EXTRACT(EPOCH FROM dates.col_timestamp) * 1000000 AS BIGINT), CAST(EXTRACT(EPOCH FROM dates.col_date) / 86400 AS BIGINT), CAST(EXTRACT(EPOCH FROM dates.col_time) * 1000000 AS BIGINT), CAST(dates.col_boolean AS INTEGER)\n" +
-                "FROM datamart1.dates AS dates";
-        String expectedDeletedQuery = "SELECT dates.id\n" +
-                "FROM datamart1.dates AS dates";
+        String expectedNewQuery = "SELECT id, CAST(EXTRACT(EPOCH FROM col_timestamp) * 1000000 AS BIGINT) AS EXPR__1, CAST(EXTRACT(EPOCH FROM col_date) / 86400 AS BIGINT) AS EXPR__2, CAST(EXTRACT(EPOCH FROM col_time) * 1000000 AS BIGINT) AS EXPR__3, CASE WHEN col_boolean IS NOT NULL THEN CASE WHEN col_boolean THEN 1 ELSE 0 END ELSE NULL END AS EXPR__4 FROM datamart1.dates_actual WHERE sys_from >= 0 AND sys_from <= 3";
+        String expectedDeletedQuery = "SELECT id FROM datamart1.dates_actual WHERE COALESCE(sys_to, 9223372036854775807) >= -1 AND (COALESCE(sys_to, 9223372036854775807) <= 2 AND sys_op = 1)";
 
         result.onComplete(event -> {
             if (event.failed()) {
@@ -244,19 +260,64 @@ class AdqmPrepareQueriesOfChangesServiceTest {
             PrepareRequestOfChangesResult queriesOfChanges = event.result();
 
             ctx.verify(() -> {
-                verify(queryEnrichmentService, times(2)).enrich(enrichQueryRequestArgumentCaptor.capture(), any());
+                verify(queryEnrichmentService, times(2)).enrich(any());
+                verify(queryEnrichmentService, times(2)).getEnrichedSqlNode(any());
                 verifyNoMoreInteractions(queryEnrichmentService);
 
-                List<String> allValues = enrichQueryRequestArgumentCaptor.getAllValues().stream()
-                        .map(enrichQueryRequest -> enrichQueryRequest.getQuery().toSqlString(sqlDialect).toString().replace("\r\n", "\n"))
-                        .collect(Collectors.toList());
+                // assert result
+                assertThat(queriesOfChanges.getNewRecordsQuery()).isEqualToNormalizingNewlines(expectedNewQuery);
+                assertThat(queriesOfChanges.getDeletedRecordsQuery()).isEqualToNormalizingNewlines(expectedDeletedQuery);
+            }).completeNow();
+        });
+    }
 
-                assertThat(allValues).contains(expectedDeletedQuery);
-                assertThat(allValues).contains(expectedNewQuery);
+    @Test
+    void shouldSuccessWhenOneStandaloneTable(VertxTestContext ctx) {
+        // arrange
+        Entity matView = Entity.builder()
+                .name("matview")
+                .fields(Arrays.asList(
+                        EntityField.builder()
+                                .name("id")
+                                .ordinalPosition(0)
+                                .primaryOrder(1)
+                                .type(ColumnType.BIGINT)
+                                .nullable(false)
+                                .build(),
+                        EntityField.builder()
+                                .name("description")
+                                .ordinalPosition(1)
+                                .type(ColumnType.VARCHAR)
+                                .nullable(true)
+                                .build()
+                ))
+                .build();
+
+        SqlNode query = parseWithValidate("SELECT id, description FROM datamart1.standalone", DATAMART_LIST);
+
+        // act
+        Future<PrepareRequestOfChangesResult> result = queriesOfChangesService.prepare(new PrepareRequestOfChangesRequest(DATAMART_LIST, "dev", new DeltaData(DELTA_NUM, DELTA_NUM_CN_FROM, DELTA_NUM_CN_TO), PREVIOUS_DELTA_NUM_CN_TO, query, matView));
+
+        // assert
+        String expectedNewQuery = "SELECT * FROM datamart1.std_tbl";
+        String expectedDeletedQuery = "SELECT id FROM datamart1.std_tbl";
+
+        result.onComplete(event -> {
+            if (event.failed()) {
+                ctx.failNow(new AssertionError("Unexpected failure", event.cause()));
+                return;
+            }
+
+            PrepareRequestOfChangesResult queriesOfChanges = event.result();
+
+            ctx.verify(() -> {
+                verify(queryEnrichmentService, times(2)).enrich(any());
+                verify(queryEnrichmentService, times(2)).getEnrichedSqlNode(any());
+                verifyNoMoreInteractions(queryEnrichmentService);
 
                 // assert result
-                assertThat(expectedNewQuery).isEqualToNormalizingNewlines(queriesOfChanges.getNewRecordsQuery());
-                assertThat(expectedDeletedQuery).isEqualToNormalizingNewlines(queriesOfChanges.getDeletedRecordsQuery());
+                assertThat(queriesOfChanges.getNewRecordsQuery()).isEqualToNormalizingNewlines(expectedNewQuery);
+                assertThat(queriesOfChanges.getDeletedRecordsQuery()).isEqualToNormalizingNewlines(expectedDeletedQuery);
             }).completeNow();
         });
     }
@@ -295,10 +356,8 @@ class AdqmPrepareQueriesOfChangesServiceTest {
         Future<PrepareRequestOfChangesResult> result = queriesOfChangesService.prepare(new PrepareRequestOfChangesRequest(DATAMART_LIST, "dev", new DeltaData(DELTA_NUM, DELTA_NUM_CN_FROM, DELTA_NUM_CN_TO), PREVIOUS_DELTA_NUM_CN_TO, query, matView));
 
         // assert
-        String expectedNewQuery = "SELECT dates.id, CAST(dates.col_boolean AS INTEGER), CAST(EXTRACT(EPOCH FROM dates.col_time) * 1000000 AS BIGINT)\n" +
-                "FROM datamart1.dates AS dates";
-        String expectedDeletedQuery = "SELECT dates.id\n" +
-                "FROM datamart1.dates AS dates";
+        String expectedNewQuery = "SELECT id, CASE WHEN col_boolean IS NOT NULL THEN CASE WHEN col_boolean THEN 1 ELSE 0 END ELSE NULL END AS EXPR__1, CAST(EXTRACT(EPOCH FROM col_time) * 1000000 AS BIGINT) AS EXPR__2 FROM datamart1.dates_actual WHERE sys_from >= 0 AND sys_from <= 3";
+        String expectedDeletedQuery = "SELECT id FROM datamart1.dates_actual WHERE COALESCE(sys_to, 9223372036854775807) >= -1 AND (COALESCE(sys_to, 9223372036854775807) <= 2 AND sys_op = 1)";
 
         result.onComplete(event -> {
             if (event.failed()) {
@@ -309,19 +368,13 @@ class AdqmPrepareQueriesOfChangesServiceTest {
             PrepareRequestOfChangesResult queriesOfChanges = event.result();
 
             ctx.verify(() -> {
-                verify(queryEnrichmentService, times(2)).enrich(enrichQueryRequestArgumentCaptor.capture(), any());
+                verify(queryEnrichmentService, times(2)).enrich(any());
+                verify(queryEnrichmentService, times(2)).getEnrichedSqlNode(any());
                 verifyNoMoreInteractions(queryEnrichmentService);
 
-                List<String> allValues = enrichQueryRequestArgumentCaptor.getAllValues().stream()
-                        .map(enrichQueryRequest -> enrichQueryRequest.getQuery().toSqlString(sqlDialect).toString().replace("\r\n", "\n"))
-                        .collect(Collectors.toList());
-
-                assertThat(allValues).contains(expectedDeletedQuery);
-                assertThat(allValues).contains(expectedNewQuery);
-
                 // assert result
-                assertThat(expectedNewQuery).isEqualToNormalizingNewlines(queriesOfChanges.getNewRecordsQuery());
-                assertThat(expectedDeletedQuery).isEqualToNormalizingNewlines(queriesOfChanges.getDeletedRecordsQuery());
+                assertThat(queriesOfChanges.getNewRecordsQuery()).isEqualToNormalizingNewlines(expectedNewQuery);
+                assertThat(queriesOfChanges.getDeletedRecordsQuery()).isEqualToNormalizingNewlines(expectedDeletedQuery);
             }).completeNow();
         });
     }
@@ -372,10 +425,8 @@ class AdqmPrepareQueriesOfChangesServiceTest {
         Future<PrepareRequestOfChangesResult> result = queriesOfChangesService.prepare(new PrepareRequestOfChangesRequest(DATAMART_LIST, "dev", new DeltaData(DELTA_NUM, DELTA_NUM_CN_FROM, DELTA_NUM_CN_TO), PREVIOUS_DELTA_NUM_CN_TO, query, matView));
 
         // assert
-        String expectedNewQuery = "SELECT dates.id, CAST(EXTRACT(EPOCH FROM CAST('2020-01-01 11:11:11' AS TIMESTAMP)) * 1000000 AS BIGINT), CAST(EXTRACT(EPOCH FROM CAST('2020-01-01' AS DATE)) / 86400 AS BIGINT), CAST(EXTRACT(EPOCH FROM CAST('11:11:11' AS TIME)) * 1000000 AS BIGINT), CAST(TRUE AS INTEGER)\n" +
-                "FROM datamart1.dates AS dates";
-        String expectedDeletedQuery = "SELECT dates.id\n" +
-                "FROM datamart1.dates AS dates";
+        String expectedNewQuery = "SELECT id, CAST(EXTRACT(EPOCH FROM CAST('2020-01-01 11:11:11' AS TIMESTAMP(6))) * 1000000 AS BIGINT) AS EXPR__1, CAST(EXTRACT(EPOCH FROM CAST('2020-01-01' AS DATE)) / 86400 AS BIGINT) AS EXPR__2, CAST(EXTRACT(EPOCH FROM CAST('11:11:11' AS TIME(6))) * 1000000 AS BIGINT) AS EXPR__3, CAST(TRUE AS INTEGER) AS EXPR__4 FROM datamart1.dates_actual WHERE sys_from >= 0 AND sys_from <= 3";
+        String expectedDeletedQuery = "SELECT id FROM datamart1.dates_actual WHERE COALESCE(sys_to, 9223372036854775807) >= -1 AND (COALESCE(sys_to, 9223372036854775807) <= 2 AND sys_op = 1)";
 
         result.onComplete(event -> {
             if (event.failed()) {
@@ -386,19 +437,13 @@ class AdqmPrepareQueriesOfChangesServiceTest {
             PrepareRequestOfChangesResult queriesOfChanges = event.result();
 
             ctx.verify(() -> {
-                verify(queryEnrichmentService, times(2)).enrich(enrichQueryRequestArgumentCaptor.capture(), any());
+                verify(queryEnrichmentService, times(2)).enrich(any());
+                verify(queryEnrichmentService, times(2)).getEnrichedSqlNode(any());
                 verifyNoMoreInteractions(queryEnrichmentService);
 
-                List<String> allValues = enrichQueryRequestArgumentCaptor.getAllValues().stream()
-                        .map(enrichQueryRequest -> enrichQueryRequest.getQuery().toSqlString(sqlDialect).toString().replace("\r\n", "\n"))
-                        .collect(Collectors.toList());
-
-                assertThat(allValues).contains(expectedDeletedQuery);
-                assertThat(allValues).contains(expectedNewQuery);
-
                 // assert result
-                assertThat(expectedNewQuery).isEqualToNormalizingNewlines(queriesOfChanges.getNewRecordsQuery());
-                assertThat(expectedDeletedQuery).isEqualToNormalizingNewlines(queriesOfChanges.getDeletedRecordsQuery());
+                assertThat(queriesOfChanges.getNewRecordsQuery()).isEqualToNormalizingNewlines(expectedNewQuery);
+                assertThat(queriesOfChanges.getDeletedRecordsQuery()).isEqualToNormalizingNewlines(expectedDeletedQuery);
             }).completeNow();
         });
     }
@@ -449,10 +494,8 @@ class AdqmPrepareQueriesOfChangesServiceTest {
         Future<PrepareRequestOfChangesResult> result = queriesOfChangesService.prepare(new PrepareRequestOfChangesRequest(DATAMART_LIST, "dev", new DeltaData(DELTA_NUM, DELTA_NUM_CN_FROM, DELTA_NUM_CN_TO), PREVIOUS_DELTA_NUM_CN_TO, query, matView));
 
         // assert
-        String expectedNewQuery = "SELECT dates.id, CAST(EXTRACT(EPOCH FROM CAST(NULL AS TIMESTAMP)) * 1000000 AS BIGINT), CAST(EXTRACT(EPOCH FROM CAST(NULL AS DATE)) / 86400 AS BIGINT), CAST(EXTRACT(EPOCH FROM CAST(NULL AS TIME)) * 1000000 AS BIGINT), CAST(NULL AS INTEGER)\n" +
-                "FROM datamart1.dates AS dates";
-        String expectedDeletedQuery = "SELECT dates.id\n" +
-                "FROM datamart1.dates AS dates";
+        String expectedNewQuery = "SELECT id, CAST(EXTRACT(EPOCH FROM NULL) * 1000000 AS BIGINT) AS EXPR__1, CAST(EXTRACT(EPOCH FROM NULL) / 86400 AS BIGINT) AS EXPR__2, CAST(EXTRACT(EPOCH FROM NULL) * 1000000 AS BIGINT) AS EXPR__3, NULL AS EXPR__4 FROM datamart1.dates_actual WHERE sys_from >= 0 AND sys_from <= 3";
+        String expectedDeletedQuery = "SELECT id FROM datamart1.dates_actual WHERE COALESCE(sys_to, 9223372036854775807) >= -1 AND (COALESCE(sys_to, 9223372036854775807) <= 2 AND sys_op = 1)";
 
         result.onComplete(event -> {
             if (event.failed()) {
@@ -463,19 +506,13 @@ class AdqmPrepareQueriesOfChangesServiceTest {
             PrepareRequestOfChangesResult queriesOfChanges = event.result();
 
             ctx.verify(() -> {
-                verify(queryEnrichmentService, times(2)).enrich(enrichQueryRequestArgumentCaptor.capture(), any());
+                verify(queryEnrichmentService, times(2)).enrich(any());
+                verify(queryEnrichmentService, times(2)).getEnrichedSqlNode(any());
                 verifyNoMoreInteractions(queryEnrichmentService);
 
-                List<String> allValues = enrichQueryRequestArgumentCaptor.getAllValues().stream()
-                        .map(enrichQueryRequest -> enrichQueryRequest.getQuery().toSqlString(sqlDialect).toString().replace("\r\n", "\n"))
-                        .collect(Collectors.toList());
-
-                assertThat(allValues).contains(expectedDeletedQuery);
-                assertThat(allValues).contains(expectedNewQuery);
-
                 // assert result
-                assertThat(expectedNewQuery).isEqualToNormalizingNewlines(queriesOfChanges.getNewRecordsQuery());
-                assertThat(expectedDeletedQuery).isEqualToNormalizingNewlines(queriesOfChanges.getDeletedRecordsQuery());
+                assertThat(queriesOfChanges.getNewRecordsQuery()).isEqualToNormalizingNewlines(expectedNewQuery);
+                assertThat(queriesOfChanges.getDeletedRecordsQuery()).isEqualToNormalizingNewlines(expectedDeletedQuery);
             }).completeNow();
         });
     }
@@ -538,26 +575,10 @@ class AdqmPrepareQueriesOfChangesServiceTest {
         Future<PrepareRequestOfChangesResult> result = queriesOfChangesService.prepare(new PrepareRequestOfChangesRequest(DATAMART_LIST, "dev", new DeltaData(DELTA_NUM, DELTA_NUM_CN_FROM, DELTA_NUM_CN_TO), PREVIOUS_DELTA_NUM_CN_TO, query, matView));
 
         // assert
-        String expectedNewFreshQuery = "SELECT t0.id, CAST(EXTRACT(EPOCH FROM t0.col_timestamp) * 1000000 AS BIGINT), CAST(EXTRACT(EPOCH FROM t0.col_date) / 86400 AS BIGINT), CAST(EXTRACT(EPOCH FROM t0.col_time) * 1000000 AS BIGINT), t0.name, t3.surname, CAST(t0.col_boolean AS INTEGER)\n" +
-                "FROM (SELECT t1.id, t1.col_timestamp, t1.col_date, t1.col_time, t2.name, t1.col_boolean\n" +
-                "FROM datamart1.dates AS t1\n" +
-                "INNER JOIN datamart1.names AS t2 ON t1.id = t2.id) AS t0\n" +
-                "INNER JOIN datamart1.surnames AS t3 ON t0.id = t3.id";
-        String expectedNewStaleQuery = "SELECT t0.id, CAST(EXTRACT(EPOCH FROM t0.col_timestamp) * 1000000 AS BIGINT), CAST(EXTRACT(EPOCH FROM t0.col_date) / 86400 AS BIGINT), CAST(EXTRACT(EPOCH FROM t0.col_time) * 1000000 AS BIGINT), t0.name, t3.surname, CAST(t0.col_boolean AS INTEGER)\n" +
-                "FROM (SELECT t1.id, t1.col_timestamp, t1.col_date, t1.col_time, t2.name, t1.col_boolean\n" +
-                "FROM datamart1.dates AS t1\n" +
-                "INNER JOIN datamart1.names AS t2 ON t1.id = t2.id) AS t0\n" +
-                "INNER JOIN datamart1.surnames AS t3 ON t0.id = t3.id";
-        String expectedDeletedFreshQuery = "SELECT t0.id, t0.name\n" +
-                "FROM (SELECT t1.id, t1.col_timestamp, t1.col_date, t1.col_time, t2.name, t1.col_boolean\n" +
-                "FROM datamart1.dates AS t1\n" +
-                "INNER JOIN datamart1.names AS t2 ON t1.id = t2.id) AS t0\n" +
-                "INNER JOIN datamart1.surnames AS t3 ON t0.id = t3.id";
-        String expectedDeletedStaleQuery = "SELECT t0.id, t0.name\n" +
-                "FROM (SELECT t1.id, t1.col_timestamp, t1.col_date, t1.col_time, t2.name, t1.col_boolean\n" +
-                "FROM datamart1.dates AS t1\n" +
-                "INNER JOIN datamart1.names AS t2 ON t1.id = t2.id) AS t0\n" +
-                "INNER JOIN datamart1.surnames AS t3 ON t0.id = t3.id";
+        String expectedNewFreshQuery = "SELECT t3.id, CAST(EXTRACT(EPOCH FROM t3.col_timestamp) * 1000000 AS BIGINT) AS EXPR__1, CAST(EXTRACT(EPOCH FROM t3.col_date) / 86400 AS BIGINT) AS EXPR__2, CAST(EXTRACT(EPOCH FROM t3.col_time) * 1000000 AS BIGINT) AS EXPR__3, t3.name, t5.surname, CASE WHEN t3.col_boolean IS NOT NULL THEN CASE WHEN t3.col_boolean THEN 1 ELSE 0 END ELSE NULL END AS EXPR__6 FROM (SELECT t0.id, t0.col_timestamp, t0.col_date, t0.col_time, t2.name, t0.col_boolean FROM (SELECT id, col_timestamp, col_time, col_date, col_boolean FROM datamart1.dates_actual WHERE sys_from <= 3 AND COALESCE(sys_to, 9223372036854775807) >= 3) AS t0 INNER JOIN (SELECT id, name FROM datamart1.names_actual WHERE sys_from <= 3 AND COALESCE(sys_to, 9223372036854775807) >= 3) AS t2 ON t0.id = t2.id) AS t3 INNER JOIN (SELECT id, surname FROM datamart1.surnames_actual WHERE sys_from <= 3 AND COALESCE(sys_to, 9223372036854775807) >= 3) AS t5 ON t3.id = t5.id";
+        String expectedNewStaleQuery = "SELECT t3.id, CAST(EXTRACT(EPOCH FROM t3.col_timestamp) * 1000000 AS BIGINT) AS EXPR__1, CAST(EXTRACT(EPOCH FROM t3.col_date) / 86400 AS BIGINT) AS EXPR__2, CAST(EXTRACT(EPOCH FROM t3.col_time) * 1000000 AS BIGINT) AS EXPR__3, t3.name, t5.surname, CASE WHEN t3.col_boolean IS NOT NULL THEN CASE WHEN t3.col_boolean THEN 1 ELSE 0 END ELSE NULL END AS EXPR__6 FROM (SELECT t0.id, t0.col_timestamp, t0.col_date, t0.col_time, t2.name, t0.col_boolean FROM (SELECT id, col_timestamp, col_time, col_date, col_boolean FROM datamart1.dates_actual WHERE sys_from <= -1 AND COALESCE(sys_to, 9223372036854775807) >= -1) AS t0 INNER JOIN (SELECT id, name FROM datamart1.names_actual WHERE sys_from <= -1 AND COALESCE(sys_to, 9223372036854775807) >= -1) AS t2 ON t0.id = t2.id) AS t3 INNER JOIN (SELECT id, surname FROM datamart1.surnames_actual WHERE sys_from <= -1 AND COALESCE(sys_to, 9223372036854775807) >= -1) AS t5 ON t3.id = t5.id";
+        String expectedDeletedFreshQuery = "SELECT t3.id, t3.name FROM (SELECT t0.id, t0.col_timestamp, t0.col_date, t0.col_time, t2.name, t0.col_boolean FROM (SELECT id, col_timestamp, col_time, col_date, col_boolean FROM datamart1.dates_actual WHERE sys_from <= 3 AND COALESCE(sys_to, 9223372036854775807) >= 3) AS t0 INNER JOIN (SELECT id, name FROM datamart1.names_actual WHERE sys_from <= 3 AND COALESCE(sys_to, 9223372036854775807) >= 3) AS t2 ON t0.id = t2.id) AS t3 INNER JOIN (SELECT id, surname FROM datamart1.surnames_actual WHERE sys_from <= 3 AND COALESCE(sys_to, 9223372036854775807) >= 3) AS t5 ON t3.id = t5.id";
+        String expectedDeletedStaleQuery = "SELECT t3.id, t3.name FROM (SELECT t0.id, t0.col_timestamp, t0.col_date, t0.col_time, t2.name, t0.col_boolean FROM (SELECT id, col_timestamp, col_time, col_date, col_boolean FROM datamart1.dates_actual WHERE sys_from <= -1 AND COALESCE(sys_to, 9223372036854775807) >= -1) AS t0 INNER JOIN (SELECT id, name FROM datamart1.names_actual WHERE sys_from <= -1 AND COALESCE(sys_to, 9223372036854775807) >= -1) AS t2 ON t0.id = t2.id) AS t3 INNER JOIN (SELECT id, surname FROM datamart1.surnames_actual WHERE sys_from <= -1 AND COALESCE(sys_to, 9223372036854775807) >= -1) AS t5 ON t3.id = t5.id";
 
         result.onComplete(event -> {
             if (event.failed()) {
@@ -568,20 +589,69 @@ class AdqmPrepareQueriesOfChangesServiceTest {
             PrepareRequestOfChangesResult queriesOfChanges = event.result();
 
             ctx.verify(() -> {
-                verify(queryEnrichmentService, times(4)).enrich(enrichQueryRequestArgumentCaptor.capture(), any());
+                verify(queryEnrichmentService, times(4)).enrich(any());
+                verify(queryEnrichmentService, times(4)).getEnrichedSqlNode(any());
                 verifyNoMoreInteractions(queryEnrichmentService);
 
-                List<String> allValues = enrichQueryRequestArgumentCaptor.getAllValues().stream()
-                        .map(enrichQueryRequest -> enrichQueryRequest.getQuery().toSqlString(sqlDialect).toString().replace("\r\n", "\n"))
-                        .collect(Collectors.toList());
+                assertThat(queriesOfChanges.getNewRecordsQuery()).isEqualToNormalizingNewlines(expectedNewFreshQuery + " EXCEPT " + expectedNewStaleQuery);
+                assertThat(queriesOfChanges.getDeletedRecordsQuery()).isEqualToNormalizingNewlines(expectedDeletedStaleQuery + " EXCEPT " + expectedDeletedFreshQuery);
+            }).completeNow();
+        });
+    }
 
-                assertThat(allValues).contains(expectedNewFreshQuery);
-                assertThat(allValues).contains(expectedNewStaleQuery);
-                assertThat(allValues).contains(expectedDeletedStaleQuery);
-                assertThat(allValues).contains(expectedDeletedFreshQuery);
+    @Test
+    void shouldSuccessWhenJoinWithStandalone(VertxTestContext ctx) {
+        // arrange
+        SqlNode query = parseWithValidate("SELECT t1.id, t1.name, t2.description FROM datamart1.names t1 JOIN datamart1.standalone t2 ON t1.id = t2.id", DATAMART_LIST);
+        Entity matView = Entity.builder()
+                .name("matview")
+                .fields(Arrays.asList(
+                        EntityField.builder()
+                                .name("id")
+                                .ordinalPosition(0)
+                                .primaryOrder(0)
+                                .type(ColumnType.BIGINT)
+                                .nullable(false)
+                                .build(),
+                        EntityField.builder()
+                                .name("col_name")
+                                .ordinalPosition(1)
+                                .type(ColumnType.VARCHAR)
+                                .nullable(true)
+                                .build(),
+                        EntityField.builder()
+                                .name("col_description")
+                                .ordinalPosition(2)
+                                .type(ColumnType.VARCHAR)
+                                .nullable(true)
+                                .build()
+                ))
+                .build();
 
-                assertThat(expectedNewFreshQuery + " EXCEPT " + expectedNewStaleQuery).isEqualToNormalizingNewlines(queriesOfChanges.getNewRecordsQuery());
-                assertThat(expectedDeletedStaleQuery + " EXCEPT " + expectedDeletedFreshQuery).isEqualToNormalizingNewlines(queriesOfChanges.getDeletedRecordsQuery());
+        // act
+        Future<PrepareRequestOfChangesResult> result = queriesOfChangesService.prepare(new PrepareRequestOfChangesRequest(DATAMART_LIST, "dev", new DeltaData(DELTA_NUM, DELTA_NUM_CN_FROM, DELTA_NUM_CN_TO), PREVIOUS_DELTA_NUM_CN_TO, query, matView));
+
+        // assert
+        String expectedNewFreshQuery = "SELECT t0.id, t0.name, std_tbl.description FROM (SELECT id, name FROM datamart1.names_actual WHERE sys_from <= 3 AND COALESCE(sys_to, 9223372036854775807) >= 3) AS t0 INNER JOIN datamart1.std_tbl ON t0.id = std_tbl.id";
+        String expectedNewStaleQuery = "SELECT t0.id, t0.name, std_tbl.description FROM (SELECT id, name FROM datamart1.names_actual WHERE sys_from <= -1 AND COALESCE(sys_to, 9223372036854775807) >= -1) AS t0 INNER JOIN datamart1.std_tbl ON t0.id = std_tbl.id";
+        String expectedDeletedFreshQuery = "SELECT t0.id FROM (SELECT id, name FROM datamart1.names_actual WHERE sys_from <= 3 AND COALESCE(sys_to, 9223372036854775807) >= 3) AS t0 INNER JOIN datamart1.std_tbl ON t0.id = std_tbl.id";
+        String expectedDeletedStaleQuery = "SELECT t0.id FROM (SELECT id, name FROM datamart1.names_actual WHERE sys_from <= -1 AND COALESCE(sys_to, 9223372036854775807) >= -1) AS t0 INNER JOIN datamart1.std_tbl ON t0.id = std_tbl.id";
+
+        result.onComplete(event -> {
+            if (event.failed()) {
+                ctx.failNow(new AssertionError("Unexpected failure", event.cause()));
+                return;
+            }
+
+            PrepareRequestOfChangesResult queriesOfChanges = event.result();
+
+            ctx.verify(() -> {
+                verify(queryEnrichmentService, times(4)).enrich(any());
+                verify(queryEnrichmentService, times(4)).getEnrichedSqlNode(any());
+                verifyNoMoreInteractions(queryEnrichmentService);
+
+                assertThat(queriesOfChanges.getNewRecordsQuery()).isEqualToNormalizingNewlines(expectedNewFreshQuery + " EXCEPT " + expectedNewStaleQuery);
+                assertThat(queriesOfChanges.getDeletedRecordsQuery()).isEqualToNormalizingNewlines(expectedDeletedStaleQuery + " EXCEPT " + expectedDeletedFreshQuery);
             }).completeNow();
         });
     }
@@ -613,14 +683,10 @@ class AdqmPrepareQueriesOfChangesServiceTest {
         Future<PrepareRequestOfChangesResult> result = queriesOfChangesService.prepare(new PrepareRequestOfChangesRequest(DATAMART_LIST, "dev", new DeltaData(DELTA_NUM, DELTA_NUM_CN_FROM, DELTA_NUM_CN_TO), PREVIOUS_DELTA_NUM_CN_TO, query, matView));
 
         // assert
-        String expectedNewFreshQuery = "SELECT 1, COUNT(*)\n" +
-                "FROM datamart1.dates AS dates";
-        String expectedNewStaleQuery = "SELECT 1, COUNT(*)\n" +
-                "FROM datamart1.dates AS dates";
-        String expectedDeletedFreshQuery = "SELECT 1\n" +
-                "FROM datamart1.dates AS dates";
-        String expectedDeletedStaleQuery = "SELECT 1\n" +
-                "FROM datamart1.dates AS dates";
+        String expectedNewFreshQuery = "SELECT 1 AS EXPR__0, COUNT(*) AS EXPR__1 FROM datamart1.dates_actual WHERE sys_from <= 3 AND COALESCE(sys_to, 9223372036854775807) >= 3";
+        String expectedNewStaleQuery = "SELECT 1 AS EXPR__0, COUNT(*) AS EXPR__1 FROM datamart1.dates_actual WHERE sys_from <= -1 AND COALESCE(sys_to, 9223372036854775807) >= -1";
+        String expectedDeletedFreshQuery = "SELECT 1 AS EXPR__0 FROM datamart1.dates_actual WHERE sys_from <= 3 AND COALESCE(sys_to, 9223372036854775807) >= 3";
+        String expectedDeletedStaleQuery = "SELECT 1 AS EXPR__0 FROM datamart1.dates_actual WHERE sys_from <= -1 AND COALESCE(sys_to, 9223372036854775807) >= -1";
 
         result.onComplete(event -> {
             if (event.failed()) {
@@ -631,20 +697,12 @@ class AdqmPrepareQueriesOfChangesServiceTest {
             PrepareRequestOfChangesResult queriesOfChanges = event.result();
 
             ctx.verify(() -> {
-                verify(queryEnrichmentService, times(4)).enrich(enrichQueryRequestArgumentCaptor.capture(), any());
+                verify(queryEnrichmentService, times(4)).enrich(any());
+                verify(queryEnrichmentService, times(4)).getEnrichedSqlNode(any());
                 verifyNoMoreInteractions(queryEnrichmentService);
 
-                List<String> allValues = enrichQueryRequestArgumentCaptor.getAllValues().stream()
-                        .map(enrichQueryRequest -> enrichQueryRequest.getQuery().toSqlString(sqlDialect).toString().replace("\r\n", "\n"))
-                        .collect(Collectors.toList());
-
-                assertThat(allValues).contains(expectedNewFreshQuery);
-                assertThat(allValues).contains(expectedNewStaleQuery);
-                assertThat(allValues).contains(expectedDeletedStaleQuery);
-                assertThat(allValues).contains(expectedDeletedFreshQuery);
-
-                assertThat(expectedNewFreshQuery + " EXCEPT " + expectedNewStaleQuery).isEqualToNormalizingNewlines(queriesOfChanges.getNewRecordsQuery());
-                assertThat(expectedDeletedStaleQuery + " EXCEPT " + expectedDeletedFreshQuery).isEqualToNormalizingNewlines(queriesOfChanges.getDeletedRecordsQuery());
+                assertThat(queriesOfChanges.getNewRecordsQuery()).isEqualToNormalizingNewlines(expectedNewFreshQuery + " EXCEPT " + expectedNewStaleQuery);
+                assertThat(queriesOfChanges.getDeletedRecordsQuery()).isEqualToNormalizingNewlines(expectedDeletedStaleQuery + " EXCEPT " + expectedDeletedFreshQuery);
             }).completeNow();
         });
     }
@@ -702,7 +760,7 @@ class AdqmPrepareQueriesOfChangesServiceTest {
         Entity entity = DATAMART_1.getEntities().get(0);
         DtmException expectedException = new DtmException("Enrich exception");
         reset(queryEnrichmentService);
-        when(queryEnrichmentService.enrich(any(), any())).thenReturn(Future.failedFuture(expectedException));
+        when(queryEnrichmentService.enrich(any())).thenReturn(Future.failedFuture(expectedException));
         SqlNode query = parseWithValidate("SELECT id, col_timestamp, col_time, col_date, col_boolean FROM datamart1.dates", DATAMART_LIST);
 
         // act

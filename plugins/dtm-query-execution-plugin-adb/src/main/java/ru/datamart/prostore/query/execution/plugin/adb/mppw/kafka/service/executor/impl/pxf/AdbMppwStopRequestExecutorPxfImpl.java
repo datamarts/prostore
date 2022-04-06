@@ -15,6 +15,12 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.service.executor.impl.pxf;
 
+import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Component;
 import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.common.model.ddl.Entity;
 import ru.datamart.prostore.common.model.ddl.EntityFieldUtils;
@@ -25,12 +31,6 @@ import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.service.execut
 import ru.datamart.prostore.query.execution.plugin.adb.query.service.DatabaseExecutor;
 import ru.datamart.prostore.query.execution.plugin.api.mppw.MppwRequest;
 import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
-import io.vertx.core.Future;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
@@ -63,23 +63,29 @@ public class AdbMppwStopRequestExecutorPxfImpl implements AdbMppwRequestExecutor
         return Future.future(promise ->
                 dropExtTable(request)
                         .compose(ignore -> mppwDataTransferService.execute(mppwTransferRequestFactory.create(request, EntityFieldUtils.getPkFieldNames(request.getDestinationEntity()))))
-                        .compose(ignore -> checkStagingTable(request.getDestinationEntity()))
-                        .onComplete(ar ->
-                            adbQueryExecutor.executeUpdate(String.format("TRUNCATE %s_staging", request.getDestinationEntity().getNameWithSchema()))
-                                    .onComplete(truncateResult -> {
-                                        if (ar.failed()) {
-                                            log.error("Error during stop ADB-MPPW", ar.cause());
-                                            promise.fail(ar.cause());
-                                        } else {
-                                            if (truncateResult.failed()) {
-                                                log.error("Error during TRUNCATE staging table on stop ADB-MPPW", truncateResult.cause());
-                                                promise.fail(truncateResult.cause());
-                                            } else {
-                                                log.debug("Mppw kafka stopped successfully");
-                                                promise.complete();
-                                            }
-                                        }
-                                    })
+                        .onComplete(ar -> {
+                                    if (request.getSysCn() == null) {
+                                        promise.complete();
+                                        return;
+                                    }
+
+                                    checkStagingTable(request.getDestinationEntity())
+                                            .compose(ignored -> adbQueryExecutor.executeUpdate(String.format("TRUNCATE %s_staging", request.getDestinationEntity().getNameWithSchema())))
+                                            .onComplete(truncateResult -> {
+                                                if (ar.failed()) {
+                                                    log.error("Error during stop ADB-MPPW", ar.cause());
+                                                    promise.fail(ar.cause());
+                                                }
+
+                                                if (truncateResult.failed()) {
+                                                    log.error("Error during TRUNCATE staging table on stop ADB-MPPW", truncateResult.cause());
+                                                    promise.fail(truncateResult.cause());
+                                                } else {
+                                                    log.debug("Mppw kafka stopped successfully");
+                                                    promise.complete();
+                                                }
+                                            });
+                                }
                         )
         );
     }

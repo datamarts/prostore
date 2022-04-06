@@ -15,17 +15,20 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.enrichment.service;
 
+import lombok.val;
+import org.springframework.stereotype.Service;
+import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.common.model.ddl.ColumnType;
 import ru.datamart.prostore.common.model.ddl.Entity;
 import ru.datamart.prostore.common.model.ddl.EntityField;
+import ru.datamart.prostore.common.model.ddl.EntityUtils;
+import ru.datamart.prostore.query.calcite.core.service.AbstractSchemaExtender;
 import ru.datamart.prostore.query.execution.model.metadata.Datamart;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.SchemaExtender;
-import lombok.val;
-import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
 
 import static ru.datamart.prostore.query.execution.plugin.adb.base.factory.Constants.*;
 
@@ -33,42 +36,44 @@ import static ru.datamart.prostore.query.execution.plugin.adb.base.factory.Const
  * Implementing a Logic to Physical Conversion
  */
 @Service("adbSchemaExtender")
-public class AdbSchemaExtender implements SchemaExtender {
+public class AdbSchemaExtender extends AbstractSchemaExtender {
 
     @Override
-    public Datamart createPhysicalSchema(Datamart logicalSchema, String systemName) {
-        Datamart extendedSchema = new Datamart();
-        extendedSchema.setMnemonic(logicalSchema.getMnemonic());
-        List<Entity> extendedEntities = new ArrayList<>();
-        logicalSchema.getEntities().forEach(entity -> {
-            val extendedEntity = entity.copy();
-            val extendedEntityFields = new ArrayList<>(extendedEntity.getFields());
-            extendedEntityFields.addAll(getExtendedColumns());
-            extendedEntity.setFields(extendedEntityFields);
-            extendedEntities.add(extendedEntity);
-            extendedEntities.add(getExtendedSchema(extendedEntity, HISTORY_TABLE_SUFFIX));
-            extendedEntities.add(getExtendedSchema(extendedEntity, STAGING_TABLE_SUFFIX));
-            extendedEntities.add(getExtendedSchema(extendedEntity, ACTUAL_TABLE_SUFFIX));
-        });
-        extendedSchema.setEntities(extendedEntities);
-        return extendedSchema;
+    protected void extendLogicalEntity(Map<String, Datamart> extendedDatamarts, Entity entity, String datamartMnemonic, String systemName) {
+        val logicalDatamart = getOrCreateDatamart(extendedDatamarts, datamartMnemonic);
+        logicalDatamart.getEntities().add(entity);
+
+        val extendedEntity = entity.copy();
+        val extendedEntityFields = new ArrayList<>(extendedEntity.getFields());
+        extendedEntityFields.addAll(getExtendedColumns());
+        extendedEntity.setFields(extendedEntityFields);
+        logicalDatamart.getEntities().add(EntityUtils.renameEntityAddPostfix(extendedEntity, HISTORY_TABLE_SUFFIX));
+        logicalDatamart.getEntities().add(EntityUtils.renameEntityAddPostfix(extendedEntity, STAGING_TABLE_SUFFIX));
+        logicalDatamart.getEntities().add(EntityUtils.renameEntityAddPostfix(extendedEntity, ACTUAL_TABLE_SUFFIX));
     }
 
-    private Entity getExtendedSchema(Entity entity, String tablePostfix) {
-        return entity.toBuilder()
-                .fields(entity.getFields().stream()
-                        .map(ef -> ef.toBuilder().build())
-                        .collect(Collectors.toList()))
-                .name(entity.getName() + tablePostfix)
-                .build();
+    @Override
+    protected void extendStandaloneEntity(Map<String, Datamart> extendedDatamarts, Entity entity, String datamartMnemonic) {
+        val standaloneSchemaAndName = entity.getExternalTableLocationPath().split("\\.");
+        if (standaloneSchemaAndName.length != 2) {
+            throw new DtmException(String.format("External table path invalid. Format: [schema.tbl], actual: [%s]", entity.getExternalTableLocationPath()));
+        }
+        val standaloneTableSchema = standaloneSchemaAndName[0];
+        val standaloneTableName = standaloneSchemaAndName[1];
+
+        val logicalDatamart = getOrCreateDatamart(extendedDatamarts, datamartMnemonic);
+        logicalDatamart.getEntities().add(entity);
+
+        val standaloneDatamart = getOrCreateDatamart(extendedDatamarts, standaloneTableSchema);
+        standaloneDatamart.getEntities().add(EntityUtils.renameEntity(entity, standaloneTableSchema, standaloneTableName));
     }
 
     private List<EntityField> getExtendedColumns() {
-        List<EntityField> tableAttributeList = new ArrayList<>();
-        tableAttributeList.add(generateNewField(SYS_OP_ATTR, false));
-        tableAttributeList.add(generateNewField(SYS_TO_ATTR, true));
-        tableAttributeList.add(generateNewField(SYS_FROM_ATTR, false));
-        return tableAttributeList;
+        return Arrays.asList(
+                generateNewField(SYS_OP_ATTR, false),
+                generateNewField(SYS_TO_ATTR, true),
+                generateNewField(SYS_FROM_ATTR, false)
+        );
     }
 
     private EntityField generateNewField(String name, boolean isNullable) {

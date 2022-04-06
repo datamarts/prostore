@@ -15,33 +15,6 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adp.dml;
 
-import ru.datamart.prostore.cache.service.CacheService;
-import ru.datamart.prostore.common.cache.QueryTemplateKey;
-import ru.datamart.prostore.common.cache.QueryTemplateValue;
-import ru.datamart.prostore.common.delta.DeltaInformation;
-import ru.datamart.prostore.common.delta.DeltaType;
-import ru.datamart.prostore.common.model.ddl.ColumnType;
-import ru.datamart.prostore.common.model.ddl.Entity;
-import ru.datamart.prostore.common.model.ddl.EntityField;
-import ru.datamart.prostore.common.reader.QueryParameters;
-import ru.datamart.prostore.common.reader.QueryResult;
-import ru.datamart.prostore.common.reader.QueryTemplateResult;
-import ru.datamart.prostore.query.calcite.core.rel2sql.DtmRelToSqlConverter;
-import ru.datamart.prostore.query.execution.model.metadata.ColumnMetadata;
-import ru.datamart.prostore.query.execution.model.metadata.Datamart;
-import ru.datamart.prostore.query.execution.plugin.adp.calcite.configuration.CalciteConfiguration;
-import ru.datamart.prostore.query.execution.plugin.adp.calcite.factory.AdpCalciteSchemaFactory;
-import ru.datamart.prostore.query.execution.plugin.adp.calcite.factory.AdpSchemaFactory;
-import ru.datamart.prostore.query.execution.plugin.adp.calcite.service.AdpCalciteContextProvider;
-import ru.datamart.prostore.query.execution.plugin.adp.calcite.service.AdpCalciteDMLQueryParserService;
-import ru.datamart.prostore.query.execution.plugin.adp.calcite.service.AdpCalciteDefinitionService;
-import ru.datamart.prostore.query.execution.plugin.adp.db.service.DatabaseExecutor;
-import ru.datamart.prostore.query.execution.plugin.adp.enrichment.service.AdpDmlQueryExtendService;
-import ru.datamart.prostore.query.execution.plugin.adp.enrichment.service.AdpQueryEnrichmentService;
-import ru.datamart.prostore.query.execution.plugin.adp.enrichment.service.AdpQueryGenerator;
-import ru.datamart.prostore.query.execution.plugin.adp.enrichment.service.AdpSchemaExtender;
-import ru.datamart.prostore.query.execution.plugin.api.dml.LlrEstimateUtils;
-import ru.datamart.prostore.query.execution.plugin.api.request.LlrRequest;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
@@ -59,6 +32,33 @@ import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import ru.datamart.prostore.cache.service.CacheService;
+import ru.datamart.prostore.common.cache.QueryTemplateKey;
+import ru.datamart.prostore.common.cache.QueryTemplateValue;
+import ru.datamart.prostore.common.delta.DeltaInformation;
+import ru.datamart.prostore.common.delta.DeltaType;
+import ru.datamart.prostore.common.model.ddl.ColumnType;
+import ru.datamart.prostore.common.model.ddl.Entity;
+import ru.datamart.prostore.common.model.ddl.EntityField;
+import ru.datamart.prostore.common.model.ddl.EntityType;
+import ru.datamart.prostore.common.reader.QueryParameters;
+import ru.datamart.prostore.common.reader.QueryResult;
+import ru.datamart.prostore.common.reader.QueryTemplateResult;
+import ru.datamart.prostore.query.calcite.core.rel2sql.DtmRelToSqlConverter;
+import ru.datamart.prostore.query.execution.model.metadata.ColumnMetadata;
+import ru.datamart.prostore.query.execution.model.metadata.Datamart;
+import ru.datamart.prostore.query.execution.plugin.adp.calcite.configuration.CalciteConfiguration;
+import ru.datamart.prostore.query.execution.plugin.adp.calcite.factory.AdpCalciteSchemaFactory;
+import ru.datamart.prostore.query.execution.plugin.adp.calcite.factory.AdpSchemaFactory;
+import ru.datamart.prostore.query.execution.plugin.adp.calcite.service.AdpCalciteContextProvider;
+import ru.datamart.prostore.query.execution.plugin.adp.calcite.service.AdpCalciteDMLQueryParserService;
+import ru.datamart.prostore.query.execution.plugin.adp.calcite.service.AdpCalciteDefinitionService;
+import ru.datamart.prostore.query.execution.plugin.adp.db.service.DatabaseExecutor;
+import ru.datamart.prostore.query.execution.plugin.adp.enrichment.service.AdpDmlQueryExtendService;
+import ru.datamart.prostore.query.execution.plugin.adp.enrichment.service.AdpQueryEnrichmentService;
+import ru.datamart.prostore.query.execution.plugin.adp.enrichment.service.AdpSchemaExtender;
+import ru.datamart.prostore.query.execution.plugin.api.dml.LlrEstimateUtils;
+import ru.datamart.prostore.query.execution.plugin.api.request.LlrRequest;
 
 import java.util.*;
 
@@ -90,11 +90,10 @@ class AdpLlrServiceTest {
     void setUp(Vertx vertx) {
         AdpCalciteSchemaFactory calciteSchemaFactory = new AdpCalciteSchemaFactory(new AdpSchemaFactory());
         AdpDmlQueryExtendService queryExtendService = new AdpDmlQueryExtendService();
-        AdpQueryGenerator adpQueryGenerator = new AdpQueryGenerator(queryExtendService, sqlDialect, relToSqlConverter);
         AdpCalciteContextProvider contextProvider = new AdpCalciteContextProvider(configParser, calciteSchemaFactory);
         AdpSchemaExtender schemaExtender = new AdpSchemaExtender();
-        AdpQueryEnrichmentService adpQueryEnrichmentService = new AdpQueryEnrichmentService(adpQueryGenerator, contextProvider, schemaExtender);
-        AdpCalciteDMLQueryParserService queryParserService = new AdpCalciteDMLQueryParserService(contextProvider, vertx);
+        AdpQueryEnrichmentService adpQueryEnrichmentService = new AdpQueryEnrichmentService(queryExtendService, sqlDialect, relToSqlConverter);
+        AdpCalciteDMLQueryParserService queryParserService = new AdpCalciteDMLQueryParserService(contextProvider, vertx, schemaExtender);
         AdpQueryTemplateExtractor templateExtractor = new AdpQueryTemplateExtractor(definitionService, sqlDialect);
         adpLlrService = new AdpLlrService(
                 adpQueryEnrichmentService,
@@ -118,6 +117,7 @@ class AdpLlrServiceTest {
                 new Datamart("datamart", false, Arrays.asList(
                         Entity.builder()
                                 .name("tbl")
+                                .entityType(EntityType.TABLE)
                                 .fields(Arrays.asList(
                                         EntityField.builder()
                                                 .name("id")
@@ -180,6 +180,7 @@ class AdpLlrServiceTest {
                 new Datamart("datamart", false, Arrays.asList(
                         Entity.builder()
                                 .name("tbl")
+                                .entityType(EntityType.TABLE)
                                 .fields(Arrays.asList(
                                         EntityField.builder()
                                                 .name("id")

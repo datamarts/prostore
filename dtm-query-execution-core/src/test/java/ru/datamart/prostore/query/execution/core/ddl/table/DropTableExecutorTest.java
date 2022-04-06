@@ -15,38 +15,9 @@
  */
 package ru.datamart.prostore.query.execution.core.ddl.table;
 
-import ru.datamart.prostore.cache.service.CacheService;
-import ru.datamart.prostore.cache.service.EvictQueryTemplateCacheService;
-import ru.datamart.prostore.common.exception.DtmException;
-import ru.datamart.prostore.common.model.ddl.ColumnType;
-import ru.datamart.prostore.common.model.ddl.Entity;
-import ru.datamart.prostore.common.model.ddl.EntityField;
-import ru.datamart.prostore.common.model.ddl.EntityType;
-import ru.datamart.prostore.common.reader.QueryRequest;
-import ru.datamart.prostore.common.reader.QueryResult;
-import ru.datamart.prostore.common.reader.SourceType;
-import ru.datamart.prostore.common.request.DatamartRequest;
-import ru.datamart.prostore.query.calcite.core.configuration.CalciteCoreConfiguration;
-import ru.datamart.prostore.query.calcite.core.framework.DtmCalciteFramework;
-import ru.datamart.prostore.query.execution.core.base.dto.cache.EntityKey;
-import ru.datamart.prostore.query.execution.core.base.exception.entity.EntityNotExistsException;
-import ru.datamart.prostore.query.execution.core.base.repository.ServiceDbFacade;
-import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.*;
-import ru.datamart.prostore.query.execution.core.base.service.hsql.HSQLClient;
-import ru.datamart.prostore.query.execution.core.base.service.metadata.MetadataExecutor;
-import ru.datamart.prostore.query.execution.core.calcite.configuration.CalciteConfiguration;
-import ru.datamart.prostore.query.execution.core.ddl.dto.DdlRequestContext;
-import ru.datamart.prostore.query.execution.core.ddl.service.QueryResultDdlExecutor;
-import ru.datamart.prostore.query.execution.core.ddl.service.impl.table.DropTableExecutor;
-import ru.datamart.prostore.query.execution.core.delta.dto.OkDelta;
-import ru.datamart.prostore.query.execution.core.delta.repository.zookeeper.DeltaServiceDao;
-import ru.datamart.prostore.query.execution.core.plugin.service.DataSourcePluginService;
-import ru.datamart.prostore.query.execution.core.utils.TestUtils;
-import ru.datamart.prostore.query.execution.plugin.api.exception.DataSourceException;
 import io.vertx.core.Future;
-import io.vertx.core.Promise;
-import io.vertx.core.json.JsonArray;
-import io.vertx.ext.sql.ResultSet;
+import io.vertx.junit5.VertxExtension;
+import io.vertx.junit5.VertxTestContext;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParseException;
 import org.apache.calcite.sql.parser.SqlParser;
@@ -59,6 +30,33 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import ru.datamart.prostore.cache.service.CacheService;
+import ru.datamart.prostore.cache.service.EvictQueryTemplateCacheService;
+import ru.datamart.prostore.common.exception.DtmException;
+import ru.datamart.prostore.common.model.ddl.ColumnType;
+import ru.datamart.prostore.common.model.ddl.Entity;
+import ru.datamart.prostore.common.model.ddl.EntityField;
+import ru.datamart.prostore.common.model.ddl.EntityType;
+import ru.datamart.prostore.common.reader.QueryRequest;
+import ru.datamart.prostore.common.reader.SourceType;
+import ru.datamart.prostore.common.request.DatamartRequest;
+import ru.datamart.prostore.query.calcite.core.configuration.CalciteCoreConfiguration;
+import ru.datamart.prostore.query.calcite.core.framework.DtmCalciteFramework;
+import ru.datamart.prostore.query.execution.core.base.dto.cache.EntityKey;
+import ru.datamart.prostore.query.execution.core.base.exception.entity.EntityNotExistsException;
+import ru.datamart.prostore.query.execution.core.base.repository.ServiceDbFacade;
+import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.*;
+import ru.datamart.prostore.query.execution.core.base.service.metadata.MetadataExecutor;
+import ru.datamart.prostore.query.execution.core.calcite.configuration.CalciteConfiguration;
+import ru.datamart.prostore.query.execution.core.ddl.dto.DdlRequestContext;
+import ru.datamart.prostore.query.execution.core.ddl.service.QueryResultDdlExecutor;
+import ru.datamart.prostore.query.execution.core.ddl.service.impl.table.DropTableExecutor;
+import ru.datamart.prostore.query.execution.core.ddl.service.impl.validate.RelatedViewChecker;
+import ru.datamart.prostore.query.execution.core.delta.dto.OkDelta;
+import ru.datamart.prostore.query.execution.core.delta.repository.zookeeper.DeltaServiceDao;
+import ru.datamart.prostore.query.execution.core.plugin.service.DataSourcePluginService;
+import ru.datamart.prostore.query.execution.core.utils.TestUtils;
+import ru.datamart.prostore.query.execution.plugin.api.exception.DataSourceException;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -69,7 +67,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, VertxExtension.class})
 class DropTableExecutorTest {
     private static final String SCHEMA = "shares";
 
@@ -103,7 +101,7 @@ class DropTableExecutorTest {
     @Mock
     private EvictQueryTemplateCacheService evictQueryTemplateCacheService;
     @Mock
-    private HSQLClient hsqlClient;
+    private RelatedViewChecker relatedViewChecker;
 
     @Captor
     private ArgumentCaptor<DdlRequestContext> contextArgumentCaptor;
@@ -125,23 +123,23 @@ class DropTableExecutorTest {
                 TestUtils.SQL_DIALECT,
                 cacheService,
                 pluginService,
-                hsqlClient,
-                evictQueryTemplateCacheService);
+                evictQueryTemplateCacheService,
+                relatedViewChecker);
         lenient().doNothing().when(evictQueryTemplateCacheService).evictByEntityName(anyString(), anyString());
     }
 
     @Test
-    void executeSuccess() throws SqlParseException {
+    void executeSuccess(VertxTestContext testContext) throws SqlParseException {
         // arrange
         prepareContext("drop table shares.accounts");
-        Promise<QueryResult> promise = Promise.promise();
+
         Entity entity = context.getEntity();
         when(pluginService.getSourceTypes()).thenReturn(Collections.singleton(SourceType.ADB));
 
         when(entityDao.getEntity(SCHEMA, entity.getName()))
                 .thenReturn(Future.succeededFuture(entity));
-        when(hsqlClient.getQueryResult(any()))
-                .thenReturn(Future.succeededFuture(new ResultSet().setResults(Collections.EMPTY_LIST)));
+        when(relatedViewChecker.checkRelatedViews(any(), any()))
+                .thenReturn(Future.succeededFuture());
         when(deltaServiceDao.getDeltaOk(SCHEMA)).thenReturn(Future.succeededFuture(deltaOk));
         when(changelogDao.writeNewRecord(anyString(), anyString(), anyString(), any())).thenReturn(Future.succeededFuture());
         when(metadataExecutor.execute(any()))
@@ -151,29 +149,28 @@ class DropTableExecutorTest {
 
         // act
         dropTableDdlExecutor.execute(context, context.getEntity().getName())
-                .onComplete(promise);
-
-        // assert
-        assertTrue(promise.future().succeeded());
-        verify(evictQueryTemplateCacheService)
-                .evictByEntityName(entity.getSchema(), entity.getName());
-        verify(metadataExecutor).execute(contextArgumentCaptor.capture());
-        DdlRequestContext value = contextArgumentCaptor.getValue();
-        assertNull(value.getSourceType());
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    assertTrue(ar.succeeded());
+                    verify(evictQueryTemplateCacheService)
+                            .evictByEntityName(entity.getSchema(), entity.getName());
+                    verify(metadataExecutor).execute(contextArgumentCaptor.capture());
+                    DdlRequestContext value = contextArgumentCaptor.getValue();
+                    assertNull(value.getSourceType());
+                }).completeNow());
     }
 
     @Test
-    void executeSuccessLogicalOnly() throws SqlParseException {
+    void executeSuccessLogicalOnly(VertxTestContext testContext) throws SqlParseException {
         // arrange
         prepareContext("drop table accounts logical_only");
-        Promise<QueryResult> promise = Promise.promise();
         Entity entity = context.getEntity();
         when(pluginService.getSourceTypes()).thenReturn(Collections.singleton(SourceType.ADB));
 
         when(entityDao.getEntity(SCHEMA, entity.getName()))
                 .thenReturn(Future.succeededFuture(entity));
-        when(hsqlClient.getQueryResult(any()))
-                .thenReturn(Future.succeededFuture(new ResultSet().setResults(Collections.EMPTY_LIST)));
+        when(relatedViewChecker.checkRelatedViews(any(), any()))
+                .thenReturn(Future.succeededFuture());
         when(deltaServiceDao.getDeltaOk(SCHEMA)).thenReturn(Future.succeededFuture(deltaOk));
         when(changelogDao.writeNewRecord(anyString(), anyString(), anyString(), any())).thenReturn(Future.succeededFuture());
         when(entityDao.setEntityState(any(), any(), anyString(), eq(SetEntityState.DELETE)))
@@ -181,20 +178,19 @@ class DropTableExecutorTest {
 
         // act
         dropTableDdlExecutor.execute(context, context.getEntity().getName())
-                .onComplete(promise);
-
-        // assert
-        assertTrue(promise.future().succeeded());
-        verify(evictQueryTemplateCacheService)
-                .evictByEntityName(entity.getSchema(), entity.getName());
-        verify(metadataExecutor, never()).execute(any());
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    assertTrue(ar.succeeded());
+                    verify(evictQueryTemplateCacheService)
+                            .evictByEntityName(entity.getSchema(), entity.getName());
+                    verify(metadataExecutor, never()).execute(any());
+                }).completeNow());
     }
 
     @Test
-    void executeWithIfExistsStmtSuccess() throws SqlParseException {
+    void executeWithIfExistsStmtSuccess(VertxTestContext testContext) throws SqlParseException {
         // arrange
         prepareContext("drop table shares.accounts");
-        Promise<QueryResult> promise = Promise.promise();
         Entity entity = context.getEntity();
         context.getRequest().getQueryRequest().setSql("DROP TABLE IF EXISTS shares.accounts");
         String entityName = entity.getName();
@@ -203,27 +199,26 @@ class DropTableExecutorTest {
 
         // act
         dropTableDdlExecutor.execute(context, entityName)
-                .onComplete(promise);
-
-        // assert
-        assertNotNull(promise.future().result());
-        verify(evictQueryTemplateCacheService, never())
-                .evictByEntityName(entity.getSchema(), entity.getName());
-        verifyNoInteractions(pluginService, hsqlClient);
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    assertNotNull(ar.result());
+                    verify(evictQueryTemplateCacheService, never())
+                            .evictByEntityName(entity.getSchema(), entity.getName());
+                    verifyNoInteractions(pluginService, relatedViewChecker);
+                }).completeNow());
     }
 
     @Test
-    void executeWithMetadataExecuteError() throws SqlParseException {
+    void executeWithMetadataExecuteError(VertxTestContext testContext) throws SqlParseException {
         // arrange
         prepareContext("drop table shares.accounts");
-        Promise<QueryResult> promise = Promise.promise();
         Entity entity = context.getEntity();
         when(pluginService.getSourceTypes()).thenReturn(Collections.singleton(SourceType.ADB));
         when(entityDao.getEntity(SCHEMA, entity.getName()))
                 .thenReturn(Future.succeededFuture(entity));
 
-        when(hsqlClient.getQueryResult(any()))
-                .thenReturn(Future.succeededFuture(new ResultSet().setResults(Collections.EMPTY_LIST)));
+        when(relatedViewChecker.checkRelatedViews(any(), any()))
+                .thenReturn(Future.succeededFuture());
 
         when(deltaServiceDao.getDeltaOk(SCHEMA))
                 .thenReturn(Future.succeededFuture(deltaOk));
@@ -236,50 +231,48 @@ class DropTableExecutorTest {
 
         // act
         dropTableDdlExecutor.execute(context, entity.getName())
-                .onComplete(promise);
-
-        // assert
-        assertNotNull(promise.future().cause());
-        assertEquals("DROP TABLE shares.accounts", changeQueryCaptor.getValue());
-        verify(evictQueryTemplateCacheService, times(1))
-                .evictByEntityName(entity.getSchema(), entity.getName());
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    assertNotNull(ar.cause());
+                    assertEquals("DROP TABLE shares.accounts", changeQueryCaptor.getValue());
+                    verify(evictQueryTemplateCacheService, times(1))
+                            .evictByEntityName(entity.getSchema(), entity.getName());
+                }).completeNow());
     }
 
     @Test
-    void executeWithGetDeltaOkError() throws SqlParseException {
+    void executeWithGetDeltaOkError(VertxTestContext testContext) throws SqlParseException {
         // arrange
         prepareContext("drop table accounts");
-        Promise<QueryResult> promise = Promise.promise();
         Entity entity = context.getEntity();
         when(entityDao.getEntity(SCHEMA, entity.getName()))
                 .thenReturn(Future.succeededFuture(context.getEntity()));
 
-        when(hsqlClient.getQueryResult(any()))
-                .thenReturn(Future.succeededFuture(new ResultSet().setResults(Collections.EMPTY_LIST)));
+        when(relatedViewChecker.checkRelatedViews(any(), any()))
+                .thenReturn(Future.succeededFuture());
 
         when(deltaServiceDao.getDeltaOk(SCHEMA))
                 .thenReturn(Future.failedFuture("get delta ok error"));
 
         // act
         dropTableDdlExecutor.execute(context, entity.getName())
-                .onComplete(promise);
-
-        // assert
-        assertNotNull(promise.future().cause());
-        assertEquals("get delta ok error", promise.future().cause().getMessage());
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    assertNotNull(ar.cause());
+                    assertEquals("get delta ok error", ar.cause().getMessage());
+                }).completeNow());
     }
 
     @Test
-    void executeWithWriteChangelogError() throws SqlParseException {
+    void executeWithWriteChangelogError(VertxTestContext testContext) throws SqlParseException {
         // arrange
         prepareContext("drop table shares.accounts");
-        Promise<QueryResult> promise = Promise.promise();
         Entity entity = context.getEntity();
         when(entityDao.getEntity(SCHEMA, entity.getName()))
                 .thenReturn(Future.succeededFuture(context.getEntity()));
 
-        when(hsqlClient.getQueryResult(any()))
-                .thenReturn(Future.succeededFuture(new ResultSet().setResults(Collections.EMPTY_LIST)));
+        when(relatedViewChecker.checkRelatedViews(any(), any()))
+                .thenReturn(Future.succeededFuture());
 
         when(deltaServiceDao.getDeltaOk(SCHEMA))
                 .thenReturn(Future.succeededFuture(deltaOk));
@@ -289,26 +282,26 @@ class DropTableExecutorTest {
 
         // act
         dropTableDdlExecutor.execute(context, entity.getName())
-                .onComplete(promise);
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    assertNotNull(ar.cause());
+                    assertEquals("DROP TABLE shares.accounts", changeQueryCaptor.getValue());
+                    assertEquals("changelog write new record error", ar.cause().getMessage());
+                }).completeNow());
 
-        // assert
-        assertNotNull(promise.future().cause());
-        assertEquals("DROP TABLE shares.accounts", changeQueryCaptor.getValue());
-        assertEquals("changelog write new record error", promise.future().cause().getMessage());
     }
 
     @Test
-    void executeWithSetEntityStateError() throws SqlParseException {
+    void executeWithSetEntityStateError(VertxTestContext testContext) throws SqlParseException {
         // arrange
         prepareContext("drop table shares.accounts");
-        Promise<QueryResult> promise = Promise.promise();
         Entity entity = context.getEntity();
         when(pluginService.getSourceTypes()).thenReturn(Collections.singleton(SourceType.ADB));
         when(entityDao.getEntity(SCHEMA, entity.getName()))
                 .thenReturn(Future.succeededFuture(context.getEntity()));
 
-        when(hsqlClient.getQueryResult(any()))
-                .thenReturn(Future.succeededFuture(new ResultSet().setResults(Collections.EMPTY_LIST)));
+        when(relatedViewChecker.checkRelatedViews(any(), any()))
+                .thenReturn(Future.succeededFuture());
 
         when(deltaServiceDao.getDeltaOk(SCHEMA))
                 .thenReturn(Future.succeededFuture(deltaOk));
@@ -324,54 +317,49 @@ class DropTableExecutorTest {
 
         // act
         dropTableDdlExecutor.execute(context, entity.getName())
-                .onComplete(promise);
-
-        // assert
-        assertNotNull(promise.future().cause());
-        assertEquals("DROP TABLE shares.accounts", changeQueryCaptor.getValue());
-        verify(evictQueryTemplateCacheService)
-                .evictByEntityName(entity.getSchema(), entity.getName());
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    assertNotNull(ar.cause());
+                    assertEquals("DROP TABLE shares.accounts", changeQueryCaptor.getValue());
+                    verify(evictQueryTemplateCacheService)
+                            .evictByEntityName(entity.getSchema(), entity.getName());
+                }).completeNow());
     }
 
     @Test
-    void executeWithExistedViewError() throws SqlParseException {
+    void executeWithExistedViewError(VertxTestContext testContext) throws SqlParseException {
         // arrange
         prepareContext("drop table shares.accounts");
-        Promise<QueryResult> promise = Promise.promise();
         String viewName1 = "SYS_VIEWNAME_1";
         String viewName2 = "VIEWNAME_2";
-        JsonArray views = new JsonArray().add(viewName1).add(viewName2);
-        String expectedMessage = String.format("Views [VIEWNAME_1, VIEWNAME_2] using the '%s' must be dropped first", context.getEntity().getName().toUpperCase());
 
         when(entityDao.getEntity(SCHEMA, context.getEntity().getName()))
                 .thenReturn(Future.succeededFuture(context.getEntity()));
 
-        when(hsqlClient.getQueryResult(any()))
-                .thenReturn(Future.succeededFuture(new ResultSet().setResults(Collections.singletonList(views))));
+        when(relatedViewChecker.checkRelatedViews(any(), any()))
+                .thenReturn(Future.failedFuture("Check failed"));
 
         // act
         dropTableDdlExecutor.execute(context, context.getEntity().getName())
-                .onComplete(promise);
-
-        // assert
-        assertEquals(expectedMessage, promise.future().cause().getMessage());
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    assertEquals("Check failed", ar.cause().getMessage());
+                }).completeNow());
     }
 
     @Test
-    void executeCorrectlyExtractSourceType() throws SqlParseException {
+    void executeCorrectlyExtractSourceType(VertxTestContext testContext) throws SqlParseException {
         // arrange
         prepareContext("drop table shares.accounts datasource_type = 'ADB'");
         Entity entity = context.getEntity();
-
-        Promise<QueryResult> promise = Promise.promise();
 
         when(pluginService.getSourceTypes()).thenReturn(Collections.singleton(SourceType.ADB));
 
         when(entityDao.getEntity(SCHEMA, entity.getName()))
                 .thenReturn(Future.succeededFuture(entity));
 
-        when(hsqlClient.getQueryResult(any()))
-                .thenReturn(Future.succeededFuture(new ResultSet().setResults(Collections.EMPTY_LIST)));
+        when(relatedViewChecker.checkRelatedViews(any(), any()))
+                .thenReturn(Future.succeededFuture());
 
         when(deltaServiceDao.getDeltaOk(SCHEMA))
                 .thenReturn(Future.succeededFuture(deltaOk));
@@ -388,14 +376,34 @@ class DropTableExecutorTest {
 
         // act
         dropTableDdlExecutor.execute(context, context.getEntity().getName())
-                .onComplete(promise);
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    assertTrue(ar.succeeded());
+                    verify(metadataExecutor).execute(contextArgumentCaptor.capture());
+                    assertEquals("DROP TABLE shares.accounts DATASOURCE_TYPE = 'ADB'", changeQueryCaptor.getValue());
+                    DdlRequestContext value = contextArgumentCaptor.getValue();
+                    assertSame(SourceType.ADB, value.getSourceType());
+                }).completeNow());
+    }
 
-        // assert
-        assertTrue(promise.future().succeeded());
-        verify(metadataExecutor).execute(contextArgumentCaptor.capture());
-        assertEquals("DROP TABLE shares.accounts DATASOURCE_TYPE = 'ADB'", changeQueryCaptor.getValue());
-        DdlRequestContext value = contextArgumentCaptor.getValue();
-        assertSame(SourceType.ADB, value.getSourceType());
+    @Test
+    void executeWrongEntityTypeFail(VertxTestContext testContext) throws SqlParseException {
+        // arrange
+        prepareContext("drop table accounts");
+
+        Entity entity = context.getEntity();
+        entity.setEntityType(EntityType.VIEW);
+
+        when(entityDao.getEntity(SCHEMA, entity.getName()))
+                .thenReturn(Future.succeededFuture(entity));
+
+        // act
+        dropTableDdlExecutor.execute(context, context.getEntity().getName())
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    assertTrue(ar.failed());
+                    assertTrue(ar.cause() instanceof EntityNotExistsException);
+                }).completeNow());
     }
 
     private void prepareContext(String s) throws SqlParseException {

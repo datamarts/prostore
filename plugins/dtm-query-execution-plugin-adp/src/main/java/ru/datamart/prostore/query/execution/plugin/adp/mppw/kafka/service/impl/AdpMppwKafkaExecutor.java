@@ -15,6 +15,9 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adp.mppw.kafka.service.impl;
 
+import io.vertx.core.Future;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Service;
 import ru.datamart.prostore.common.model.ddl.ExternalTableFormat;
 import ru.datamart.prostore.common.model.ddl.ExternalTableLocationType;
 import ru.datamart.prostore.query.execution.plugin.adp.mppw.AdpMppwExecutor;
@@ -22,9 +25,6 @@ import ru.datamart.prostore.query.execution.plugin.adp.mppw.kafka.service.AdpMpp
 import ru.datamart.prostore.query.execution.plugin.api.exception.MppwDatasourceException;
 import ru.datamart.prostore.query.execution.plugin.api.mppw.MppwRequest;
 import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
-import io.vertx.core.Future;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Service;
 
 @Service
 public class AdpMppwKafkaExecutor implements AdpMppwExecutor {

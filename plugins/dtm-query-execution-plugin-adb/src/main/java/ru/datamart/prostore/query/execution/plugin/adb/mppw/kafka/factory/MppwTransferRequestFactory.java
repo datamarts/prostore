@@ -15,11 +15,11 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.factory;
 
+import org.apache.avro.Schema;
+import org.springframework.stereotype.Component;
 import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.dto.TransferDataRequest;
 import ru.datamart.prostore.query.execution.plugin.api.mppw.MppwRequest;
 import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
-import org.apache.avro.Schema;
-import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.stream.Collectors;

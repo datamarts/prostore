@@ -82,13 +82,13 @@ public final class CalciteUtil {
         }
     }
 
+    /**
+     * Has no physical representation for:
+     * {@link ColumnType#LINK},
+     * {@link ColumnType#UUID},
+     * {@link ColumnType#INT}
+     */
     public static ColumnType toColumnType(SqlTypeName type) {
-        /* has no physical type representation:
-            ColumnType.LINK;
-            ColumnType.UUID;
-            ColumnType.INT;
-         */
-
         switch (type) {
             case BOOLEAN:
                 return ColumnType.BOOLEAN;

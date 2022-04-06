@@ -21,14 +21,14 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>dtm-query-execution-plugin-adb</artifactId>
-    <version>5.4.0</version>
+    <version>5.5.0</version>
     <name>DTM ArenaDB Plugin</name>
     <packaging>jar</packaging>
 
     <parent>
         <groupId>ru.datamart.prostore</groupId>
         <artifactId>plugins</artifactId>
-        <version>5.4.0</version>
+        <version>5.5.0</version>
     </parent>
 
     <dependencies>

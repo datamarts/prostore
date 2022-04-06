@@ -134,8 +134,6 @@ class CreateMaterializedViewExecutorTest {
     private ColumnMetadataService columnMetadataService;
     @InjectMocks
     private MetadataCalciteGenerator metadataCalciteGenerator;
-    @InjectMocks
-    private DefaultDatamartSetter defaultDatamartSetter;
 
     @Captor
     private ArgumentCaptor<Entity> entityCaptor;
@@ -145,6 +143,8 @@ class CreateMaterializedViewExecutorTest {
     private QueryResultDdlExecutor createTableDdlExecutor;
 
     private Entity tblEntity;
+    // change this if something added
+    public static final Set<EntityType> ALLOWED_ENTITY_TYPES = EnumSet.of(EntityType.TABLE, EntityType.READABLE_EXTERNAL_TABLE);
 
     @BeforeEach
     void setUp() {
@@ -959,15 +959,13 @@ class CreateMaterializedViewExecutorTest {
     }
 
     @Test
-    void shouldFailWhenTblEntityIsNotLogicTable() {
+    void shouldFailWhenTblEntityIsNotAllowedType() {
         // arrange
         val context = getContext("CREATE MATERIALIZED VIEW mat_view (id bigint, name varchar(100), enddate timestamp(5), PRIMARY KEY(id))\n" +
                 "DISTRIBUTED BY (id) DATASOURCE_TYPE (ADG) AS SELECT * FROM matviewdatamart.tbl DATASOURCE_TYPE = 'ADB'");
 
-        Set<EntityType> allowedEntityTypes = EnumSet.of(EntityType.TABLE); // change this if something added
-
         Set<EntityType> disallowedEntityTypes = Arrays.stream(EntityType.values())
-                .filter(entityType -> !allowedEntityTypes.contains(entityType))
+                .filter(entityType -> !ALLOWED_ENTITY_TYPES.contains(entityType))
                 .collect(Collectors.toSet());
 
         for (EntityType entityType : disallowedEntityTypes) {
@@ -1335,10 +1333,8 @@ class CreateMaterializedViewExecutorTest {
                 "SELECT * FROM matviewdatamart.tbl %s JOIN matviewdatamart.tbl2 ON matviewdatamart.id = matviewdatamart.id " +
                 "DATASOURCE_TYPE = 'ADB'", joinType));
 
-        Set<EntityType> allowedEntityTypes = EnumSet.of(EntityType.TABLE); // change this if something added
-
         Set<EntityType> disallowedEntityTypes = Arrays.stream(EntityType.values())
-                .filter(entityType -> !allowedEntityTypes.contains(entityType))
+                .filter(entityType -> !ALLOWED_ENTITY_TYPES.contains(entityType))
                 .collect(Collectors.toSet());
 
 
@@ -1416,7 +1412,7 @@ class CreateMaterializedViewExecutorTest {
         queryRequest.setDatamartMnemonic(SCHEMA);
         queryRequest.setSql(sql);
         SqlNode sqlNode = planner.parse(queryRequest.getSql());
-        defaultDatamartSetter.set(sqlNode, SCHEMA);
+        DefaultDatamartSetter.mutateNode(sqlNode, SCHEMA);
         val context = new DdlRequestContext(null, new DatamartRequest(queryRequest), sqlNode, null, null);
         context.setDatamartName(SCHEMA);
         return context;

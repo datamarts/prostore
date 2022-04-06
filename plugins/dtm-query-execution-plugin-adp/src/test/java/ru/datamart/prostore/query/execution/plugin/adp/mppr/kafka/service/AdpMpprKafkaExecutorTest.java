@@ -15,6 +15,14 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adp.mppr.kafka.service;
 
+import io.vertx.core.Future;
+import org.apache.avro.SchemaParseException;
+import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.parser.SqlParserPos;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.*;
+import org.mockito.junit.jupiter.MockitoExtension;
 import ru.datamart.prostore.common.delta.DeltaInformation;
 import ru.datamart.prostore.common.dto.KafkaBrokerInfo;
 import ru.datamart.prostore.common.dto.QueryParserRequest;
@@ -30,14 +38,6 @@ import ru.datamart.prostore.query.execution.plugin.api.mppr.kafka.DownloadExtern
 import ru.datamart.prostore.query.execution.plugin.api.mppr.kafka.MpprKafkaRequest;
 import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.EnrichQueryRequest;
 import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryEnrichmentService;
-import io.vertx.core.Future;
-import org.apache.avro.SchemaParseException;
-import org.apache.calcite.sql.SqlNodeList;
-import org.apache.calcite.sql.parser.SqlParserPos;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.*;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Arrays;
 import java.util.List;
@@ -83,7 +83,7 @@ class AdpMpprKafkaExecutorTest {
     void shouldSuccessWhenAllStepFinished() {
         // arrange
         when(queryParserService.parse(any())).thenReturn(Future.succeededFuture(parserResponse));
-        when(queryEnrichmentService.enrich(Mockito.any(), Mockito.same(parserResponse))).thenReturn(Future.succeededFuture(ENRICHED));
+        when(queryEnrichmentService.enrich(Mockito.any())).thenReturn(Future.succeededFuture(ENRICHED));
         when(adpConnectorClient.runMppr(Mockito.any())).thenReturn(Future.succeededFuture());
 
         UUID requestId = UUID.randomUUID();
@@ -105,12 +105,12 @@ class AdpMpprKafkaExecutorTest {
         assertSame(dmlSubQuery, queryParserRequest.getQuery());
         assertSame(logicalSchema, queryParserRequest.getSchema());
 
-        verify(queryEnrichmentService).enrich(enrichQueryRequestArgumentCaptor.capture(), same(parserResponse));
+        verify(queryEnrichmentService).enrich(enrichQueryRequestArgumentCaptor.capture());
         EnrichQueryRequest enrichQueryRequest = enrichQueryRequestArgumentCaptor.getValue();
-        assertSame(dmlSubQuery, enrichQueryRequest.getQuery());
         assertSame(deltaInformations, enrichQueryRequest.getDeltaInformations());
+        assertSame(parserResponse.getCalciteContext(), enrichQueryRequest.getCalciteContext());
+        assertSame(parserResponse.getRelNode(), enrichQueryRequest.getRelNode());
         assertEquals(ENV, enrichQueryRequest.getEnvName());
-        assertSame(logicalSchema, enrichQueryRequest.getSchema());
 
         verify(adpConnectorClient).runMppr(connectorMpprRequestArgumentCaptor.capture());
         AdpConnectorMpprRequest adpConnectorMpprRequest = connectorMpprRequestArgumentCaptor.getValue();
@@ -135,7 +135,7 @@ class AdpMpprKafkaExecutorTest {
     void shouldFailWhenParsingFailed() {
         // arrange
         when(queryParserService.parse(any())).thenReturn(Future.failedFuture(new RuntimeException("Exception")));
-        lenient().when(queryEnrichmentService.enrich(Mockito.any(), Mockito.same(parserResponse))).thenReturn(Future.succeededFuture(ENRICHED));
+        lenient().when(queryEnrichmentService.enrich(Mockito.any())).thenReturn(Future.succeededFuture(ENRICHED));
         lenient().when(adpConnectorClient.runMppr(Mockito.any())).thenReturn(Future.succeededFuture());
 
         UUID requestId = UUID.randomUUID();
@@ -167,7 +167,7 @@ class AdpMpprKafkaExecutorTest {
     void shouldFailWhenEnrichmentFailed() {
         // arrange
         when(queryParserService.parse(any())).thenReturn(Future.succeededFuture(parserResponse));
-        lenient().when(queryEnrichmentService.enrich(Mockito.any(), Mockito.same(parserResponse))).thenReturn(Future.failedFuture(new RuntimeException("Exception")));
+        lenient().when(queryEnrichmentService.enrich(Mockito.any())).thenReturn(Future.failedFuture(new RuntimeException("Exception")));
         lenient().when(adpConnectorClient.runMppr(Mockito.any())).thenReturn(Future.succeededFuture());
 
         UUID requestId = UUID.randomUUID();
@@ -185,7 +185,7 @@ class AdpMpprKafkaExecutorTest {
 
         // assert
         verify(queryParserService).parse(Mockito.any());
-        verify(queryEnrichmentService).enrich(any(), any());
+        verify(queryEnrichmentService).enrich(any());
         verifyNoInteractions(adpConnectorClient);
 
         if (execute.succeeded()) {
@@ -199,7 +199,7 @@ class AdpMpprKafkaExecutorTest {
     void shouldFailWhenConnectorFailed() {
         // arrange
         when(queryParserService.parse(any())).thenReturn(Future.succeededFuture(parserResponse));
-        when(queryEnrichmentService.enrich(Mockito.any(), Mockito.same(parserResponse))).thenReturn(Future.succeededFuture(ENRICHED));
+        when(queryEnrichmentService.enrich(Mockito.any())).thenReturn(Future.succeededFuture(ENRICHED));
         when(adpConnectorClient.runMppr(Mockito.any())).thenReturn(Future.failedFuture(new RuntimeException("Exception")));
 
         UUID requestId = UUID.randomUUID();
@@ -217,7 +217,7 @@ class AdpMpprKafkaExecutorTest {
 
         // assert
         verify(queryParserService).parse(Mockito.any());
-        verify(queryEnrichmentService).enrich(any(), any());
+        verify(queryEnrichmentService).enrich(any());
         verify(adpConnectorClient).runMppr(any());
 
         if (execute.succeeded()) {
@@ -231,7 +231,7 @@ class AdpMpprKafkaExecutorTest {
     void shouldFailWhenIncorrectSchema() {
         // arrange
         when(queryParserService.parse(any())).thenReturn(Future.succeededFuture(parserResponse));
-        when(queryEnrichmentService.enrich(Mockito.any(), Mockito.same(parserResponse))).thenReturn(Future.succeededFuture(ENRICHED));
+        when(queryEnrichmentService.enrich(Mockito.any())).thenReturn(Future.succeededFuture(ENRICHED));
 
         UUID requestId = UUID.randomUUID();
         SqlNodeList sqlNode = new SqlNodeList(SqlParserPos.ZERO);
@@ -248,7 +248,7 @@ class AdpMpprKafkaExecutorTest {
 
         // assert
         verify(queryParserService).parse(Mockito.any());
-        verify(queryEnrichmentService).enrich(any(), any());
+        verify(queryEnrichmentService).enrich(any());
 
         if (execute.succeeded()) {
             fail("Unexpected success");

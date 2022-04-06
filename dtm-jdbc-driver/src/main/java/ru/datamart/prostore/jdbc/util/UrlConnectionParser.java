@@ -25,6 +25,9 @@ import static ru.datamart.prostore.jdbc.util.DriverConstants.*;
 @Slf4j
 public class UrlConnectionParser {
 
+    private UrlConnectionParser() {
+    }
+
     public static Properties parseURL(String url, Properties info) {
         Properties urlProperties = new Properties(info);
         if (!url.startsWith(CONNECT_URL_PREFIX)) {

@@ -65,6 +65,15 @@ public interface DataSourcePluginService {
     Future<Void> ddl(SourceType sourceType, RequestMetrics metrics, DdlRequest request);
 
     /**
+     * <p>execute EDDL operation</p>
+     *
+     * @param sourceType Data source type
+     * @param request    EDDL context
+     * @return future object
+     */
+    Future<Void> eddl(SourceType sourceType, RequestMetrics metrics, EddlRequest request);
+
+    /**
      * <p>execute Low Latency Reading request</p>
      *
      * @param sourceType Data source type

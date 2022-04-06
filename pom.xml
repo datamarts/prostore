@@ -5,7 +5,7 @@
 
     <groupId>ru.datamart.prostore</groupId>
     <artifactId>parent</artifactId>
-    <version>5.4.0</version>
+    <version>5.5.0</version>
     <packaging>pom</packaging>
     <name>DTM Parent</name>
 
@@ -64,7 +64,17 @@
             ${project.basedir}/../reports/target/site/jacoco-aggregate/jacoco.xml,${project.basedir}/target/site/jacoco/jacoco.xml
         </sonar.coverage.jacoco.xmlReportPaths>
         <sonar.exclusions>
-            **/configuration/**/*,**/dto/**/*,**/extension/parser/**/*,**/model/**/*,**/properties/**/*,**/prostore/common/**/*,**/extension/**/*,**/AbstractDtmDataSourcePlugin.java,**/*Result.java,**/db/verticle/AdgExecutorTopic.java,**/jdbc/ext/DtmDatabaseMetaData.java
+            **/config/**/*,
+            **/configuration/**/*,
+            **/dto/**/*,**/extension/parser/**/*,
+            **/model/**/*,**/properties/**/*,
+            **/prostore/common/**/*,
+            **/extension/**/*,
+            **/AbstractDtmDataSourcePlugin.java,
+            **/*Result.java,
+            **/db/verticle/AdgExecutorTopic.java,
+            **/jdbc/ext/DtmDatabaseMetaData.java,
+            **/serialization/*
         </sonar.exclusions>
         <sonar.coverage.exclusions>${sonar.exclusions}</sonar.coverage.exclusions>
         <sonar.test.exclusions>**/ru/**/*</sonar.test.exclusions>

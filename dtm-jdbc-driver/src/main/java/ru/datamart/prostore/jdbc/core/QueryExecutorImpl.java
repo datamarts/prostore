@@ -15,6 +15,10 @@
  */
 package ru.datamart.prostore.jdbc.core;
 
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import ru.datamart.prostore.common.model.ddl.SystemMetadata;
 import ru.datamart.prostore.jdbc.model.ColumnInfo;
 import ru.datamart.prostore.jdbc.model.SchemaInfo;
@@ -24,10 +28,6 @@ import ru.datamart.prostore.jdbc.protocol.http.HttpReaderService;
 import ru.datamart.prostore.jdbc.util.DriverInfo;
 import ru.datamart.prostore.jdbc.util.DtmSqlException;
 import ru.datamart.prostore.query.execution.model.metadata.ColumnMetadata;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.sql.SQLException;
@@ -85,7 +85,7 @@ public class QueryExecutorImpl implements QueryExecutor {
     public void execute(List<Query> queries, List<QueryParameters> parametersList, ResultHandler resultHandler) {
         try {
             for (int i = 0; i < queries.size(); i++) {
-                QueryParameters parameters = parametersList.isEmpty() ? null : parametersList.get(i);
+                QueryParameters parameters = parametersList == null || parametersList.isEmpty() ? null : parametersList.get(i);
                 executeInternal(queries.get(i), parameters, resultHandler);
             }
         } catch (Exception e) {

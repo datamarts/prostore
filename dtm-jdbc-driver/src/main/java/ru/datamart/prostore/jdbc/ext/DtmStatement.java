@@ -15,9 +15,9 @@
  */
 package ru.datamart.prostore.jdbc.ext;
 
+import lombok.extern.slf4j.Slf4j;
 import ru.datamart.prostore.jdbc.core.*;
 import ru.datamart.prostore.jdbc.util.DtmSqlException;
-import lombok.extern.slf4j.Slf4j;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -54,7 +54,7 @@ public class DtmStatement implements BaseStatement {
      */
     protected boolean escapeProcessingEnabled = true;
     protected int maxFieldSize = 0;
-    protected ArrayList<Query> batchStatements = null;
+    protected List<Query> batchStatements = null;
     protected SQLWarning warnings = null;
     protected int fetchDirection = ResultSet.FETCH_FORWARD;
     /**
@@ -96,7 +96,7 @@ public class DtmStatement implements BaseStatement {
     protected void prepareQuery(String sql) throws SQLException {
         List<Query> queries = this.connection.getQueryExecutor().createQuery(sql);
         if (queries.size() > 1) {
-            throw new DtmSqlException("Multiple prepared statement query doesn't support");
+            throw new DtmSqlException("Multiple prepared statement query isn't allowed");
         }
     }
 
@@ -120,11 +120,11 @@ public class DtmStatement implements BaseStatement {
     protected ResultSet getSingleResultSet() throws SQLException {
         synchronized (this) {
             this.checkClosed();
-            ResultSetWrapper result = this.result;
-            if (result.getNext() != null) {
+            ResultSetWrapper resultSetWrapper = this.result;
+            if (resultSetWrapper.getNext() != null) {
                 throw new DtmSqlException("Multiple ResultSets were returned by the query.");
             } else {
-                return result.getResultSet();
+                return resultSetWrapper.getResultSet();
             }
         }
     }
@@ -274,9 +274,8 @@ public class DtmStatement implements BaseStatement {
     @Override
     public void addBatch(String sql) throws SQLException {
         checkClosed();
-        ArrayList<Query> batchStatements = this.batchStatements;
         if (batchStatements == null) {
-            this.batchStatements = batchStatements = new ArrayList<>();
+            batchStatements = new ArrayList<>();
         }
 
         List<Query> query = connection.getQueryExecutor().createQuery(sql);
@@ -293,8 +292,6 @@ public class DtmStatement implements BaseStatement {
     @Override
     public int[] executeBatch() throws SQLException {
         checkClosed();
-        List<Long> updateCounts = new ArrayList<>();
-
         if (batchStatements == null || batchStatements.isEmpty()) {
             return new int[0];
         }
@@ -302,15 +299,7 @@ public class DtmStatement implements BaseStatement {
         DtmResultHandler resultHandler = new DtmResultHandler();
         connection.getQueryExecutor().execute(batchStatements, null, resultHandler);
 
-        ResultSetWrapper currentResult = resultHandler.getResult();
-        while (currentResult != null) {
-            updateCounts.add(currentResult.getUpdateCount());
-            currentResult = currentResult.getNext();
-        }
-
-        return updateCounts.stream()
-            .mapToInt(count -> count > Integer.MAX_VALUE ? Statement.SUCCESS_NO_INFO : count.intValue())
-            .toArray();
+        return getBatchResults(resultHandler);
     }
 
     @Override
@@ -388,7 +377,7 @@ public class DtmStatement implements BaseStatement {
 
     @Override
     public boolean isPoolable() throws SQLException {
-        return false;
+        return poolable;
     }
 
     @Override
@@ -427,6 +416,19 @@ public class DtmStatement implements BaseStatement {
 
     private DtmResultSet createResultSet(Field[] fields, List<Tuple> tuples) {
         return new DtmResultSet(this.connection, this, fields, tuples);
+    }
+
+    protected static int[] getBatchResults(DtmResultHandler resultHandler) {
+        List<Long> updateCounts = new ArrayList<>();
+        ResultSetWrapper currentResult = resultHandler.getResult();
+        while (currentResult != null) {
+            updateCounts.add(currentResult.getUpdateCount());
+            currentResult = currentResult.getNext();
+        }
+
+        return updateCounts.stream()
+                .mapToInt(count -> count > Integer.MAX_VALUE ? Statement.SUCCESS_NO_INFO : count.intValue())
+                .toArray();
     }
 
     public class DtmResultHandler extends ResultHandlerBase {

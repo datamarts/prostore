@@ -66,8 +66,8 @@ public class AdbQueryExecutor implements DatabaseExecutor {
         return Future.future(promise -> {
             log.debug("ADB. Execute with cursor: [{}]", sql);
             pool.withConnection(conn -> AsyncUtils.measureMs(prepareQuery(conn, sql)
-                                    .compose(pgPreparedQuery -> readDataWithCursor(pgPreparedQuery, metadata, fetchSize)),
-                            duration -> log.debug("ADB. Execute with cursor succeeded: [{}] in [{}]ms", sql, duration)))
+                            .compose(pgPreparedQuery -> readDataWithCursor(pgPreparedQuery, metadata, fetchSize)),
+                    duration -> log.debug("ADB. Execute with cursor succeeded: [{}] in [{}]ms", sql, duration)))
                     .onSuccess(promise::complete)
                     .onFailure(e -> {
                         log.error("ADB. Execute with cursor failed: [{}]", sql, e);
@@ -109,7 +109,7 @@ public class AdbQueryExecutor implements DatabaseExecutor {
         return Future.future(promise -> {
             log.debug("ADB. Execute update: [{}]", sql);
             pool.withConnection(conn -> AsyncUtils.measureMs(executeQueryUpdate(conn, sql),
-                            duration -> log.debug("ADB. Execute update succeeded: [{}] in [{}]ms", sql, duration)))
+                    duration -> log.debug("ADB. Execute update succeeded: [{}] in [{}]ms", sql, duration)))
                     .onSuccess(result -> promise.complete())
                     .onFailure(fail -> {
                         log.error("ADB. Execute update failed: [{}]", sql, fail);
@@ -173,15 +173,16 @@ public class AdbQueryExecutor implements DatabaseExecutor {
         return Future.future(p -> {
             log.debug("ADB. Execute in transaction: {}", requests);
             AsyncUtils.measureMs(pool.withTransaction(connection -> {
-                                Future<Void> lastFuture = Future.succeededFuture();
-                                for (PreparedStatementRequest st : requests) {
-                                    log.debug("ADB. Execute query in transaction: [{}] with params: [{}]", st.getSql(), st.getParams());
-                                    lastFuture = lastFuture.compose(s -> AsyncUtils.measureMs(execute(st, connection),
-                                            duration -> log.debug("ADB. Execute query in transaction succeeded: [{}] in [{}]ms", st.getSql(), duration)));
-                                }
-                                return lastFuture;
-                            }),
-                            duration -> log.debug("ADB. Execute in transaction sucess: [{}] in [{}]ms", requests, duration))
+                        Future<Void> lastFuture = Future.succeededFuture();
+                        for (PreparedStatementRequest st : requests) {
+                            log.debug("ADB. Execute query in transaction: [{}] with params: [{}]", st.getSql(), st.getParams());
+                            lastFuture = lastFuture.compose(s -> AsyncUtils.measureMs(executePreparedQuery(connection, st.getSql(), createParamsArray(st.getParams())),
+                                    duration -> log.debug("ADB. Execute query in transaction succeeded: [{}] in [{}]ms", st.getSql(), duration))
+                                    .mapEmpty());
+                        }
+                        return lastFuture;
+                    }),
+                    duration -> log.debug("ADB. Execute in transaction sucess: [{}] in [{}]ms", requests, duration))
                     .onSuccess(event -> p.complete())
                     .onFailure(err -> {
                         log.error("ADB. Execute in transaction failed: [{}]", requests, err);
@@ -238,11 +239,6 @@ public class AdbQueryExecutor implements DatabaseExecutor {
             rowMap.put(row.getColumnName(i), row.getValue(i));
         }
         return rowMap;
-    }
-
-    private Future<Void> execute(PreparedStatementRequest request, SqlConnection connection) {
-        return Future.future((Handler<Promise<RowSet<Row>>>) promise -> connection.query(request.getSql()).execute(wrapWithCurrentContext(promise)))
-                .mapEmpty();
     }
 
     private <T> Promise<T> wrapWithCurrentContext(Promise<T> promise) {

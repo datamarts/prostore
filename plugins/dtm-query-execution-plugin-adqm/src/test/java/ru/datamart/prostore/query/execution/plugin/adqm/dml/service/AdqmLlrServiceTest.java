@@ -15,6 +15,17 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adqm.dml.service;
 
+import io.vertx.core.Future;
+import io.vertx.junit5.VertxExtension;
+import io.vertx.junit5.VertxTestContext;
+import org.apache.calcite.sql.SqlDialect;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.util.SqlString;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import ru.datamart.prostore.cache.service.CacheService;
 import ru.datamart.prostore.common.cache.QueryTemplateKey;
 import ru.datamart.prostore.common.cache.QueryTemplateValue;
@@ -28,17 +39,6 @@ import ru.datamart.prostore.query.execution.plugin.adqm.base.service.converter.A
 import ru.datamart.prostore.query.execution.plugin.adqm.query.service.DatabaseExecutor;
 import ru.datamart.prostore.query.execution.plugin.api.request.LlrRequest;
 import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryEnrichmentService;
-import io.vertx.core.Future;
-import io.vertx.junit5.VertxExtension;
-import io.vertx.junit5.VertxTestContext;
-import org.apache.calcite.sql.SqlDialect;
-import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.sql.util.SqlString;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -80,7 +80,7 @@ class AdqmLlrServiceTest {
 
         lenient().when(queryCacheService.get(any())).thenReturn(null);
         lenient().when(queryParserService.parse(any())).thenReturn(Future.succeededFuture(parserResponse));
-        lenient().when(queryEnrichmentService.enrich(any(), any())).thenReturn(Future.succeededFuture(ENRICHED_QUERY));
+        lenient().when(queryEnrichmentService.enrich(any())).thenReturn(Future.succeededFuture(ENRICHED_QUERY));
         lenient().when(templateExtractor.extract(anyString(), any()))
                 .thenReturn(new QueryTemplateResult("", null, Collections.emptyList()));
         lenient().when(queryCacheService.put(any(), any()))
@@ -105,7 +105,7 @@ class AdqmLlrServiceTest {
                 .metadata(metadata)
                 .sourceQueryTemplateResult(new QueryTemplateResult("", null, Collections.emptyList()))
                 .build();
-        when(queryEnrichmentService.getEnrichedSqlNode(any(), any())).thenReturn(Future.succeededFuture(sqlNode));
+        when(queryEnrichmentService.getEnrichedSqlNode(any())).thenReturn(Future.succeededFuture(sqlNode));
         when(templateExtractor.enrichTemplate(any(), anyList())).thenReturn(sqlNode);
         when(sqlNode.toSqlString(any(SqlDialect.class))).thenReturn(sqlString);
         when(sqlString.getSql()).thenReturn(ENRICHED_QUERY);
@@ -141,7 +141,7 @@ class AdqmLlrServiceTest {
                 .sourceQueryTemplateResult(new QueryTemplateResult("", null, Collections.emptyList()))
                 .estimate(true)
                 .build();
-        when(queryEnrichmentService.getEnrichedSqlNode(any(), any())).thenReturn(Future.succeededFuture(sqlNode));
+        when(queryEnrichmentService.getEnrichedSqlNode(any())).thenReturn(Future.succeededFuture(sqlNode));
         when(sqlString.getSql()).thenReturn(ENRICHED_QUERY);
         when(sqlNode.toSqlString(any(SqlDialect.class))).thenReturn(sqlString);
         when(templateExtractor.extract(any(SqlNode.class)))
@@ -166,17 +166,18 @@ class AdqmLlrServiceTest {
         LlrRequest request = LlrRequest.builder().build();
         SqlNode sqlNode = mock(SqlNode.class);
         SqlString sqlString = mock(SqlString.class);
-        when(queryEnrichmentService.getEnrichedSqlNode(any(), any())).thenReturn(Future.succeededFuture(sqlNode));
+        QueryParserResponse mock = mock(QueryParserResponse.class);
+        when(queryEnrichmentService.getEnrichedSqlNode(any())).thenReturn(Future.succeededFuture(sqlNode));
         when(sqlString.getSql()).thenReturn(ENRICHED_QUERY);
         when(sqlNode.toSqlString(any(SqlDialect.class))).thenReturn(sqlString);
         // act assert
-        adqmLlrService.enrichQuery(request, null)
+        adqmLlrService.enrichQuery(request, mock)
                 .onComplete(ar -> testContext.verify(() -> {
-                    if(ar.failed()) {
+                    if (ar.failed()) {
                         fail(ar.cause());
                     }
                     assertEquals(ENRICHED_QUERY, ar.result().toSqlString(sqlDialect).getSql());
-                    verify(queryEnrichmentService, times(1)).getEnrichedSqlNode(any(), any());
+                    verify(queryEnrichmentService, times(1)).getEnrichedSqlNode(any());
                 }).completeNow());
     }
 

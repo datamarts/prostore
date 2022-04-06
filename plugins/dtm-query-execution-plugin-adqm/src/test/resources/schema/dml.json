@@ -703,7 +703,7 @@
         "name": "transactions",
         "schema": "shares",
         "viewQuery": null,
-        "entityType": null,
+        "entityType": "TABLE",
         "externalTableFormat": null,
         "externalTableSchema": null,
         "externalTableLocationType": null,
@@ -764,7 +764,7 @@
         "name": "accounts",
         "schema": "shares",
         "viewQuery": null,
-        "entityType": null,
+        "entityType": "TABLE",
         "externalTableFormat": null,
         "externalTableSchema": null,
         "externalTableLocationType": null,
@@ -791,6 +791,339 @@
             "name": "account_type",
             "type": "VARCHAR",
             "size": 1,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": null,
+            "shardingOrder": null,
+            "defaultValue": null
+          }
+        ]
+      },
+      {
+        "name": "standalone",
+        "schema": "shares",
+        "viewQuery": null,
+        "entityType": "READABLE_EXTERNAL_TABLE",
+        "externalTableFormat": null,
+        "externalTableSchema": null,
+        "externalTableLocationType": null,
+        "externalTableLocationPath": "schema.tbl",
+        "externalTableDownloadChunkSize": null,
+        "externalTableUploadMessageLimit": null,
+        "destination": null,
+        "materializedDeltaNum": null,
+        "materializedDataSource": null,
+        "fields": [
+          {
+            "ordinalPosition": 1,
+            "name": "id",
+            "type": "BIGINT",
+            "size": null,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": 1,
+            "shardingOrder": 1,
+            "defaultValue": null
+          },
+          {
+            "ordinalPosition": 2,
+            "name": "name",
+            "type": "VARCHAR",
+            "size": 1,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": null,
+            "shardingOrder": null,
+            "defaultValue": null
+          }
+        ]
+      },
+      {
+        "name": "standalone_writable",
+        "schema": "shares",
+        "viewQuery": null,
+        "entityType": "WRITEABLE_EXTERNAL_TABLE",
+        "externalTableFormat": null,
+        "externalTableSchema": null,
+        "externalTableLocationType": null,
+        "externalTableLocationPath": "schema.tbl",
+        "externalTableDownloadChunkSize": null,
+        "externalTableUploadMessageLimit": null,
+        "destination": null,
+        "materializedDeltaNum": null,
+        "materializedDataSource": null,
+        "fields": [
+          {
+            "ordinalPosition": 1,
+            "name": "id",
+            "type": "BIGINT",
+            "size": null,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": 1,
+            "shardingOrder": 1,
+            "defaultValue": null
+          },
+          {
+            "ordinalPosition": 2,
+            "name": "name",
+            "type": "VARCHAR",
+            "size": 1,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": null,
+            "shardingOrder": null,
+            "defaultValue": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "mnemonic": "library",
+    "entities": [
+      {
+        "name": "books",
+        "schema": "library",
+        "viewQuery": null,
+        "entityType": "TABLE",
+        "externalTableFormat": null,
+        "externalTableSchema": null,
+        "externalTableLocationType": null,
+        "externalTableLocationPath": null,
+        "externalTableDownloadChunkSize": null,
+        "externalTableUploadMessageLimit": null,
+        "destination": null,
+        "materializedDeltaNum": null,
+        "materializedDataSource": null,
+        "fields": [
+          {
+            "ordinalPosition": 1,
+            "name": "id",
+            "type": "BIGINT",
+            "size": null,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": 1,
+            "shardingOrder": 1,
+            "defaultValue": null
+          },
+          {
+            "ordinalPosition": 2,
+            "name": "author_id",
+            "type": "BIGINT",
+            "size": null,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": 2,
+            "shardingOrder": 2,
+            "defaultValue": null
+          },
+          {
+            "ordinalPosition": 3,
+            "name": "description",
+            "type": "VARCHAR",
+            "size": 50,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": null,
+            "shardingOrder": null,
+            "defaultValue": null
+          }
+        ]
+      },
+      {
+        "name": "authors_standalone_sys",
+        "schema": "library",
+        "viewQuery": null,
+        "entityType": "READABLE_EXTERNAL_TABLE",
+        "externalTableFormat": null,
+        "externalTableSchema": null,
+        "externalTableLocationType": null,
+        "externalTableLocationPath": "library.tbl_authors_sa_sys",
+        "externalTableDownloadChunkSize": null,
+        "externalTableUploadMessageLimit": null,
+        "destination": null,
+        "materializedDeltaNum": null,
+        "materializedDataSource": null,
+        "fields": [
+          {
+            "ordinalPosition": 1,
+            "name": "id",
+            "type": "BIGINT",
+            "size": null,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": 1,
+            "shardingOrder": 1,
+            "defaultValue": null
+          },
+          {
+            "ordinalPosition": 2,
+            "name": "name",
+            "type": "VARCHAR",
+            "size": 50,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": null,
+            "shardingOrder": null,
+            "defaultValue": null
+          },
+          {
+            "ordinalPosition": 3,
+            "name": "sys_from",
+            "type": "VARCHAR",
+            "size": 2,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": null,
+            "shardingOrder": null,
+            "defaultValue": null
+          }
+        ]
+      },
+      {
+        "name": "books_standalone_sys",
+        "schema": "library",
+        "viewQuery": null,
+        "entityType": "READABLE_EXTERNAL_TABLE",
+        "externalTableFormat": null,
+        "externalTableSchema": null,
+        "externalTableLocationType": null,
+        "externalTableLocationPath": "library.tbl_books_sa_sys",
+        "externalTableDownloadChunkSize": null,
+        "externalTableUploadMessageLimit": null,
+        "destination": null,
+        "materializedDeltaNum": null,
+        "materializedDataSource": null,
+        "fields": [
+          {
+            "ordinalPosition": 1,
+            "name": "id",
+            "type": "BIGINT",
+            "size": null,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": 1,
+            "shardingOrder": 1,
+            "defaultValue": null
+          },
+          {
+            "ordinalPosition": 2,
+            "name": "author_id",
+            "type": "BIGINT",
+            "size": null,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": 2,
+            "shardingOrder": 2,
+            "defaultValue": null
+          },
+          {
+            "ordinalPosition": 3,
+            "name": "description",
+            "type": "VARCHAR",
+            "size": 50,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": null,
+            "shardingOrder": null,
+            "defaultValue": null
+          },
+          {
+            "ordinalPosition": 3,
+            "name": "sys_to",
+            "type": "VARCHAR",
+            "size": 2,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": null,
+            "shardingOrder": null,
+            "defaultValue": null
+          }
+        ]
+      },
+      {
+        "name": "books_standalone",
+        "schema": "library",
+        "viewQuery": null,
+        "entityType": "READABLE_EXTERNAL_TABLE",
+        "externalTableFormat": null,
+        "externalTableSchema": null,
+        "externalTableLocationType": null,
+        "externalTableLocationPath": "library.tbl_books_sa",
+        "externalTableDownloadChunkSize": null,
+        "externalTableUploadMessageLimit": null,
+        "destination": null,
+        "materializedDeltaNum": null,
+        "materializedDataSource": null,
+        "fields": [
+          {
+            "ordinalPosition": 1,
+            "name": "id",
+            "type": "BIGINT",
+            "size": null,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": 1,
+            "shardingOrder": 1,
+            "defaultValue": null
+          },
+          {
+            "ordinalPosition": 2,
+            "name": "author_id",
+            "type": "BIGINT",
+            "size": null,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": 2,
+            "shardingOrder": 2,
+            "defaultValue": null
+          },
+          {
+            "ordinalPosition": 3,
+            "name": "description",
+            "type": "VARCHAR",
+            "size": 50,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": null,
+            "shardingOrder": null,
+            "defaultValue": null
+          }
+        ]
+      },
+      {
+        "name": "authors_standalone",
+        "schema": "library",
+        "viewQuery": null,
+        "entityType": "READABLE_EXTERNAL_TABLE",
+        "externalTableFormat": null,
+        "externalTableSchema": null,
+        "externalTableLocationType": null,
+        "externalTableLocationPath": "library.tbl_authors_sa",
+        "externalTableDownloadChunkSize": null,
+        "externalTableUploadMessageLimit": null,
+        "destination": null,
+        "materializedDeltaNum": null,
+        "materializedDataSource": null,
+        "fields": [
+          {
+            "ordinalPosition": 1,
+            "name": "id",
+            "type": "BIGINT",
+            "size": null,
+            "accuracy": null,
+            "nullable": false,
+            "primaryOrder": 1,
+            "shardingOrder": 1,
+            "defaultValue": null
+          },
+          {
+            "ordinalPosition": 2,
+            "name": "name",
+            "type": "VARCHAR",
+            "size": 50,
             "accuracy": null,
             "nullable": false,
             "primaryOrder": null,

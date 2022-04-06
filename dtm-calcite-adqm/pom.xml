@@ -24,11 +24,11 @@
     <parent>
         <artifactId>parent</artifactId>
         <groupId>ru.datamart.prostore</groupId>
-        <version>5.4.0</version>
+        <version>5.5.0</version>
     </parent>
 
     <artifactId>dtm-calcite-adqm</artifactId>
-    <version>5.4.0</version>
+    <version>5.5.0</version>
     <name>DTM Calcite Module for ADQM</name>
 
     <properties>

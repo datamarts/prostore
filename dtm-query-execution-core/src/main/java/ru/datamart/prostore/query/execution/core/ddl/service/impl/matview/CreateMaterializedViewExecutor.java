@@ -15,10 +15,19 @@
  */
 package ru.datamart.prostore.query.execution.core.ddl.service.impl.matview;
 
+import io.vertx.core.Future;
+import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.calcite.sql.*;
+import org.apache.calcite.sql.ddl.SqlColumnDeclaration;
+import org.apache.calcite.sql.parser.SqlParserPos;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Component;
 import ru.datamart.prostore.cache.service.CacheService;
 import ru.datamart.prostore.common.dto.QueryParserRequest;
 import ru.datamart.prostore.common.dto.QueryParserResponse;
-import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.common.model.ddl.Entity;
 import ru.datamart.prostore.common.model.ddl.EntityField;
 import ru.datamart.prostore.common.model.ddl.EntityType;
@@ -27,8 +36,6 @@ import ru.datamart.prostore.common.reader.SourceType;
 import ru.datamart.prostore.query.calcite.core.extension.OperationNames;
 import ru.datamart.prostore.query.calcite.core.extension.ddl.SqlCreateMaterializedView;
 import ru.datamart.prostore.query.calcite.core.extension.dml.SqlDataSourceTypeGetter;
-import ru.datamart.prostore.query.calcite.core.node.SqlPredicatePart;
-import ru.datamart.prostore.query.calcite.core.node.SqlPredicates;
 import ru.datamart.prostore.query.calcite.core.node.SqlSelectTree;
 import ru.datamart.prostore.query.calcite.core.node.SqlTreeNode;
 import ru.datamart.prostore.query.calcite.core.rel2sql.DtmRelToSqlConverter;
@@ -42,7 +49,6 @@ import ru.datamart.prostore.query.execution.core.base.exception.materializedview
 import ru.datamart.prostore.query.execution.core.base.exception.view.ViewDisalowedOrDirectiveException;
 import ru.datamart.prostore.query.execution.core.base.repository.ServiceDbFacade;
 import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.DatamartDao;
-import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.EntityDao;
 import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.SetEntityState;
 import ru.datamart.prostore.query.execution.core.base.service.metadata.InformationSchemaService;
 import ru.datamart.prostore.query.execution.core.base.service.metadata.LogicalSchemaProvider;
@@ -50,43 +56,22 @@ import ru.datamart.prostore.query.execution.core.base.service.metadata.MetadataC
 import ru.datamart.prostore.query.execution.core.base.service.metadata.MetadataExecutor;
 import ru.datamart.prostore.query.execution.core.ddl.dto.DdlRequestContext;
 import ru.datamart.prostore.query.execution.core.ddl.dto.DdlType;
-import ru.datamart.prostore.query.execution.core.ddl.service.QueryResultDdlExecutor;
+import ru.datamart.prostore.query.execution.core.ddl.service.AbstractCreateViewExecutor;
 import ru.datamart.prostore.query.execution.core.dml.service.ColumnMetadataService;
 import ru.datamart.prostore.query.execution.core.plugin.service.DataSourcePluginService;
 import ru.datamart.prostore.query.execution.model.metadata.ColumnMetadata;
 import ru.datamart.prostore.query.execution.model.metadata.Datamart;
-import io.vertx.core.CompositeFuture;
-import io.vertx.core.Future;
-import lombok.SneakyThrows;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.apache.calcite.sql.*;
-import org.apache.calcite.sql.ddl.SqlColumnDeclaration;
-import org.apache.calcite.sql.parser.SqlParserPos;
-import org.jetbrains.annotations.NotNull;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static ru.datamart.prostore.query.execution.core.ddl.utils.ValidationUtils.*;
 
 @Slf4j
 @Component
-public class CreateMaterializedViewExecutor extends QueryResultDdlExecutor {
-    private static final SqlPredicates VIEW_AND_TABLE_PREDICATE = SqlPredicates.builder()
-            .anyOf(SqlPredicatePart.eqWithNum(SqlKind.JOIN), SqlPredicatePart.eq(SqlKind.SELECT))
-            .maybeOf(SqlPredicatePart.eq(SqlKind.AS))
-            .anyOf(SqlPredicatePart.eq(SqlKind.SNAPSHOT), SqlPredicatePart.eq(SqlKind.IDENTIFIER))
-            .build();
+public class CreateMaterializedViewExecutor extends AbstractCreateViewExecutor {
     private final DatamartDao datamartDao;
-    private final EntityDao entityDao;
-    private final CacheService<EntityKey, Entity> entityCacheService;
     private final CacheService<EntityKey, MaterializedViewCacheValue> materializedViewCacheService;
     private final LogicalSchemaProvider logicalSchemaProvider;
     private final QueryParserService parserService;
@@ -109,10 +94,8 @@ public class CreateMaterializedViewExecutor extends QueryResultDdlExecutor {
                                           DataSourcePluginService dataSourcePluginService,
                                           @Qualifier("coreRelToSqlConverter") DtmRelToSqlConverter relToSqlConverter,
                                           InformationSchemaService informationSchemaService) {
-        super(metadataExecutor, serviceDbFacade, sqlDialect);
+        super(metadataExecutor, serviceDbFacade, sqlDialect, serviceDbFacade.getServiceDbDao().getEntityDao(), entityCacheService);
         this.datamartDao = serviceDbFacade.getServiceDbDao().getDatamartDao();
-        this.entityDao = serviceDbFacade.getServiceDbDao().getEntityDao();
-        this.entityCacheService = entityCacheService;
         this.materializedViewCacheService = materializedViewCacheService;
         this.logicalSchemaProvider = logicalSchemaProvider;
         this.columnMetadataService = columnMetadataService;
@@ -149,7 +132,7 @@ public class CreateMaterializedViewExecutor extends QueryResultDdlExecutor {
             context.setSourceType(querySourceType);
 
             val destination = sqlNode.getDestination().getDatasourceTypes();
-            if (destination != null && !destination.isEmpty()) {
+            if (!destination.isEmpty()) {
                 val nonExistDestinations = destination.stream()
                         .filter(sourceType -> !dataSourcePluginService.hasSourceType(sourceType))
                         .collect(Collectors.toSet());
@@ -334,44 +317,6 @@ public class CreateMaterializedViewExecutor extends QueryResultDdlExecutor {
         });
     }
 
-    private Future<Void> checkEntitiesType(SqlNode sqlNode, String contextDatamartName) {
-        return Future.future(promise -> {
-            final List<SqlTreeNode> nodes = new SqlSelectTree(sqlNode).findNodes(VIEW_AND_TABLE_PREDICATE, true);
-            final List<Future> entityFutures = getEntitiesFutures(contextDatamartName, sqlNode, nodes);
-            CompositeFuture.join(entityFutures)
-                    .onSuccess(result -> {
-                        final List<Entity> entities = result.list();
-                        if (entities.stream().anyMatch(entity -> entity.getEntityType() != EntityType.TABLE)) {
-                            promise.fail(new ViewDisalowedOrDirectiveException(
-                                    sqlNode.toSqlString(sqlDialect).getSql()));
-                        }
-                        promise.complete();
-                    })
-                    .onFailure(promise::fail);
-        });
-    }
-
-    @NotNull
-    private List<Future> getEntitiesFutures(String contextDatamartName, SqlNode sqlNode, List<SqlTreeNode> nodes) {
-        final List<Future> entityFutures = new ArrayList<>();
-        nodes.forEach(node -> {
-            String datamartName = contextDatamartName;
-            String tableName;
-            final Optional<String> schema = node.tryGetSchemaName();
-            final Optional<String> table = node.tryGetTableName();
-            if (schema.isPresent()) {
-                datamartName = schema.get();
-            }
-
-            tableName = table.orElseThrow(() -> new DtmException(String.format("Can't extract table name from query %s",
-                    sqlNode.toSqlString(sqlDialect).toString())));
-
-            entityCacheService.remove(new EntityKey(datamartName, tableName));
-            entityFutures.add(entityDao.getEntity(datamartName, tableName));
-        });
-        return entityFutures;
-    }
-
     private Future<Entity> prepareEntityFuture(DdlRequestContext ctx, SqlNode viewQuery, List<Datamart> datamarts) {
         return columnMetadataService.getColumnMetadata(new QueryParserRequest(viewQuery, datamarts))
                 .map(columnMetadata -> toMaterializedViewEntity(ctx, viewQuery, columnMetadata));
@@ -380,9 +325,8 @@ public class CreateMaterializedViewExecutor extends QueryResultDdlExecutor {
     private Entity toMaterializedViewEntity(DdlRequestContext ctx, SqlNode viewQuery, List<ColumnMetadata> columnMetadata) {
         val sqlCreateMaterializedView = (SqlCreateMaterializedView) ctx.getSqlNode();
 
-        val destination = Optional.ofNullable(sqlCreateMaterializedView.getDestination().getDatasourceTypes())
-                .filter(sourceTypes -> !sourceTypes.isEmpty())
-                .orElse(dataSourcePluginService.getSourceTypes());
+        val datasourceTypes = sqlCreateMaterializedView.getDestination().getDatasourceTypes();
+        val destination = datasourceTypes.isEmpty() ? dataSourcePluginService.getSourceTypes() : datasourceTypes;
 
         val viewQueryString = viewQuery.toSqlString(sqlDialect)
                 .getSql()

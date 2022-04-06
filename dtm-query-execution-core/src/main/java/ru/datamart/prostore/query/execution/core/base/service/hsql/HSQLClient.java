@@ -15,7 +15,6 @@
  */
 package ru.datamart.prostore.query.execution.core.base.service.hsql;
 
-import ru.datamart.prostore.common.exception.DtmException;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -26,6 +25,7 @@ import io.vertx.ext.sql.ResultSet;
 import io.vertx.ext.sql.SQLConnection;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
+import ru.datamart.prostore.common.exception.DtmException;
 
 import java.util.List;
 import java.util.function.BiConsumer;
@@ -36,7 +36,7 @@ public class HSQLClient {
     private static final String JDBC_DRIVER = "org.hsqldb.jdbc.JDBCDriver";
     private static final String INMEMORY_DATABASE_URL = "jdbc:hsqldb:mem:cachedb";
 
-    private JDBCClient jdbcClient;
+    private final JDBCClient jdbcClient;
 
     public HSQLClient(Vertx vertx) {
         this.jdbcClient = JDBCClient.create(vertx, new JsonObject()
@@ -56,7 +56,7 @@ public class HSQLClient {
     }
 
     public Future<Void> executeBatch(List<String> queries) {
-        return execute(String.format("Error while executing queries batch:\n %s", String.join(";\n", queries)),
+        return execute(String.format("Error while executing queries batch:%n %s", String.join(";\n", queries)),
                 (sqlConnection, handler) -> sqlConnection.batch(queries,
                         batchHandler -> handler.handle(batchHandler.succeeded() ? Future.succeededFuture()
                                 : Future.failedFuture(batchHandler.cause()))));

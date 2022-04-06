@@ -15,6 +15,18 @@
  */
 package ru.datamart.prostore.query.execution.core.edml.mppw.service.impl;
 
+import io.vertx.core.CompositeFuture;
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
+import io.vertx.core.Vertx;
+import lombok.Builder;
+import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.jetbrains.annotations.NotNull;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Service;
 import ru.datamart.prostore.common.configuration.core.CoreConstants;
 import ru.datamart.prostore.common.dto.QueryParserRequest;
 import ru.datamart.prostore.common.exception.DtmException;
@@ -30,23 +42,11 @@ import ru.datamart.prostore.query.execution.core.edml.configuration.EdmlProperti
 import ru.datamart.prostore.query.execution.core.edml.dto.EdmlRequestContext;
 import ru.datamart.prostore.query.execution.core.edml.mppw.dto.MppwStopFuture;
 import ru.datamart.prostore.query.execution.core.edml.mppw.dto.MppwStopReason;
-import ru.datamart.prostore.query.execution.core.edml.mppw.factory.MppwKafkaRequestFactory;
 import ru.datamart.prostore.query.execution.core.edml.mppw.factory.MppwErrorMessageFactory;
+import ru.datamart.prostore.query.execution.core.edml.mppw.factory.MppwKafkaRequestFactory;
 import ru.datamart.prostore.query.execution.core.edml.mppw.service.EdmlUploadExecutor;
 import ru.datamart.prostore.query.execution.core.plugin.service.DataSourcePluginService;
 import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
-import io.vertx.core.CompositeFuture;
-import io.vertx.core.Future;
-import io.vertx.core.Promise;
-import io.vertx.core.Vertx;
-import lombok.Builder;
-import lombok.Data;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.jetbrains.annotations.NotNull;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -104,11 +104,12 @@ public class UploadKafkaExecutor implements EdmlUploadExecutor {
                         }
                         return mppwKafkaRequestFactory.create(context);
                     })
-                    .onSuccess(kafkaRequest -> {
+                    .compose(kafkaRequest -> {
                         destinations.forEach(ds -> startMppwFutureMap.put(ds,
                                 startMppw(ds, context.getMetrics(), kafkaRequest.toBuilder().build())));
-                        checkPluginsMppwExecution(startMppwFutureMap, context.getRequest().getQueryRequest().getRequestId(), promise);
+                        return checkPluginsMppwExecution(startMppwFutureMap, context.getRequest().getQueryRequest().getRequestId());
                     })
+                    .onSuccess(promise::complete)
                     .onFailure(promise::fail);
         });
     }
@@ -258,13 +259,15 @@ public class UploadKafkaExecutor implements EdmlUploadExecutor {
                         .plus(edmlProperties.getChangeOffsetTimeoutMs(), ChronoField.MILLI_OF_DAY.getBaseUnit()));
     }
 
-    private void checkPluginsMppwExecution(Map<SourceType, Future<MppwStopFuture>> startMppwFutureMap,
-                                           UUID requestId,
-                                           Promise<QueryResult> promise) {
-        final Map<SourceType, MppwStopFuture> mppwStopFutureMap = new EnumMap<>(SourceType.class);
-        CompositeFuture.join(new ArrayList<>(startMppwFutureMap.values()))
-                .onSuccess(startResult -> processStopFutures(mppwStopFutureMap, startResult, requestId, promise))
-                .onFailure(promise::fail);
+    private Future<QueryResult> checkPluginsMppwExecution(Map<SourceType, Future<MppwStopFuture>> startMppwFutureMap,
+                                                          UUID requestId) {
+
+        return Future.future(promise -> {
+            final Map<SourceType, MppwStopFuture> mppwStopFutureMap = new EnumMap<>(SourceType.class);
+            CompositeFuture.join(new ArrayList<>(startMppwFutureMap.values()))
+                    .onSuccess(startResult -> processStopFutures(mppwStopFutureMap, startResult, requestId, promise))
+                    .onFailure(promise::fail);
+        });
     }
 
     private void processStopFutures(Map<SourceType, MppwStopFuture> mppwStopFutureMap,

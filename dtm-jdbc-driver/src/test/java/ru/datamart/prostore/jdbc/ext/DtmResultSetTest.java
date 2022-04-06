@@ -15,14 +15,15 @@
  */
 package ru.datamart.prostore.jdbc.ext;
 
-import ru.datamart.prostore.common.configuration.core.CoreConstants;
-import ru.datamart.prostore.common.model.ddl.ColumnType;
-import ru.datamart.prostore.common.util.DateTimeUtils;
-import ru.datamart.prostore.jdbc.core.*;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import ru.datamart.prostore.common.configuration.core.CoreConstants;
+import ru.datamart.prostore.common.model.ddl.ColumnType;
+import ru.datamart.prostore.common.util.DateTimeUtils;
+import ru.datamart.prostore.jdbc.core.*;
+import ru.datamart.prostore.jdbc.utils.TestUtils;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -533,7 +534,7 @@ class DtmResultSetTest {
     @Test
     void shouldReturnTrueOnNext() throws SQLException {
         // arrange
-        prepareResultSet(Arrays.asList(new Field("val", ColumnType.BIGINT)), Arrays.asList(createTuple(1L)));
+        prepareResultSet(Arrays.asList(new Field("val", ColumnType.BIGINT)), Arrays.asList(TestUtils.tuple(1L)));
 
         // act
         boolean next = resultSet.next();
@@ -555,7 +556,7 @@ class DtmResultSetTest {
     @Test
     void shouldReturnTrueOnFirst() throws SQLException {
         // arrange
-        prepareResultSet(Arrays.asList(new Field("val", ColumnType.BIGINT)), Arrays.asList(createTuple(1L)));
+        prepareResultSet(Arrays.asList(new Field("val", ColumnType.BIGINT)), Arrays.asList(TestUtils.tuple(1L)));
 
         // act
         boolean first = resultSet.first();
@@ -1446,14 +1447,8 @@ class DtmResultSetTest {
     private void prepareResultSet(List<Field> fields, List<Tuple> tuples) {
         Field[] fieldsArray = fields.toArray(new Field[0]);
 
-        when(connection.getTypeInfo()).thenReturn(new TypeInfoCache(connection));
+        when(connection.getTypeInfo()).thenReturn(new TypeInfoCache());
 
         resultSet = new DtmResultSet(connection, statement, fieldsArray, tuples);
     }
-
-    private Tuple createTuple(Object... objects) {
-        return new Tuple(objects);
-    }
-
-
 }

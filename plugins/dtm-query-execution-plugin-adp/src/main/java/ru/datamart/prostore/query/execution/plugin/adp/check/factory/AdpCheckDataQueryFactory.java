@@ -26,6 +26,8 @@ import java.util.stream.Collectors;
 
 public class AdpCheckDataQueryFactory {
 
+    private static final String COLUMN_DELIMITER = ",';',";
+
     private AdpCheckDataQueryFactory() {
     }
 
@@ -71,7 +73,7 @@ public class AdpCheckDataQueryFactory {
 
     public static String createCheckDataByHashInt32Query(CheckDataByHashInt32Request request) {
         val fieldsConcat = getFieldsConcat(request);
-        val columnsList = String.join(",';',", request.getColumns());
+        val columnsList = String.join(COLUMN_DELIMITER, request.getColumns());
         val datamart = request.getEntity().getSchema();
         val table = request.getEntity().getName();
         val normalization = request.getNormalization();
@@ -91,7 +93,7 @@ public class AdpCheckDataQueryFactory {
 
     public static String createCheckDataSnapshotByHashInt32Query(CheckDataByHashInt32Request request) {
         val fieldsConcat = getFieldsConcat(request);
-        val columnsList = String.join(",';',", request.getColumns());
+        val columnsList = String.join(COLUMN_DELIMITER, request.getColumns());
         val datamart = request.getEntity().getSchema();
         val table = request.getEntity().getName();
         val normalization = request.getNormalization();
@@ -113,7 +115,7 @@ public class AdpCheckDataQueryFactory {
         return request.getColumns().stream()
                 .map(fields::get)
                 .map(AdpCheckDataQueryFactory::create)
-                .collect(Collectors.joining(",';',"));
+                .collect(Collectors.joining(COLUMN_DELIMITER));
     }
 
     private static String create(EntityField field) {

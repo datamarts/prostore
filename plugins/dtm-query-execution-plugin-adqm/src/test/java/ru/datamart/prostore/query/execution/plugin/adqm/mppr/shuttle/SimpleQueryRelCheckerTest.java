@@ -30,11 +30,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import ru.datamart.prostore.common.dto.QueryParserRequest;
 import ru.datamart.prostore.query.calcite.core.service.QueryParserService;
 import ru.datamart.prostore.query.execution.model.metadata.Datamart;
+import ru.datamart.prostore.query.execution.plugin.adqm.base.factory.AdqmHelperTableNamesFactory;
 import ru.datamart.prostore.query.execution.plugin.adqm.calcite.factory.AdqmCalciteSchemaFactory;
 import ru.datamart.prostore.query.execution.plugin.adqm.calcite.factory.AdqmSchemaFactory;
 import ru.datamart.prostore.query.execution.plugin.adqm.calcite.service.AdqmCalciteContextProvider;
 import ru.datamart.prostore.query.execution.plugin.adqm.calcite.service.AdqmCalciteDMLQueryParserService;
 import ru.datamart.prostore.query.execution.plugin.adqm.enrichment.service.AdqmQueryEnrichmentService;
+import ru.datamart.prostore.query.execution.plugin.adqm.enrichment.service.AdqmSchemaExtender;
 import ru.datamart.prostore.query.execution.plugin.adqm.query.service.AdqmQueryJoinConditionsCheckService;
 import ru.datamart.prostore.query.execution.plugin.adqm.utils.TestUtils;
 import ru.datamart.prostore.serialization.CoreSerialization;
@@ -51,6 +53,7 @@ import static org.mockito.Mockito.when;
 class SimpleQueryRelCheckerTest {
     private static final boolean EXPECTED_SIMPLE = true;
     private static final boolean EXPECTED_COMPLEX = false;
+    private static final String ENV = "env";
 
     private QueryParserService queryParserService;
     private List<Datamart> datamarts;
@@ -64,7 +67,8 @@ class SimpleQueryRelCheckerTest {
                 parserConfig,
                 new AdqmCalciteSchemaFactory(new AdqmSchemaFactory()));
 
-        queryParserService = new AdqmCalciteDMLQueryParserService(contextProvider, vertx);
+        val schemaExtender = new AdqmSchemaExtender(new AdqmHelperTableNamesFactory());
+        queryParserService = new AdqmCalciteDMLQueryParserService(contextProvider, vertx, schemaExtender);
 
         AdqmQueryJoinConditionsCheckService conditionsCheckService = mock(AdqmQueryJoinConditionsCheckService.class);
         when(conditionsCheckService.isJoinConditionsCorrect(any())).thenReturn(EXPECTED_SIMPLE);
@@ -175,7 +179,7 @@ class SimpleQueryRelCheckerTest {
     }
 
     private void enrichAndAssert(VertxTestContext testContext, String sql, boolean expectedResult) {
-        queryParserService.parse(new QueryParserRequest(TestUtils.DEFINITION_SERVICE.processingQuery(sql), datamarts))
+        queryParserService.parse(new QueryParserRequest(TestUtils.DEFINITION_SERVICE.processingQuery(sql), datamarts, ENV))
                 .map(queryParserResponse -> {
                     queryParserResponse.getRelNode().rel.accept(simpleQueryRelChecker);
                     return simpleQueryRelChecker.isSimple();

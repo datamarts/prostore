@@ -15,6 +15,11 @@
  */
 package ru.datamart.prostore.query.execution.core.eddl.service.upload;
 
+import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 import ru.datamart.prostore.common.model.ddl.ExternalTableLocationType;
 import ru.datamart.prostore.common.reader.QueryResult;
 import ru.datamart.prostore.query.execution.core.base.exception.datamart.DatamartNotExistsException;
@@ -25,11 +30,6 @@ import ru.datamart.prostore.query.execution.core.eddl.dto.CreateUploadExternalTa
 import ru.datamart.prostore.query.execution.core.eddl.dto.EddlAction;
 import ru.datamart.prostore.query.execution.core.eddl.dto.EddlQuery;
 import ru.datamart.prostore.query.execution.core.eddl.service.EddlExecutor;
-import io.vertx.core.Future;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
 import static ru.datamart.prostore.query.execution.core.ddl.utils.ValidationUtils.checkEntityNames;
 
@@ -56,6 +56,7 @@ public class CreateUploadExternalTableExecutor implements EddlExecutor {
             entity.setExternalTableLocationPath(castQuery.getLocationPath());
             entity.setExternalTableFormat(castQuery.getFormat());
             entity.setExternalTableSchema(castQuery.getTableSchema());
+            entity.setExternalTableOptions(castQuery.getOptionsMap());
             entity.setExternalTableUploadMessageLimit(castQuery.getMessageLimit());
 
             checkEntityNames(entity);

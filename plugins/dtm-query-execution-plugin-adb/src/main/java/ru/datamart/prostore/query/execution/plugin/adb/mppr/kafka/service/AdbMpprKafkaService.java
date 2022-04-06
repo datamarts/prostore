@@ -15,6 +15,12 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.mppr.kafka.service;
 
+import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Service;
 import ru.datamart.prostore.common.dto.QueryParserRequest;
 import ru.datamart.prostore.common.model.ddl.ExternalTableLocationType;
 import ru.datamart.prostore.common.reader.QueryResult;
@@ -27,12 +33,6 @@ import ru.datamart.prostore.query.execution.plugin.api.mppr.MpprRequest;
 import ru.datamart.prostore.query.execution.plugin.api.mppr.kafka.MpprKafkaRequest;
 import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.EnrichQueryRequest;
 import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryEnrichmentService;
-import io.vertx.core.Future;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service("adbMpprKafkaService")
@@ -92,15 +92,16 @@ public class AdbMpprKafkaService implements AdbMpprExecutor {
     }
 
     private Future<String> enrichQuery(MpprKafkaRequest request) {
-        return parserService.parse(new QueryParserRequest(request.getDmlSubQuery(), request.getLogicalSchema()))
-                .compose(parserResponse -> adbQueryEnrichmentService.enrich(
-                        EnrichQueryRequest.builder()
-                                .query(request.getDmlSubQuery())
-                                .schema(request.getLogicalSchema())
-                                .envName(request.getEnvName())
-                                .deltaInformations(request.getDeltaInformations())
-                                .build(),
-                        parserResponse));
+        return parserService.parse(new QueryParserRequest(request.getDmlSubQuery(), request.getLogicalSchema(), request.getEnvName()))
+                .compose(parserResponse -> {
+                    val enrichRequest = EnrichQueryRequest.builder()
+                            .deltaInformations(request.getDeltaInformations())
+                            .relNode(parserResponse.getRelNode())
+                            .calciteContext(parserResponse.getCalciteContext())
+                            .envName(request.getEnvName())
+                            .build();
+                    return adbQueryEnrichmentService.enrich(enrichRequest);
+                });
     }
 
     @Override

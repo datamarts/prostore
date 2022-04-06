@@ -15,20 +15,19 @@
  */
 package ru.datamart.prostore.query.execution.core.delta.repository.executor;
 
-import ru.datamart.prostore.query.execution.core.base.exception.datamart.DatamartNotExistsException;
-import ru.datamart.prostore.query.execution.core.base.service.zookeeper.ZookeeperExecutor;
-import ru.datamart.prostore.query.execution.core.delta.dto.OkDelta;
-import ru.datamart.prostore.query.execution.core.delta.exception.DeltaException;
-import ru.datamart.prostore.query.execution.core.delta.exception.DeltaNotExistException;
-import ru.datamart.prostore.query.execution.core.delta.exception.DeltaNotFoundException;
 import io.vertx.core.Future;
-import io.vertx.core.Promise;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.apache.zookeeper.KeeperException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import ru.datamart.prostore.query.execution.core.base.exception.datamart.DatamartNotExistsException;
+import ru.datamart.prostore.query.execution.core.base.service.zookeeper.ZookeeperExecutor;
+import ru.datamart.prostore.query.execution.core.delta.dto.OkDelta;
+import ru.datamart.prostore.query.execution.core.delta.exception.DeltaException;
+import ru.datamart.prostore.query.execution.core.delta.exception.DeltaNotExistException;
+import ru.datamart.prostore.query.execution.core.delta.exception.DeltaNotFoundException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -48,65 +47,62 @@ public class GetDeltaByDateTimeExecutor extends DeltaServiceDaoExecutorHelper im
     }
 
     public Future<OkDelta> execute(String datamart, LocalDateTime dateTime) {
-        val ctx = new DeltaContext();
-        Promise<OkDelta> resultPromise = Promise.promise();
-        executor.getData(getDeltaPath(datamart))
-                .map(bytes -> {
-                    val delta = deserializedDelta(bytes);
-                    if (delta.getOk() != null) {
+        return Future.future(promise -> {
+            val ctx = new DeltaContext();
+            executor.getData(getDeltaPath(datamart))
+                    .map(bytes -> {
+                        val delta = deserializedDelta(bytes);
+                        if (delta.getOk() == null) {
+                            throw new DeltaNotExistException();
+                        }
+
                         ctx.setDelta(delta);
                         val deltaDateTime = delta.getOk().getDeltaDate();
                         return deltaDateTime.isBefore(dateTime) || deltaDateTime.isEqual(dateTime);
-                    } else {
-                        throw new DeltaNotExistException();
-                    }
-                })
-                .compose(isDeltaOk -> isDeltaOk ?
-                        Future.succeededFuture(ctx.getDelta().getOk())
-                        : findByDays(datamart, dateTime))
-                .onSuccess(r -> {
-                    log.debug("get delta ok by datamart[{}], dateTime[{}] completed successfully: [{}]", datamart, dateTime, r);
-                    resultPromise.complete(r);
-                })
-                .onFailure(error -> {
-                    val errMsg = String.format("can't get delta ok on datamart[%s], dateTime[%s]",
-                            datamart,
-                            dateTime);
-                    if (error instanceof KeeperException.NoNodeException) {
-                        resultPromise.fail(new DatamartNotExistsException(datamart));
-                    } else if (error instanceof DeltaException) {
-                        resultPromise.fail(error);
-                    } else {
-                        resultPromise.fail(new DeltaException(errMsg, error));
-                    }
-                });
-        return resultPromise.future();
+                    })
+                    .compose(isDeltaOk -> isDeltaOk ?
+                            Future.succeededFuture(ctx.getDelta().getOk())
+                            : findByDays(datamart, dateTime))
+                    .onSuccess(r -> {
+                        log.debug("get delta ok by datamart[{}], dateTime[{}] completed successfully: [{}]", datamart, dateTime, r);
+                        promise.complete(r);
+                    })
+                    .onFailure(error -> {
+                        val errMsg = String.format("can't get delta ok on datamart[%s], dateTime[%s]",
+                                datamart,
+                                dateTime);
+                        if (error instanceof KeeperException.NoNodeException) {
+                            promise.fail(new DatamartNotExistsException(datamart));
+                        } else if (error instanceof DeltaException) {
+                            promise.fail(error);
+                        } else {
+                            promise.fail(new DeltaException(errMsg, error));
+                        }
+                    });
+        });
     }
 
     private Future<OkDelta> findByDays(String datamart, LocalDateTime targetDateTime) {
         val date = targetDateTime.toLocalDate();
         return getDatamartDeltaDays(datamart, date)
-                .compose(days -> {
+                .map(days -> {
                     if (days.isEmpty()) {
-                        return Future.failedFuture(new DeltaNotFoundException());
-                    } else {
-                        val dayIterator = days.iterator();
-                        return getDeltaOkByMaxDeltaDateTime(datamart, dayIterator.next(), targetDateTime)
-                                .compose(okDelta -> {
-                                    if (okDelta != null) {
-                                        return Future.succeededFuture(okDelta);
-                                    } else {
-                                        if (dayIterator.hasNext()) {
-                                            return getDeltaOkByMaxDeltaDateTime(datamart, dayIterator.next());
-                                        } else {
-                                            return Future.failedFuture(new DeltaNotFoundException());
-                                        }
-                                    }
-                                });
+                        throw new DeltaNotFoundException();
                     }
+                    return days.iterator();
                 })
-                .compose(okDelta -> okDelta == null ?
-                        Future.failedFuture(new DeltaNotFoundException()) : Future.succeededFuture(okDelta));
+                .compose(dayIterator -> getDeltaOkByMaxDeltaDateTime(datamart, dayIterator.next(), targetDateTime)
+                        .compose(okDelta -> {
+                            if (okDelta != null) {
+                                return Future.succeededFuture(okDelta);
+                            }
+
+                            if (!dayIterator.hasNext()) {
+                                throw new DeltaNotFoundException();
+                            }
+
+                            return getDeltaOkByMaxDeltaDateTime(datamart, dayIterator.next());
+                        }));
     }
 
     private Future<List<LocalDate>> getDatamartDeltaDays(String datamart, LocalDate date) {
@@ -143,15 +139,20 @@ public class GetDeltaByDateTimeExecutor extends DeltaServiceDaoExecutorHelper im
                 .compose(dateTimeOpt -> dateTimeOpt
                         .map(dateTime -> executor.getData(getDeltaDateTimePath(datamart, dateTime)))
                         .orElse(Future.succeededFuture()))
-                .map(this::getOkDelta);
+                .map(bytes -> {
+                    if (bytes == null) {
+                        throw new DeltaNotFoundException();
+                    }
+
+                    return getOkDelta(bytes);
+                });
     }
 
     private OkDelta getOkDelta(byte[] bytes) {
         if (bytes == null) {
             return null;
-        } else {
-            return deserializedOkDelta(bytes);
         }
+        return deserializedOkDelta(bytes);
     }
 
     @Override

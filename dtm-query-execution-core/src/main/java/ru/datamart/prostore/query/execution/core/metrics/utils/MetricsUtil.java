@@ -23,4 +23,6 @@ public class MetricsUtil {
     public static final String ACTION_TYPE = "actionType";
     public static final String SOURCE_TYPE = "sourceType";
 
+    private MetricsUtil() {
+    }
 }

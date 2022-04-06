@@ -15,15 +15,23 @@
  */
 package utils;
 
+import lombok.val;
 import ru.datamart.prostore.common.model.ddl.ColumnType;
 import ru.datamart.prostore.common.model.ddl.Entity;
 import ru.datamart.prostore.common.model.ddl.EntityField;
+import ru.datamart.prostore.query.execution.plugin.api.request.EddlRequest;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 
 public class CreateEntityUtils {
+    public static final String SCHEMA = "test_schema";
+    public static final String TABLE = "test_table";
+    public static final String LOCATION_PATH = "table_path";
+    public static final String ENV = "env";
+
     public static Entity getEntity() {
         List<EntityField> keyFields = Arrays.asList(
                 new EntityField(0, "id", ColumnType.INT.name(), false, 1, 1, null),
@@ -33,8 +41,7 @@ public class CreateEntityUtils {
         );
         ColumnType[] types = ColumnType.values();
         List<EntityField> fields = new ArrayList<>();
-        for (int i = 0; i < types.length; i++)
-        {
+        for (int i = 0; i < types.length; i++) {
             ColumnType type = types[i];
             if (Arrays.asList(ColumnType.BLOB, ColumnType.ANY).contains(type)) {
                 continue;
@@ -45,17 +52,27 @@ public class CreateEntityUtils {
                     .type(type)
                     .nullable(true)
                     .name(type.name() + "_type");
-            if (Arrays.asList(ColumnType.CHAR, ColumnType.VARCHAR).contains(type))
-            {
+            if (Arrays.asList(ColumnType.CHAR, ColumnType.VARCHAR).contains(type)) {
                 builder.size(20);
-            }
-            else if (Arrays.asList(ColumnType.TIME, ColumnType.TIMESTAMP).contains(type))
-            {
+            } else if (Arrays.asList(ColumnType.TIME, ColumnType.TIMESTAMP).contains(type)) {
                 builder.accuracy(5);
             }
             fields.add(builder.build());
         }
         fields.addAll(keyFields);
-        return new Entity("test_schema.test_table", fields);
+        val nameWithSchema = SCHEMA + "." + TABLE;
+        val entity = new Entity(nameWithSchema, fields);
+        entity.setExternalTableLocationPath(LOCATION_PATH);
+        return entity;
+    }
+
+    public static EddlRequest createEddlRequest(boolean isCreate) {
+        return EddlRequest.builder()
+                .createRequest(isCreate)
+                .requestId(UUID.randomUUID())
+                .envName(ENV)
+                .entity(getEntity())
+                .datamartMnemonic(SCHEMA)
+                .build();
     }
 }

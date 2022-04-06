@@ -116,7 +116,7 @@ public class SqlDdlMaterializedTest {
 
         assertEquals(VIEW_MAT_TABLE_NAME, sqlCreateMaterializedView.getName().names.get(0));
 
-        assertNull(sqlCreateMaterializedView.getDestination().getDatasourceTypes());
+        assertTrue(sqlCreateMaterializedView.getDestination().getDatasourceTypes().isEmpty());
         assertNull(sqlCreateMaterializedView.getDistributedBy().getNodeList());
         assertNull(sqlCreateMaterializedView.getColumnList());
 

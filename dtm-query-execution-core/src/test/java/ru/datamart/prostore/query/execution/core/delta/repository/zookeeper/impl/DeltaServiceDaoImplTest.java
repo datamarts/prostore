@@ -15,6 +15,14 @@
  */
 package ru.datamart.prostore.query.execution.core.delta.repository.zookeeper.impl;
 
+import io.vertx.core.Vertx;
+import io.vertx.junit5.VertxTestContext;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.curator.test.TestingServer;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import ru.datamart.prostore.common.configuration.core.CoreConstants;
 import ru.datamart.prostore.query.execution.core.base.configuration.properties.ServiceDbZookeeperProperties;
 import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.DatamartDao;
@@ -29,14 +37,6 @@ import ru.datamart.prostore.query.execution.core.delta.exception.DeltaIsNotCommi
 import ru.datamart.prostore.query.execution.core.delta.exception.DeltaNotFinishedException;
 import ru.datamart.prostore.query.execution.core.delta.exception.TableBlockedException;
 import ru.datamart.prostore.query.execution.core.delta.repository.executor.*;
-import io.vertx.core.Vertx;
-import io.vertx.junit5.VertxTestContext;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.apache.curator.test.TestingServer;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.time.LocalDateTime;

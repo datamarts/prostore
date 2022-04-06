@@ -126,6 +126,7 @@ import ru.datamart.prostore.query.calcite.core.extension.delta.*;
 import ru.datamart.prostore.query.calcite.core.extension.dml.SqlDataSourceTypeGetter;
 import ru.datamart.prostore.query.calcite.core.extension.dml.SqlEstimateOnlyQuery;
 import ru.datamart.prostore.query.calcite.core.extension.eddl.*;
+import ru.datamart.prostore.query.calcite.core.extension.eddl.standalone.*;
 import ru.datamart.prostore.query.calcite.core.framework.SqlExtOperatorTable;
 
 import org.slf4j.Logger;
@@ -1570,8 +1571,12 @@ SqlNode SqlInsert() :
     SqlNode source;
     SqlNodeList columnList = null;
     final Span s;
+    boolean retry = false;
 }
 {
+    [
+    <RETRY> { retry = true; }
+    ]
     (
         <INSERT>
     |
@@ -1602,8 +1607,8 @@ SqlNode SqlInsert() :
         }
     ]
     source = OrderedQueryOrExpr(ExprContext.ACCEPT_QUERY) {
-        return new SqlInsert(s.end(source), keywordList, table, source,
-            columnList);
+        return new ru.datamart.prostore.query.calcite.core.extension.dml.DtmSqlInsert(s.end(source), keywordList, table, source,
+            columnList, retry);
     }
 }
 
@@ -1625,8 +1630,12 @@ SqlNode SqlDelete() :
     SqlIdentifier alias = null;
     final SqlNode condition;
     final Span s;
+    boolean retry = false;
 }
 {
+    [
+    <RETRY> { retry = true; }
+    ]
     <DELETE> {
         s = span();
     }
@@ -1640,8 +1649,8 @@ SqlNode SqlDelete() :
     [ [ <AS> ] alias = SimpleIdentifier() ]
     condition = WhereOpt()
     {
-        return new SqlDelete(s.add(table).addIf(extendList).addIf(alias)
-            .addIf(condition).pos(), table, condition, null, alias);
+        return new ru.datamart.prostore.query.calcite.core.extension.dml.DtmSqlDelete(s.add(table).addIf(extendList).addIf(alias)
+            .addIf(condition).pos(), table, condition, null, alias, retry);
     }
 }
 

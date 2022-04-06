@@ -22,6 +22,7 @@ import lombok.val;
 import org.apache.calcite.sql.SqlInsert;
 import org.apache.calcite.sql.SqlNode;
 import ru.datamart.prostore.common.model.ddl.Entity;
+import ru.datamart.prostore.common.model.ddl.EntityType;
 import ru.datamart.prostore.common.reader.QueryResult;
 import ru.datamart.prostore.query.execution.core.base.exception.table.ValidationDtmException;
 import ru.datamart.prostore.query.execution.core.base.repository.ServiceDbFacade;
@@ -54,12 +55,20 @@ public abstract class AbstractUpdateExecutor<REQ extends LlwRequest<?>> extends 
                 .compose(this::validateEntityType)
                 .compose(entity -> updateColumnsValidator.validate(context.getSqlNode(), entity))
                 .compose(this::checkConfiguration)
-                .compose(entity -> deltaServiceDao.getDeltaHot(context.getRequest().getQueryRequest().getDatamartMnemonic())
-                        .compose(ignored -> produceOrResumeWriteOperation(context, entity))
-                        .map(sysCn -> new SysCnEntityHolder(entity, sysCn)))
-                .compose(sysCnEntityHolder -> runLlw(context, sysCnEntityHolder))
+                .compose(entity -> entity.getEntityType() == EntityType.TABLE ?
+                        executeLogical(context, entity) :
+                        executeWriteableExternal(context, entity))
                 .map(QueryResult.emptyResult());
     }
+
+    private Future<Void> executeLogical(DmlRequestContext context, Entity destinationEntity) {
+        return deltaServiceDao.getDeltaHot(context.getRequest().getQueryRequest().getDatamartMnemonic())
+                .compose(ignored -> produceOrRetryWriteOperation(context, destinationEntity))
+                .map(sysCn -> new SysCnEntityHolder(destinationEntity, sysCn))
+                .compose(sysCnEntityHolder -> runLlw(context, sysCnEntityHolder));
+    }
+
+    protected abstract Future<Void> executeWriteableExternal(DmlRequestContext context, Entity entity);
 
     protected abstract boolean isValidSource(SqlNode sqlInsert);
 

@@ -39,8 +39,8 @@ public class SimpleParameterList implements ParameterList {
             paramValues[normalIndex] = value;
             paramTypes[normalIndex] = ColumnTypeUtil.getColumnType(sqlType);
         } catch (ArrayIndexOutOfBoundsException e) {
-            throw new DtmSqlException(String.format("The column index is out of range: %d, number of columns: %d",
-                index, paramValues.length));
+            throw new DtmSqlException(String.format("The column index is out of range: %d, number of parameters: %d",
+                    index, paramValues.length));
         }
     }
 

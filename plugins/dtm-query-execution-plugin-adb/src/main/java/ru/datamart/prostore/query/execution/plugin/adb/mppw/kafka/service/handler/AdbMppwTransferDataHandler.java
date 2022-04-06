@@ -15,17 +15,17 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.service.handler;
 
-import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.dto.MppwKafkaLoadRequest;
-import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.dto.MppwKafkaRequestContext;
-import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.factory.KafkaMppwSqlFactory;
-import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.service.executor.AdbMppwDataTransferService;
-import ru.datamart.prostore.query.execution.plugin.adb.query.service.DatabaseExecutor;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
+import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.dto.MppwKafkaLoadRequest;
+import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.dto.MppwKafkaRequestContext;
+import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.factory.KafkaMppwSqlFactory;
+import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.service.executor.AdbMppwDataTransferService;
+import ru.datamart.prostore.query.execution.plugin.adb.query.service.DatabaseExecutor;
 
 @Component("adbMppwTransferDataHandler")
 @Slf4j
@@ -45,7 +45,7 @@ public class AdbMppwTransferDataHandler {
     }
 
     public Future<Void> handle(MppwKafkaRequestContext requestContext) {
-        return insertIntoStagingTable(requestContext.getMppwKafkaLoadRequest())
+        return insertIntoTable(requestContext.getMppwKafkaLoadRequest())
                 .compose(v -> commitKafkaMessages(requestContext))
                 .compose(s -> mppwDataTransferService.execute(requestContext.getTransferDataRequest()));
     }
@@ -60,16 +60,16 @@ public class AdbMppwTransferDataHandler {
         });
     }
 
-    private Future<Void> insertIntoStagingTable(MppwKafkaLoadRequest request) {
+    private Future<Void> insertIntoTable(MppwKafkaLoadRequest request) {
         return Future.future(promise -> {
             val schema = request.getDatamart();
             val columns = String.join(", ", request.getColumns());
             val extTable = request.getWritableExtTableName().replace("-", "_");
-            val stagingTable = request.getTableName();
-            adbQueryExecutor.executeUpdate(kafkaMppwSqlFactory.insertIntoStagingTableSqlQuery(schema,
-                    columns,
-                    stagingTable,
-                    extTable))
+            val table = request.getTableName();
+            adbQueryExecutor.executeUpdate(kafkaMppwSqlFactory.insertIntoTableSqlQuery(schema,
+                            columns,
+                            table,
+                            extTable))
                     .onComplete(promise);
         });
     }

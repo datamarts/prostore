@@ -24,6 +24,9 @@ public class AdpFunctionFactory {
             "    LEAKPROOF\n" +
             "    RETURNS NULL ON NULL INPUT;";
 
+    private AdpFunctionFactory() {
+    }
+
     public static String createInt32HashFunction() {
         return CREATE_OR_REPLACE_FUNC;
     }

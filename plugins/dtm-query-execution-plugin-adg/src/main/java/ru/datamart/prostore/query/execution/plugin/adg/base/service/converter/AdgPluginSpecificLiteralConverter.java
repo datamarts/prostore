@@ -34,7 +34,7 @@ import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.List;
 
-@Service("adgTemplateParameterConverter")
+@Service("adgPluginSpecificLiteralConverter")
 public class AdgPluginSpecificLiteralConverter implements PluginSpecificLiteralConverter {
     private static final DateTimeFormatter TIMESTAMP_FORMATTER = new DateTimeFormatterBuilder()
             .appendPattern("yyyy-MM-dd HH:mm:ss")

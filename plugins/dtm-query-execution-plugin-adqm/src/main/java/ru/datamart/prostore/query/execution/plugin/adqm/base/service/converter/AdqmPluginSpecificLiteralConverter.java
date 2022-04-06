@@ -15,16 +15,15 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adqm.base.service.converter;
 
-import ru.datamart.prostore.common.util.DateTimeUtils;
-import ru.datamart.prostore.query.execution.plugin.api.service.PluginSpecificLiteralConverter;
 import lombok.val;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.sql.SqlNumericLiteral;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.springframework.stereotype.Service;
+import ru.datamart.prostore.common.util.DateTimeUtils;
+import ru.datamart.prostore.query.execution.plugin.api.service.PluginSpecificLiteralConverter;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -35,7 +34,7 @@ import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.List;
 
-@Service("adqmTemplateParameterConverter")
+@Service("adqmPluginSpecificLiteralConverter")
 public class AdqmPluginSpecificLiteralConverter implements PluginSpecificLiteralConverter {
     private static final DateTimeFormatter TIMESTAMP_FORMATTER = new DateTimeFormatterBuilder()
             .appendPattern("yyyy-MM-dd HH:mm:ss")
@@ -75,7 +74,7 @@ public class AdqmPluginSpecificLiteralConverter implements PluginSpecificLiteral
                 return SqlLiteral.createExactNumeric(String.valueOf(DateTimeUtils.toEpochDay(localDate)), param.getParserPosition());
             case TIMESTAMP:
                 val dateTime = LocalDateTime.parse(extractDateTimeString(literal), TIMESTAMP_FORMATTER);
-                return SqlNumericLiteral.createExactNumeric(String.valueOf(DateTimeUtils.toMicros(dateTime)), param.getParserPosition());
+                return SqlLiteral.createExactNumeric(String.valueOf(DateTimeUtils.toMicros(dateTime)), param.getParserPosition());
             default:
                 return param;
         }

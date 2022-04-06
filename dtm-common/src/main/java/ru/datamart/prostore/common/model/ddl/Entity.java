@@ -24,6 +24,7 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -46,6 +47,7 @@ public class Entity implements Serializable {
     private String externalTableSchema;
     private ExternalTableLocationType externalTableLocationType;
     private String externalTableLocationPath;
+    private Map<String, String> externalTableOptions;
     private Integer externalTableDownloadChunkSize;
     private Integer externalTableUploadMessageLimit;
     private Set<SourceType> destination;

@@ -15,13 +15,13 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adp.mppw.transfer;
 
-import ru.datamart.prostore.query.execution.plugin.adp.db.service.DatabaseExecutor;
-import ru.datamart.prostore.query.execution.plugin.adp.mppw.dto.AdpTransferDataRequest;
-import ru.datamart.prostore.query.execution.plugin.adp.mppw.factory.AdpTransferDataSqlFactory;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.springframework.stereotype.Service;
+import ru.datamart.prostore.query.execution.plugin.adp.db.service.DatabaseExecutor;
+import ru.datamart.prostore.query.execution.plugin.adp.mppw.dto.AdpTransferDataRequest;
+import ru.datamart.prostore.query.execution.plugin.adp.mppw.factory.AdpTransferDataSqlFactory;
 
 @Slf4j
 @Service
@@ -38,8 +38,12 @@ public class AdpTransferDataService {
 
     public Future<Void> transferData(AdpTransferDataRequest request) {
         return Future.future(promise -> {
-            log.info("[ADP] Start transfer data");
+            if (request.getSysCn() == null) {
+                promise.complete();
+                return;
+            }
 
+            log.info("[ADP] Start transfer data");
             val sql = String.join("",
                     transferDataSqlFactory.getCloseVersionOfRecordsSql(request.getDatamart(), request.getTableName(), request.getPrimaryKeys(), request.getSysCn()),
                     transferDataSqlFactory.getUploadHotRecordsSql(request.getDatamart(), request.getTableName(), request.getAllFields(), request.getPrimaryKeys(), request.getSysCn()),

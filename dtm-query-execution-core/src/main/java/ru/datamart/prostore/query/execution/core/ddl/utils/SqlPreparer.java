@@ -52,6 +52,9 @@ public class SqlPreparer {
     private static final Pattern GET_VIEW_QUERY_PATTERN = Pattern.compile("(?i)view\\s+\\w+\\s+as\\s+(SELECT.*)");
     private static final String SERVICE_DB_NAME = "dtmservice";
 
+    private SqlPreparer() {
+    }
+
     /**
      * We define a schema and a table where we will create a physical "dummy".
      *

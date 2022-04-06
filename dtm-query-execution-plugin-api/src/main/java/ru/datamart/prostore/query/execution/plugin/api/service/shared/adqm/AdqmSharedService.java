@@ -25,6 +25,8 @@ public interface AdqmSharedService {
 
     Future<Void> dropBufferTables(String env, String datamart, Entity entity);
 
+    Future<Void> flushTable(String table);
+
     Future<Void> flushActualTable(String env, String datamart, Entity entity);
 
     Future<Void> closeVersionSqlByTableActual(String env, String datamart, Entity entity, long sysCn);

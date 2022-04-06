@@ -15,6 +15,16 @@
  */
 package ru.datamart.prostore.query.execution.core.rollback.service;
 
+import io.vertx.core.CompositeFuture;
+import io.vertx.core.Future;
+import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.calcite.sql.SqlNode;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 import ru.datamart.prostore.common.configuration.core.CoreConstants;
 import ru.datamart.prostore.common.metrics.RequestMetrics;
 import ru.datamart.prostore.common.model.RequestStatus;
@@ -33,17 +43,7 @@ import ru.datamart.prostore.query.execution.core.edml.dto.EdmlRequestContext;
 import ru.datamart.prostore.query.execution.core.edml.dto.EraseWriteOpResult;
 import ru.datamart.prostore.query.execution.core.edml.mppw.dto.WriteOperationStatus;
 import ru.datamart.prostore.query.execution.core.edml.mppw.service.UploadFailedExecutor;
-import ru.datamart.prostore.query.execution.core.edml.mppw.service.impl.UploadExternalTableExecutor;
-import io.vertx.core.CompositeFuture;
-import io.vertx.core.Future;
-import lombok.Getter;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.apache.calcite.sql.SqlNode;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
+import ru.datamart.prostore.query.execution.core.edml.mppw.service.impl.UploadLogicalExternalTableExecutor;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -60,7 +60,7 @@ public class RestoreStateService {
     private final EntityDao entityDao;
     private final DeltaServiceDao deltaServiceDao;
     private final UploadFailedExecutor uploadFailedExecutor;
-    private final UploadExternalTableExecutor uploadExternalTableExecutor;
+    private final UploadLogicalExternalTableExecutor uploadLogicalExternalTableExecutor;
     private final DefinitionService<SqlNode> definitionService;
     private final String envName;
 
@@ -70,7 +70,7 @@ public class RestoreStateService {
     @Autowired
     public RestoreStateService(ServiceDbFacade serviceDbFacade,
                                UploadFailedExecutor uploadFailedExecutor,
-                               UploadExternalTableExecutor uploadExternalTableExecutor,
+                               UploadLogicalExternalTableExecutor uploadLogicalExternalTableExecutor,
                                @Qualifier("coreCalciteDefinitionService") DefinitionService<SqlNode> definitionService,
                                @Value("${core.env.name}") String envName,
                                RestorationProperties restorationProperties) {
@@ -78,7 +78,7 @@ public class RestoreStateService {
         this.entityDao = serviceDbFacade.getServiceDbDao().getEntityDao();
         this.deltaServiceDao = serviceDbFacade.getDeltaServiceDao();
         this.uploadFailedExecutor = uploadFailedExecutor;
-        this.uploadExternalTableExecutor = uploadExternalTableExecutor;
+        this.uploadLogicalExternalTableExecutor = uploadLogicalExternalTableExecutor;
         this.definitionService = definitionService;
         this.envName = envName;
         this.isAutoRestoreState = restorationProperties.isAutoRestoreState();
@@ -166,7 +166,7 @@ public class RestoreStateService {
 
     private Future<QueryResult> uploadWriteOperation(Entity dest, Entity source, DeltaWriteOp op) {
         EdmlRequestContext context = createUploadContext(dest, source, op);
-        return uploadExternalTableExecutor.execute(context);
+        return uploadLogicalExternalTableExecutor.execute(context);
     }
 
     private EdmlRequestContext createUploadContext(Entity dest, Entity source, DeltaWriteOp op) {

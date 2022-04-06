@@ -112,7 +112,7 @@ public class AdqmCheckTableService implements CheckTableService {
         });
         return errors.isEmpty()
                 ? Optional.empty()
-                : Optional.of(String.format("Table `%s.%s`:\n%s",
+                : Optional.of(String.format("Table `%s.%s`:%n%s",
                 expTableEntity.getSchema(),
                 expTableEntity.getName(),
                 String.join("\n", errors)));

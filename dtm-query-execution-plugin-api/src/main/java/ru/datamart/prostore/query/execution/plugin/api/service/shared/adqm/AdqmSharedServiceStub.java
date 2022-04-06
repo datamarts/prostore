@@ -37,6 +37,11 @@ public class AdqmSharedServiceStub implements AdqmSharedService {
     }
 
     @Override
+    public Future<Void> flushTable(String table) {
+        throw new DtmException(STUBBED_EXCEPTION);
+    }
+
+    @Override
     public Future<Void> flushActualTable(String env, String datamart, Entity entity) {
         throw new DtmException(STUBBED_EXCEPTION);
     }

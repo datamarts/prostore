@@ -20,12 +20,14 @@ import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.apache.calcite.sql.SqlDialect;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlNode;
 import org.apache.commons.codec.digest.DigestUtils;
 import ru.datamart.prostore.common.dto.TableInfo;
 import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.common.model.ddl.Entity;
 import ru.datamart.prostore.common.model.ddl.EntityType;
 import ru.datamart.prostore.common.reader.SourceType;
+import ru.datamart.prostore.query.calcite.core.extension.dml.SqlRetryable;
 import ru.datamart.prostore.query.calcite.core.node.SqlPredicatePart;
 import ru.datamart.prostore.query.calcite.core.node.SqlPredicates;
 import ru.datamart.prostore.query.calcite.core.node.SqlSelectTree;
@@ -42,6 +44,7 @@ import ru.datamart.prostore.query.execution.core.edml.mppw.dto.WriteOperationSta
 import ru.datamart.prostore.query.execution.core.plugin.service.DataSourcePluginService;
 import ru.datamart.prostore.query.execution.core.rollback.service.RestoreStateService;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -51,8 +54,9 @@ import java.util.stream.Collectors;
 @Slf4j
 public abstract class AbstractLlwExecutor implements DmlExecutor {
 
+    private static final List<EntityType> ALLOWED_ENTITY_TYPES = Arrays.asList(EntityType.TABLE, EntityType.WRITEABLE_EXTERNAL_TABLE);
     private static final SqlDialect SQL_DIALECT = new SqlDialect(SqlDialect.EMPTY_CONTEXT);
-    private static final Pattern INSERT_VALUES_PATTERN = Pattern.compile("(?i)(INSERT INTO .+ VALUES )(.+)");
+    private static final Pattern INSERT_VALUES_PATTERN = Pattern.compile("(?i)(INSERT|UPSERT)( INTO .+ VALUES )(.+)");
     private static final SqlPredicates DYNAMIC_PARAM_PREDICATE = SqlPredicates.builder()
             .anyOf(SqlPredicatePart.eq(SqlKind.DYNAMIC_PARAM))
             .build();
@@ -86,8 +90,8 @@ public abstract class AbstractLlwExecutor implements DmlExecutor {
     }
 
     protected Future<Entity> validateEntityType(Entity entity) {
-        if (entity.getEntityType() != EntityType.TABLE) {
-            return Future.failedFuture(new DtmException("Forbidden. Write operations allowed for logical tables only."));
+        if (!ALLOWED_ENTITY_TYPES.contains(entity.getEntityType())) {
+            return Future.failedFuture(new DtmException("Forbidden. Write operations allowed for logical and writeable external tables only."));
         }
         return Future.succeededFuture(entity);
     }
@@ -107,13 +111,13 @@ public abstract class AbstractLlwExecutor implements DmlExecutor {
         }
     }
 
-    protected Future<Long> produceOrResumeWriteOperation(DmlRequestContext context, Entity entity) {
+    protected Future<Long> produceOrRetryWriteOperation(DmlRequestContext context, Entity entity) {
         return Future.future(p -> {
             val writeOpRequest = createDeltaOp(context, entity);
             deltaServiceDao.writeNewOperation(writeOpRequest)
                     .onSuccess(p::complete)
                     .onFailure(t -> {
-                        if (t instanceof TableBlockedException) {
+                        if (isNodeWithRetry(context.getSqlNode()) && t instanceof TableBlockedException) {
                             deltaServiceDao.getDeltaWriteOperations(context.getRequest().getQueryRequest().getDatamartMnemonic())
                                     .map(writeOps -> findEqualWriteOp(writeOps, entity.getName(), writeOpRequest.getQuery(), t))
                                     .onComplete(p);
@@ -123,6 +127,10 @@ public abstract class AbstractLlwExecutor implements DmlExecutor {
                         p.fail(t);
                     });
         });
+    }
+
+    private boolean isNodeWithRetry(SqlNode sqlNode) {
+        return sqlNode instanceof SqlRetryable && ((SqlRetryable) sqlNode).isRetry();
     }
 
     private Long findEqualWriteOp(List<DeltaWriteOp> writeOps, String tableName, String query, Throwable originalException) {
@@ -162,7 +170,7 @@ public abstract class AbstractLlwExecutor implements DmlExecutor {
 
         val matcher = INSERT_VALUES_PATTERN.matcher(query);
         if (matcher.matches()) {
-            return matcher.group(1) + DigestUtils.md5Hex(matcher.group(2));
+            return matcher.group(1) + matcher.group(2) + DigestUtils.md5Hex(matcher.group(3));
         }
 
         return query;

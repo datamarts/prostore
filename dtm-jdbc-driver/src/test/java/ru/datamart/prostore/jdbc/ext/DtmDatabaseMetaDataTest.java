@@ -236,7 +236,7 @@ class DtmDatabaseMetaDataTest {
         };
         when(queryExecutor.getTableColumns(anyString(), anyString())).thenReturn(new ObjectMapper().readValue(str, typeReference));
         when(connection.createStatement()).thenReturn(new DtmStatement(connection, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY));
-        when(connection.getTypeInfo()).thenReturn(new TypeInfoCache(connection));
+        when(connection.getTypeInfo()).thenReturn(new TypeInfoCache());
 
         //act
         val columns = dtmDatabaseMetaData.getColumns(TABLE_CAT_COLUMN, null, "", null);
@@ -280,7 +280,7 @@ class DtmDatabaseMetaDataTest {
         };
         when(queryExecutor.getTableColumns(anyString(), anyString())).thenReturn(new ObjectMapper().readValue(str, typeReference));
         when(connection.createStatement()).thenReturn(new DtmStatement(connection, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY));
-        when(connection.getTypeInfo()).thenReturn(new TypeInfoCache(connection));
+        when(connection.getTypeInfo()).thenReturn(new TypeInfoCache());
 
         //act
         val columns = dtmDatabaseMetaData.getColumns(TABLE_CAT_COLUMN, null, "%", null);

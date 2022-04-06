@@ -15,13 +15,6 @@
  */
 package ru.datamart.prostore.query.execution.core.dml.service;
 
-import ru.datamart.prostore.common.dto.QueryParserRequest;
-import ru.datamart.prostore.common.reader.InformationSchemaView;
-import ru.datamart.prostore.common.reader.QueryResult;
-import ru.datamart.prostore.common.reader.QuerySourceRequest;
-import ru.datamart.prostore.query.calcite.core.service.QueryParserService;
-import ru.datamart.prostore.query.execution.core.base.service.hsql.HSQLClient;
-import ru.datamart.prostore.query.execution.model.metadata.ColumnMetadata;
 import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
 import lombok.val;
@@ -29,6 +22,13 @@ import org.apache.calcite.sql.SqlDialect;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import ru.datamart.prostore.common.dto.QueryParserRequest;
+import ru.datamart.prostore.common.reader.InformationSchemaView;
+import ru.datamart.prostore.common.reader.QueryResult;
+import ru.datamart.prostore.common.reader.QuerySourceRequest;
+import ru.datamart.prostore.query.calcite.core.service.QueryParserService;
+import ru.datamart.prostore.query.execution.core.base.service.hsql.HSQLClient;
+import ru.datamart.prostore.query.execution.model.metadata.ColumnMetadata;
 
 import java.util.HashMap;
 import java.util.List;
@@ -86,7 +86,7 @@ public class InformationSchemaExecutor {
     private Future<String> getEnrichmentQuerySql(QuerySourceRequest request) {
         return Future.future(p -> {
                     toUpperCase(request);
-                    val parserRequest = new QueryParserRequest(request.getQuery(), request.getLogicalSchema());
+            val parserRequest = new QueryParserRequest(request.getQuery(), request.getLogicalSchema());
                     parserService.parse(parserRequest)
                             .map(response -> {
                                 val enrichmentNode = response.getSqlNode();

@@ -15,14 +15,14 @@
  */
 package ru.datamart.prostore.query.execution.core.base.service.avro;
 
-import ru.datamart.prostore.common.model.ddl.Entity;
-import ru.datamart.prostore.common.model.ddl.EntityField;
-import ru.datamart.prostore.query.execution.core.base.utils.AvroUtils;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.apache.avro.Schema;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Component;
+import ru.datamart.prostore.common.model.ddl.Entity;
+import ru.datamart.prostore.common.model.ddl.EntityField;
+import ru.datamart.prostore.query.execution.core.base.utils.AvroUtils;
 
 import java.util.Comparator;
 import java.util.List;
@@ -31,10 +31,6 @@ import java.util.stream.Collectors;
 @Component
 @Slf4j
 public class AvroSchemaGenerator {
-
-    public Schema generateTableSchema(Entity table) {
-        return generateTableSchema(table, true);
-    }
 
     public Schema generateTableSchema(Entity table, boolean withSysOpField) {
         List<Schema.Field> fields = getFields(table, withSysOpField);

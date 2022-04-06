@@ -15,6 +15,17 @@
  */
 package ru.datamart.prostore.query.execution.core.dml.service.impl;
 
+import io.vertx.core.Future;
+import io.vertx.junit5.VertxExtension;
+import io.vertx.junit5.VertxTestContext;
+import lombok.val;
+import org.apache.calcite.rel.RelRoot;
+import org.apache.calcite.sql.SqlNode;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 import ru.datamart.prostore.common.dto.QueryParserResponse;
 import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.common.model.ddl.Entity;
@@ -43,30 +54,20 @@ import ru.datamart.prostore.query.execution.core.edml.mppw.dto.WriteOperationSta
 import ru.datamart.prostore.query.execution.core.plugin.service.DataSourcePluginService;
 import ru.datamart.prostore.query.execution.core.rollback.service.RestoreStateService;
 import ru.datamart.prostore.query.execution.core.utils.TestUtils;
-import io.vertx.core.Future;
-import io.vertx.junit5.VertxExtension;
-import io.vertx.junit5.VertxTestContext;
-import lombok.val;
-import org.apache.calcite.rel.RelRoot;
-import org.apache.calcite.sql.SqlNode;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
 
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(VertxExtension.class)
 class DeleteExecutorTest {
+    private static final String DELETE_SQL = "DELETE FROM users u where u.id = 1";
+    private static final String RETRY_DELETE_SQL = "RETRY DELETE FROM users u where u.id = 1";
 
     @Mock
     private DataSourcePluginService pluginService;
@@ -96,7 +97,8 @@ class DeleteExecutorTest {
     private QueryParserResponse parserResponse;
 
     private DeleteExecutor executor;
-    private Entity entity;
+    private Entity logicalEntity;
+    private Entity writeableExternalEntity;
     private DmlRequestContext requestContext;
 
     @BeforeEach
@@ -108,19 +110,25 @@ class DeleteExecutorTest {
 
         executor = new DeleteExecutor(pluginService, serviceDbFacade, restoreStateService, logicalSchemaProvider, templateExtractor, queryParserService, parametersTypeExtractor);
 
-        entity = Entity.builder()
+        logicalEntity = Entity.builder()
                 .schema("datamart")
                 .name("users")
                 .destination(Collections.singleton(SourceType.ADB))
                 .entityType(EntityType.TABLE)
                 .build();
 
-        String sql = "DELETE FROM users u where u.id = 1";
-        SqlNode sqlNode = TestUtils.DEFINITION_SERVICE.processingQuery(sql);
+        writeableExternalEntity = Entity.builder()
+                .schema("datamart")
+                .name("users")
+                .destination(Collections.singleton(SourceType.ADB))
+                .entityType(EntityType.WRITEABLE_EXTERNAL_TABLE)
+                .build();
+
+        SqlNode sqlNode = TestUtils.DEFINITION_SERVICE.processingQuery(DELETE_SQL);
         QueryRequest queryRequest = QueryRequest.builder()
                 .requestId(UUID.randomUUID())
                 .datamartMnemonic("datamart")
-                .sql(sql)
+                .sql(DELETE_SQL)
                 .build();
         requestContext = DmlRequestContext.builder()
                 .envName("dev")
@@ -134,7 +142,7 @@ class DeleteExecutorTest {
     void deleteSuccess(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
         when(deltaServiceDao.getDeltaOk("datamart")).thenReturn(Future.succeededFuture(new OkDelta(1L, null, 1L, 1L)));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.succeededFuture(1L));
         when(deltaServiceDao.writeOperationSuccess("datamart", 1L)).thenReturn(Future.succeededFuture());
         when(pluginService.delete(eq(SourceType.ADB), any(), any())).thenReturn(Future.succeededFuture());
@@ -156,10 +164,29 @@ class DeleteExecutorTest {
     }
 
     @Test
-    void deleteSuccessWhenResumableOperation(VertxTestContext testContext) {
+    void deleteSuccessFromWriteableExtTable(VertxTestContext testContext) {
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(writeableExternalEntity));
+        when(pluginService.delete(eq(SourceType.ADB), any(), any())).thenReturn(Future.succeededFuture());
+        when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
+        when(logicalSchemaProvider.getSchemaFromQuery(any(), eq("datamart"))).thenReturn(Future.succeededFuture(Collections.emptyList()));
+        when(templateExtractor.extract(any(SqlNode.class))).thenReturn(templateResult);
+        when(queryParserService.parse(any())).thenReturn(Future.succeededFuture(parserResponse));
+        when(parserResponse.getRelNode()).thenReturn(relRoot);
+        when(parametersTypeExtractor.extract(any())).thenReturn(Collections.emptyList());
+
+        executor.execute(requestContext)
+                .onSuccess(ar -> testContext.verify(() -> {
+                    verifyNoInteractions(deltaServiceDao);
+                    verifyNoInteractions(restoreStateService);
+                }).completeNow())
+                .onFailure(ar -> testContext.failNow(ar.getCause()));
+    }
+
+    @Test
+    void deleteSuccessWhenRetryAndResumableOperation(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
         when(deltaServiceDao.getDeltaOk("datamart")).thenReturn(Future.succeededFuture(new OkDelta(1L, null, 1L, 1L)));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeOperationSuccess("datamart", 1L)).thenReturn(Future.succeededFuture());
         when(pluginService.delete(eq(SourceType.ADB), any(), any())).thenReturn(Future.succeededFuture());
         when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
@@ -177,6 +204,7 @@ class DeleteExecutorTest {
                 .build();
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new TableBlockedException("tbl", new RuntimeException())));
         when(deltaServiceDao.getDeltaWriteOperations("datamart")).thenReturn(Future.succeededFuture(Arrays.asList(existWriteOp)));
+        requestContext.setSqlNode(TestUtils.DEFINITION_SERVICE.processingQuery(RETRY_DELETE_SQL));
 
         executor.execute(requestContext)
                 .onSuccess(ar -> testContext.verify(() -> {
@@ -190,10 +218,47 @@ class DeleteExecutorTest {
     }
 
     @Test
+    void deleteFailWhenNotRetryAndResumableOperation(VertxTestContext testContext) {
+        when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
+        when(deltaServiceDao.getDeltaOk("datamart")).thenReturn(Future.succeededFuture(new OkDelta(1L, null, 1L, 1L)));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
+        when(deltaServiceDao.writeOperationSuccess("datamart", 1L)).thenReturn(Future.succeededFuture());
+        when(pluginService.delete(eq(SourceType.ADB), any(), any())).thenReturn(Future.succeededFuture());
+        when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
+        when(logicalSchemaProvider.getSchemaFromQuery(any(), eq("datamart"))).thenReturn(Future.succeededFuture(Collections.emptyList()));
+        when(templateExtractor.extract(any(SqlNode.class))).thenReturn(templateResult);
+        when(queryParserService.parse(any())).thenReturn(Future.succeededFuture(parserResponse));
+        when(parserResponse.getRelNode()).thenReturn(relRoot);
+        when(parametersTypeExtractor.extract(any())).thenReturn(Collections.emptyList());
+
+        val existWriteOp = DeltaWriteOp.builder()
+                .query("DELETE FROM users AS u WHERE u.id = 1")
+                .tableName("users")
+                .status(WriteOperationStatus.EXECUTING.getValue())
+                .sysCn(1L)
+                .build();
+        when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new TableBlockedException("tbl", new RuntimeException("Exception"))));
+        when(deltaServiceDao.getDeltaWriteOperations("datamart")).thenReturn(Future.succeededFuture(Arrays.asList(existWriteOp)));
+
+        executor.execute(requestContext)
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.succeeded()) {
+                        fail("Unexpected success");
+                    }
+                    assertEquals("Table[tbl] blocked: Exception", ar.cause().getMessage());
+                    verify(deltaServiceDao, never()).getDeltaWriteOperations("datamart");
+                    verify(deltaServiceDao, never()).writeOperationSuccess("datamart", 1L);
+                    verify(deltaServiceDao, never()).deleteWriteOperation("datamart", 1L);
+                    verify(deltaServiceDao, never()).writeOperationError("datamart", 1L);
+                    verify(restoreStateService, never()).restoreErase(any());
+                }).completeNow());
+    }
+
+    @Test
     void deleteFailWhenNotTableBlockedException(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
         when(deltaServiceDao.getDeltaOk("datamart")).thenReturn(Future.succeededFuture(new OkDelta(1L, null, 1L, 1L)));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new RuntimeException("Exception")));
         when(deltaServiceDao.writeOperationSuccess("datamart", 1L)).thenReturn(Future.succeededFuture());
         when(pluginService.delete(eq(SourceType.ADB), any(), any())).thenReturn(Future.succeededFuture());
@@ -218,10 +283,10 @@ class DeleteExecutorTest {
     }
 
     @Test
-    void deleteFailWhenNotEqualExistWriteOpTable(VertxTestContext testContext) {
+    void deleteFailWhenRetryAndNotEqualExistWriteOpTable(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
         when(deltaServiceDao.getDeltaOk("datamart")).thenReturn(Future.succeededFuture(new OkDelta(1L, null, 1L, 1L)));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeOperationSuccess("datamart", 1L)).thenReturn(Future.succeededFuture());
         when(pluginService.delete(eq(SourceType.ADB), any(), any())).thenReturn(Future.succeededFuture());
         when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
@@ -239,6 +304,7 @@ class DeleteExecutorTest {
                 .build();
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new TableBlockedException("tbl", new RuntimeException())));
         when(deltaServiceDao.getDeltaWriteOperations("datamart")).thenReturn(Future.succeededFuture(Arrays.asList(existWriteOp)));
+        requestContext.setSqlNode(TestUtils.DEFINITION_SERVICE.processingQuery(RETRY_DELETE_SQL));
 
         executor.execute(requestContext)
                 .onSuccess(ar -> testContext.failNow("Unexpected success"))
@@ -254,10 +320,46 @@ class DeleteExecutorTest {
     }
 
     @Test
-    void deleteFailWhenNotEqualExistWriteOpStatus(VertxTestContext testContext) {
+    void deleteFailWhenNotEqualExistWriteOpTable(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
         when(deltaServiceDao.getDeltaOk("datamart")).thenReturn(Future.succeededFuture(new OkDelta(1L, null, 1L, 1L)));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
+        when(deltaServiceDao.writeOperationSuccess("datamart", 1L)).thenReturn(Future.succeededFuture());
+        when(pluginService.delete(eq(SourceType.ADB), any(), any())).thenReturn(Future.succeededFuture());
+        when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
+        when(logicalSchemaProvider.getSchemaFromQuery(any(), eq("datamart"))).thenReturn(Future.succeededFuture(Collections.emptyList()));
+        when(templateExtractor.extract(any(SqlNode.class))).thenReturn(templateResult);
+        when(queryParserService.parse(any())).thenReturn(Future.succeededFuture(parserResponse));
+        when(parserResponse.getRelNode()).thenReturn(relRoot);
+        when(parametersTypeExtractor.extract(any())).thenReturn(Collections.emptyList());
+
+        val existWriteOp = DeltaWriteOp.builder()
+                .query("DELETE FROM users AS u WHERE u.id = 1")
+                .tableName("unknown")
+                .status(WriteOperationStatus.EXECUTING.getValue())
+                .sysCn(1L)
+                .build();
+        when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new TableBlockedException("tbl", new RuntimeException("Exception"))));
+        when(deltaServiceDao.getDeltaWriteOperations("datamart")).thenReturn(Future.succeededFuture(Arrays.asList(existWriteOp)));
+
+        executor.execute(requestContext)
+                .onSuccess(ar -> testContext.failNow("Unexpected success"))
+                .onFailure(t -> testContext.verify(() -> {
+                    assertEquals("Table[tbl] blocked: Exception", t.getMessage());
+                    verify(deltaServiceDao, never()).getDeltaWriteOperations("datamart");
+                    verify(deltaServiceDao, never()).deleteWriteOperation("datamart", 1L);
+                    verify(deltaServiceDao, never()).writeOperationError("datamart", 1L);
+                    verify(restoreStateService, never()).restoreErase(any());
+                    verify(pluginService).hasSourceType(any());
+                    verifyNoMoreInteractions(pluginService);
+                }).completeNow());
+    }
+
+    @Test
+    void deleteFailWhenRetryAndNotEqualExistWriteOpStatus(VertxTestContext testContext) {
+        when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
+        when(deltaServiceDao.getDeltaOk("datamart")).thenReturn(Future.succeededFuture(new OkDelta(1L, null, 1L, 1L)));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeOperationSuccess("datamart", 1L)).thenReturn(Future.succeededFuture());
         when(pluginService.delete(eq(SourceType.ADB), any(), any())).thenReturn(Future.succeededFuture());
         when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
@@ -275,6 +377,82 @@ class DeleteExecutorTest {
                 .build();
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new TableBlockedException("tbl", new RuntimeException())));
         when(deltaServiceDao.getDeltaWriteOperations("datamart")).thenReturn(Future.succeededFuture(Arrays.asList(existWriteOp)));
+        requestContext.setSqlNode(TestUtils.DEFINITION_SERVICE.processingQuery(RETRY_DELETE_SQL));
+
+        executor.execute(requestContext)
+                .onSuccess(ar -> testContext.failNow("Unexpected success"))
+                .onFailure(t -> testContext.verify(() -> {
+                    assertEquals("Table blocked and could not find equal writeOp for resume", t.getMessage());
+                    verify(deltaServiceDao).getDeltaWriteOperations("datamart");
+                    verify(deltaServiceDao, never()).deleteWriteOperation("datamart", 1L);
+                    verify(deltaServiceDao, never()).writeOperationError("datamart", 1L);
+                    verify(restoreStateService, never()).restoreErase(any());
+                    verify(pluginService).hasSourceType(any());
+                    verifyNoMoreInteractions(pluginService);
+                }).completeNow());
+    }
+
+    @Test
+    void deleteFailWhenNotRetryAndNotEqualExistWriteOpStatus(VertxTestContext testContext) {
+        when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
+        when(deltaServiceDao.getDeltaOk("datamart")).thenReturn(Future.succeededFuture(new OkDelta(1L, null, 1L, 1L)));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
+        when(deltaServiceDao.writeOperationSuccess("datamart", 1L)).thenReturn(Future.succeededFuture());
+        when(pluginService.delete(eq(SourceType.ADB), any(), any())).thenReturn(Future.succeededFuture());
+        when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
+        when(logicalSchemaProvider.getSchemaFromQuery(any(), eq("datamart"))).thenReturn(Future.succeededFuture(Collections.emptyList()));
+        when(templateExtractor.extract(any(SqlNode.class))).thenReturn(templateResult);
+        when(queryParserService.parse(any())).thenReturn(Future.succeededFuture(parserResponse));
+        when(parserResponse.getRelNode()).thenReturn(relRoot);
+        when(parametersTypeExtractor.extract(any())).thenReturn(Collections.emptyList());
+
+        val existWriteOp = DeltaWriteOp.builder()
+                .query("DELETE FROM users AS u WHERE u.id = 1")
+                .tableName("users")
+                .status(WriteOperationStatus.ERROR.getValue())
+                .sysCn(1L)
+                .build();
+        when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new TableBlockedException("tbl", new RuntimeException("Exception"))));
+        when(deltaServiceDao.getDeltaWriteOperations("datamart")).thenReturn(Future.succeededFuture(Arrays.asList(existWriteOp)));
+
+        executor.execute(requestContext)
+                .onSuccess(ar -> testContext.failNow("Unexpected success"))
+                .onFailure(t -> testContext.verify(() -> {
+                    assertEquals("Table[tbl] blocked: Exception", t.getMessage());
+                    verify(deltaServiceDao, never()).getDeltaWriteOperations("datamart");
+                    verify(deltaServiceDao, never()).deleteWriteOperation("datamart", 1L);
+                    verify(deltaServiceDao, never()).writeOperationError("datamart", 1L);
+                    verify(restoreStateService, never()).restoreErase(any());
+                    verify(pluginService).hasSourceType(any());
+                    verifyNoMoreInteractions(pluginService);
+                }).completeNow());
+    }
+
+    @Test
+    void deleteFailWhenRetryAndNotEqualExistWriteOpQuery(VertxTestContext testContext) {
+        when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
+        when(deltaServiceDao.getDeltaOk("datamart")).thenReturn(Future.succeededFuture(new OkDelta(1L, null, 1L, 1L)));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
+        when(deltaServiceDao.writeOperationSuccess("datamart", 1L)).thenReturn(Future.succeededFuture());
+        when(pluginService.delete(eq(SourceType.ADB), any(), any())).thenReturn(Future.succeededFuture());
+        when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
+        when(logicalSchemaProvider.getSchemaFromQuery(any(), eq("datamart"))).thenReturn(Future.succeededFuture(Collections.emptyList()));
+        when(templateExtractor.extract(any(SqlNode.class))).thenReturn(templateResult);
+        when(queryParserService.parse(any())).thenReturn(Future.succeededFuture(parserResponse));
+        when(parserResponse.getRelNode()).thenReturn(relRoot);
+        when(parametersTypeExtractor.extract(any())).thenReturn(Collections.emptyList());
+
+        val existWriteOp = DeltaWriteOp.builder()
+                .query("WRONG")
+                .tableName("users")
+                .status(WriteOperationStatus.EXECUTING.getValue())
+                .sysCn(1L)
+                .build();
+        when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new TableBlockedException("tbl", new RuntimeException("Exception"))));
+        when(deltaServiceDao.getDeltaWriteOperations("datamart")).thenReturn(Future.succeededFuture(Arrays.asList(existWriteOp)));
+
+        val sqlNode = TestUtils.DEFINITION_SERVICE.processingQuery(RETRY_DELETE_SQL);
+        requestContext.setSqlNode(sqlNode);
 
         executor.execute(requestContext)
                 .onSuccess(ar -> testContext.failNow("Unexpected success"))
@@ -293,7 +471,7 @@ class DeleteExecutorTest {
     void deleteFailWhenNotEqualExistWriteOpQuery(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
         when(deltaServiceDao.getDeltaOk("datamart")).thenReturn(Future.succeededFuture(new OkDelta(1L, null, 1L, 1L)));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeOperationSuccess("datamart", 1L)).thenReturn(Future.succeededFuture());
         when(pluginService.delete(eq(SourceType.ADB), any(), any())).thenReturn(Future.succeededFuture());
         when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
@@ -309,14 +487,14 @@ class DeleteExecutorTest {
                 .status(WriteOperationStatus.EXECUTING.getValue())
                 .sysCn(1L)
                 .build();
-        when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new TableBlockedException("tbl", new RuntimeException())));
+        when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.failedFuture(new TableBlockedException("tbl", new RuntimeException("Exception"))));
         when(deltaServiceDao.getDeltaWriteOperations("datamart")).thenReturn(Future.succeededFuture(Arrays.asList(existWriteOp)));
 
         executor.execute(requestContext)
                 .onSuccess(ar -> testContext.failNow("Unexpected success"))
                 .onFailure(t -> testContext.verify(() -> {
-                    assertEquals("Table blocked and could not find equal writeOp for resume", t.getMessage());
-                    verify(deltaServiceDao).getDeltaWriteOperations("datamart");
+                    assertEquals("Table[tbl] blocked: Exception", t.getMessage());
+                    verify(deltaServiceDao, never()).getDeltaWriteOperations("datamart");
                     verify(deltaServiceDao, never()).deleteWriteOperation("datamart", 1L);
                     verify(deltaServiceDao, never()).writeOperationError("datamart", 1L);
                     verify(restoreStateService, never()).restoreErase(any());
@@ -327,11 +505,11 @@ class DeleteExecutorTest {
 
     @Test
     void testDeleteFromMatView(VertxTestContext testContext) {
-        entity.setEntityType(EntityType.MATERIALIZED_VIEW);
+        logicalEntity.setEntityType(EntityType.MATERIALIZED_VIEW);
 
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
         when(deltaServiceDao.getDeltaOk("datamart")).thenReturn(Future.succeededFuture(new OkDelta(1L, null, 1L, 1L)));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.succeededFuture(1L));
         when(deltaServiceDao.writeOperationSuccess("datamart", 1L)).thenReturn(Future.succeededFuture());
         when(pluginService.delete(eq(SourceType.ADB), any(), any())).thenReturn(Future.succeededFuture());
@@ -341,7 +519,7 @@ class DeleteExecutorTest {
         executor.execute(requestContext)
                 .onSuccess(ar -> testContext.failNow("Should have been failed to delete from mat view"))
                 .onFailure(ar -> testContext.verify(() -> {
-                    assertEquals("Forbidden. Write operations allowed for logical tables only.", ar.getMessage());
+                    assertEquals("Forbidden. Write operations allowed for logical and writeable external tables only.", ar.getMessage());
                     verify(deltaServiceDao, never()).writeOperationSuccess("datamart", 1L);
                     verify(deltaServiceDao, never()).deleteWriteOperation("datamart", 1L);
                     verify(deltaServiceDao, never()).writeOperationError("datamart", 1L);
@@ -352,7 +530,7 @@ class DeleteExecutorTest {
     @Test
     void testWithNoDeltaHotFound(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.failedFuture(new DeltaException("Delta hot not found")));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
 
         executor.execute(requestContext)
@@ -363,7 +541,7 @@ class DeleteExecutorTest {
     @Test
     void testWhenDatamartHasNoData(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
         when(deltaServiceDao.getDeltaOk("datamart")).thenReturn(Future.succeededFuture(null));
 
@@ -394,7 +572,7 @@ class DeleteExecutorTest {
     @Test
     void testSourceTypeNotConfigured(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(false);
 
         executor.execute(requestContext)
@@ -406,7 +584,7 @@ class DeleteExecutorTest {
     void testPluginLlwFailedWithDtmException(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
         when(deltaServiceDao.getDeltaOk("datamart")).thenReturn(Future.succeededFuture(new OkDelta(1L, null, 1L, 1L)));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.succeededFuture(1L));
         when(deltaServiceDao.writeOperationError("datamart", 1L)).thenReturn(Future.succeededFuture());
         when(deltaServiceDao.deleteWriteOperation("datamart", 1L)).thenReturn(Future.succeededFuture());
@@ -430,10 +608,32 @@ class DeleteExecutorTest {
     }
 
     @Test
+    void testPluginLlwFailedWithDtmExceptionForWriteableExternalTable(VertxTestContext testContext) {
+        when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
+        when(deltaServiceDao.getDeltaOk("datamart")).thenReturn(Future.succeededFuture(new OkDelta(1L, null, 1L, 1L)));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(writeableExternalEntity));
+        when(pluginService.delete(eq(SourceType.ADB), any(), any())).thenReturn(Future.failedFuture(new DtmException("Llw failed")));
+        when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
+        when(logicalSchemaProvider.getSchemaFromQuery(any(), eq("datamart"))).thenReturn(Future.succeededFuture(Collections.emptyList()));
+        when(templateExtractor.extract(any(SqlNode.class))).thenReturn(templateResult);
+        when(queryParserService.parse(any())).thenReturn(Future.succeededFuture(parserResponse));
+        when(parserResponse.getRelNode()).thenReturn(relRoot);
+        when(parametersTypeExtractor.extract(any())).thenReturn(Collections.emptyList());
+
+        executor.execute(requestContext)
+                .onSuccess(ar -> testContext.failNow("Should have been failed because of llw fail"))
+                .onFailure(ar -> testContext.verify(() -> {
+                    assertEquals("Llw failed", ar.getMessage());
+                    verifyNoInteractions(deltaServiceDao);
+                    verifyNoInteractions(restoreStateService);
+                }).completeNow());
+    }
+
+    @Test
     void testPluginLlwFailedWithUnexpectedExceptionWithMessage(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
         when(deltaServiceDao.getDeltaOk("datamart")).thenReturn(Future.succeededFuture(new OkDelta(1L, null, 1L, 1L)));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.succeededFuture(1L));
         when(deltaServiceDao.writeOperationError("datamart", 1L)).thenReturn(Future.succeededFuture());
         when(deltaServiceDao.deleteWriteOperation("datamart", 1L)).thenReturn(Future.succeededFuture());
@@ -460,7 +660,7 @@ class DeleteExecutorTest {
     void testPluginLlwFailedWithUnexpectedExceptionWithoutMessage(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
         when(deltaServiceDao.getDeltaOk("datamart")).thenReturn(Future.succeededFuture(new OkDelta(1L, null, 1L, 1L)));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(deltaServiceDao.writeNewOperation(any(DeltaWriteOpRequest.class))).thenReturn(Future.succeededFuture(1L));
         when(deltaServiceDao.writeOperationError("datamart", 1L)).thenReturn(Future.succeededFuture());
         when(deltaServiceDao.deleteWriteOperation("datamart", 1L)).thenReturn(Future.succeededFuture());
@@ -484,10 +684,30 @@ class DeleteExecutorTest {
     }
 
     @Test
+    void testPluginLlwFailedWithUnexpectedExceptionWithoutMessageForWriteableExternalTable(VertxTestContext testContext) {
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(writeableExternalEntity));
+        when(pluginService.delete(eq(SourceType.ADB), any(), any())).thenReturn(Future.failedFuture(new RuntimeException()));
+        when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
+        when(logicalSchemaProvider.getSchemaFromQuery(any(), eq("datamart"))).thenReturn(Future.succeededFuture(Collections.emptyList()));
+        when(templateExtractor.extract(any(SqlNode.class))).thenReturn(templateResult);
+        when(queryParserService.parse(any())).thenReturn(Future.succeededFuture(parserResponse));
+        when(parserResponse.getRelNode()).thenReturn(relRoot);
+        when(parametersTypeExtractor.extract(any())).thenReturn(Collections.emptyList());
+
+        executor.execute(requestContext)
+                .onSuccess(ar -> testContext.failNow("Should have been failed because of llw fail"))
+                .onFailure(ar -> testContext.verify(() -> {
+                    assertSame(RuntimeException.class, ar.getClass());
+                    verifyNoInteractions(deltaServiceDao);
+                    verifyNoInteractions(restoreStateService);
+                }).completeNow());
+    }
+
+    @Test
     void testDeltaOkNotFound(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
         when(deltaServiceDao.getDeltaOk("datamart")).thenReturn(Future.failedFuture(new DeltaException("Delta ok not found")));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
 
         executor.execute(requestContext)
@@ -506,7 +726,7 @@ class DeleteExecutorTest {
     void testDatamartsNotFound(VertxTestContext testContext) {
         when(deltaServiceDao.getDeltaHot("datamart")).thenReturn(Future.succeededFuture(new HotDelta()));
         when(deltaServiceDao.getDeltaOk("datamart")).thenReturn(Future.succeededFuture(new OkDelta(1L, null, 1L, 1L)));
-        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(entity));
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(logicalEntity));
         when(logicalSchemaProvider.getSchemaFromQuery(any(), eq("datamart"))).thenReturn(Future.failedFuture(new DtmException("Failed to get schema")));
         when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
 
@@ -518,6 +738,21 @@ class DeleteExecutorTest {
                     verify(deltaServiceDao, never()).deleteWriteOperation("datamart", 1L);
                     verify(deltaServiceDao, never()).writeOperationError("datamart", 1L);
                     verify(restoreStateService, never()).restoreErase(any());
+                }).completeNow());
+    }
+
+    @Test
+    void testDatamartsNotFoundForWriteableExternalTable(VertxTestContext testContext) {
+        when(entityDao.getEntity("datamart", "users")).thenReturn(Future.succeededFuture(writeableExternalEntity));
+        when(logicalSchemaProvider.getSchemaFromQuery(any(), eq("datamart"))).thenReturn(Future.failedFuture(new DtmException("Failed to get schema")));
+        when(pluginService.hasSourceType(SourceType.ADB)).thenReturn(true);
+
+        executor.execute(requestContext)
+                .onSuccess(ar -> testContext.failNow("Should have been failed because of llw fail"))
+                .onFailure(ar -> testContext.verify(() -> {
+                    assertEquals("Failed to get schema", ar.getMessage());
+                    verifyNoInteractions(deltaServiceDao);
+                    verifyNoInteractions(restoreStateService);
                 }).completeNow());
     }
 

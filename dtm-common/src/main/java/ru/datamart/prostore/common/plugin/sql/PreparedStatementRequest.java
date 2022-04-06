@@ -18,18 +18,16 @@ package ru.datamart.prostore.common.plugin.sql;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.util.Collections;
-import java.util.List;
+import ru.datamart.prostore.common.reader.QueryParameters;
 
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 public class PreparedStatementRequest {
     private String sql;
-    private List<Object> params;
+    private QueryParameters params;
 
     public static PreparedStatementRequest onlySql(String sql) {
-        return new PreparedStatementRequest(sql, Collections.emptyList());
+        return new PreparedStatementRequest(sql, null);
     }
 }

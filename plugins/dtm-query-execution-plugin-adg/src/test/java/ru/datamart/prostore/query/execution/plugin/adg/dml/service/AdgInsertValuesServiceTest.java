@@ -17,244 +17,71 @@ package ru.datamart.prostore.query.execution.plugin.adg.dml.service;
 
 import io.vertx.core.Future;
 import lombok.val;
-import org.apache.calcite.sql.SqlDialect;
-import org.apache.calcite.sql.SqlInsert;
-import org.assertj.core.api.Assertions;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import ru.datamart.prostore.common.model.ddl.ColumnType;
 import ru.datamart.prostore.common.model.ddl.Entity;
-import ru.datamart.prostore.common.model.ddl.EntityField;
-import ru.datamart.prostore.query.execution.plugin.adg.base.factory.AdgHelperTableNamesFactory;
-import ru.datamart.prostore.query.execution.plugin.adg.base.model.cartridge.request.AdgTransferDataEtlRequest;
-import ru.datamart.prostore.query.execution.plugin.adg.base.service.client.AdgCartridgeClient;
-import ru.datamart.prostore.query.execution.plugin.adg.base.service.converter.AdgPluginSpecificLiteralConverter;
-import ru.datamart.prostore.query.execution.plugin.adg.calcite.configuration.AdgCalciteConfiguration;
-import ru.datamart.prostore.query.execution.plugin.adg.query.service.AdgQueryExecutorService;
-import ru.datamart.prostore.query.execution.plugin.adg.utils.TestUtils;
+import ru.datamart.prostore.common.model.ddl.EntityType;
+import ru.datamart.prostore.query.execution.plugin.adg.dml.service.insert.values.AdgLogicalInsertValuesService;
+import ru.datamart.prostore.query.execution.plugin.adg.dml.service.insert.values.AdgStandaloneInsertValuesService;
 import ru.datamart.prostore.query.execution.plugin.api.request.InsertValuesRequest;
 
-import java.util.Arrays;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 class AdgInsertValuesServiceTest {
-
-    private final AdgCalciteConfiguration calciteConfiguration = new AdgCalciteConfiguration();
-    private final SqlDialect sqlDialect = calciteConfiguration.adgSqlDialect();
-    private final AdgPluginSpecificLiteralConverter parameterConverter = new AdgPluginSpecificLiteralConverter();
+    @Mock
+    private AdgLogicalInsertValuesService logicalService;
 
     @Mock
-    private AdgQueryExecutorService executor;
+    private AdgStandaloneInsertValuesService standaloneService;
 
-    @Mock
-    private AdgCartridgeClient cartridgeClient;
-
-    @Captor
-    private ArgumentCaptor<String> executorArgCaptor;
-
-    @Captor
-    private ArgumentCaptor<AdgTransferDataEtlRequest> transferRequestCaptor;
-
+    @InjectMocks
     private AdgInsertValuesService service;
 
-    @BeforeEach
-    void setUp() {
-        service = new AdgInsertValuesService(sqlDialect, executor, cartridgeClient, new AdgHelperTableNamesFactory(), parameterConverter);
-
-        lenient().when(executor.executeUpdate(anyString(), any())).thenReturn(Future.succeededFuture());
-        lenient().when(cartridgeClient.transferDataToScdTable(any())).thenReturn(Future.succeededFuture());
-    }
-
     @Test
-    void shouldSuccessWhenInsertWithColumns() {
+    void shouldSuccessWhenWritableType() {
         // arrange
-        val request = getInsertRequest("INSERT INTO a.abc(id,col1,col2) VALUES (1,2,'2021-08-21'), (1,2,'2021-08-22'), (1,3,'2021-08-23')", ColumnType.DATE);
+        when(standaloneService.execute(any())).thenReturn(Future.succeededFuture());
+        val entity = getEntity(EntityType.WRITEABLE_EXTERNAL_TABLE);
 
         // act
-        val result = service.execute(request);
+        val result = service.execute(getInsertRequest(entity));
 
         // assert
-        if (result.failed()) {
-            fail(result.cause());
-        }
         assertTrue(result.succeeded());
-
-        verify(executor).executeUpdate(executorArgCaptor.capture(), any());
-        val executedSql = executorArgCaptor.getValue();
-        Assertions.assertThat(executedSql).isEqualToIgnoringNewLines("INSERT INTO \"dev__datamart__abc_staging\" (\"id\", \"col1\", \"col2\", \"sys_op\")\n" +
-                "VALUES  (1, 2, 18860, 0),\n" +
-                " (1, 2, 18861, 0),\n" +
-                " (1, 3, 18862, 0)");
-
-        verify(cartridgeClient).transferDataToScdTable(transferRequestCaptor.capture());
-        val transferDataEtlRequest = transferRequestCaptor.getValue();
-        assertEquals("dev__datamart__abc_actual", transferDataEtlRequest.getHelperTableNames().getActual());
-        assertEquals("dev__datamart__abc_history", transferDataEtlRequest.getHelperTableNames().getHistory());
-        assertEquals("dev__datamart__abc_staging", transferDataEtlRequest.getHelperTableNames().getStaging());
-        assertEquals(request.getSysCn(), transferDataEtlRequest.getDeltaNumber());
+        verify(standaloneService, times(1)).execute(any());
     }
 
     @Test
-    void shouldSuccessWhenInsertWithoutColumns() {
+    void shouldSuccessWhenOtherType() {
         // arrange
-        val request = getInsertRequest("INSERT INTO a.abc VALUES (1,2,3), (1,2,3), (1,3,3)", ColumnType.INT);
+        when(logicalService.execute(any())).thenReturn(Future.succeededFuture());
+        val entity = getEntity(EntityType.TABLE);
 
         // act
-        val result = service.execute(request);
+        val result = service.execute(getInsertRequest(entity));
 
         // assert
-        if (result.failed()) {
-            fail(result.cause());
-        }
         assertTrue(result.succeeded());
-
-        verify(executor).executeUpdate(executorArgCaptor.capture(), any());
-        val executedSql = executorArgCaptor.getValue();
-        Assertions.assertThat(executedSql).isEqualToIgnoringNewLines("INSERT INTO \"dev__datamart__abc_staging\" (\"id\", \"col1\", \"col2\", \"sys_op\")\n" +
-                "VALUES  (1, 2, 3, 0),\n" +
-                " (1, 2, 3, 0),\n" +
-                " (1, 3, 3, 0)");
-
-        verify(cartridgeClient).transferDataToScdTable(transferRequestCaptor.capture());
-        val transferDataEtlRequest = transferRequestCaptor.getValue();
-        assertEquals("dev__datamart__abc_actual", transferDataEtlRequest.getHelperTableNames().getActual());
-        assertEquals("dev__datamart__abc_history", transferDataEtlRequest.getHelperTableNames().getHistory());
-        assertEquals("dev__datamart__abc_staging", transferDataEtlRequest.getHelperTableNames().getStaging());
-        assertEquals(request.getSysCn(), transferDataEtlRequest.getDeltaNumber());
+        verify(logicalService, times(1)).execute(any());
     }
 
-    @Test
-    void shouldFailWhenUnknownColumn() {
-        // arrange
-        val request = getInsertRequest("INSERT INTO a.abc(unknown_col) VALUES (1)", ColumnType.INT);
-
-        // act
-        val result = service.execute(request);
-
-        // assert
-        if (result.succeeded()) {
-            fail("UnexpectedSuccess");
-        }
-        assertEquals("Column [unknown_col] not exists", result.cause().getMessage());
-        assertTrue(result.failed());
+    private InsertValuesRequest getInsertRequest(Entity entity) {
+        return new InsertValuesRequest(UUID.randomUUID(), "dev", "datamart",
+                1L, entity, null, null);
     }
 
-    @Test
-    void shouldFailWhenExecutorThrows() {
-        // arrange
-        reset(executor);
-        when(executor.executeUpdate(any(), any())).thenThrow(new RuntimeException("Exception"));
-        val request = getInsertRequest("INSERT INTO a.abc(id,col1,col2) VALUES (1,2,3), (1,2,3), (1,3,3)", ColumnType.INT);
-
-        // act
-        val result = service.execute(request);
-
-        // assert
-        if (result.succeeded()) {
-            fail("Unexpected success");
-        }
-        assertTrue(result.failed());
-    }
-
-    @Test
-    void shouldFailWhenExecutorFails() {
-        // arrange
-        reset(executor);
-        when(executor.executeUpdate(any(), any())).thenReturn(Future.failedFuture("Failed"));
-        val request = getInsertRequest("INSERT INTO a.abc(id,col1,col2) VALUES (1,2,3), (1,2,3), (1,3,3)", ColumnType.INT);
-
-        // act
-        val result = service.execute(request);
-
-        // assert
-        if (result.succeeded()) {
-            fail("Unexpected success");
-        }
-        assertTrue(result.failed());
-    }
-
-    @Test
-    void shouldFailWhenTransferThrows() {
-        // arrange
-        reset(cartridgeClient);
-        when(cartridgeClient.transferDataToScdTable(any())).thenThrow(new RuntimeException("Exception"));
-        val request = getInsertRequest("INSERT INTO a.abc(id,col1,col2) VALUES (1,2,3), (1,2,3), (1,3,3)", ColumnType.INT);
-
-        // act
-        val result = service.execute(request);
-
-        // assert
-        if (result.succeeded()) {
-            fail("Unexpected success");
-        }
-        assertTrue(result.failed());
-    }
-
-    @Test
-    void shouldFailWhenTransferFails() {
-        // arrange
-        reset(cartridgeClient);
-        when(cartridgeClient.transferDataToScdTable(any())).thenReturn(Future.failedFuture("Failed"));
-        val request = getInsertRequest("INSERT INTO a.abc(id,col1,col2) VALUES (1,2,3), (1,2,3), (1,3,3)", ColumnType.INT);
-
-        // act
-        val result = service.execute(request);
-
-        // assert
-        if (result.succeeded()) {
-            fail("Unexpected success");
-        }
-        assertTrue(result.failed());
-    }
-
-    @Test
-    void shouldFailWhenNotValuesSource() {
-        // arrange
-        val request = getInsertRequest("INSERT INTO a.abc(id,col1,col2) SELECT * FROM TBL", ColumnType.INT);
-        // act
-        Future<Void> result = service.execute(request);
-
-        // assert
-        if (result.succeeded()) {
-            fail("Unexpected success");
-        }
-        assertTrue(result.failed());
-    }
-
-    private InsertValuesRequest getInsertRequest(String sql, ColumnType type) {
-        val sqlNode = (SqlInsert) TestUtils.DEFINITION_SERVICE.processingQuery(sql);
-        Entity entity = Entity.builder()
-                .name("abc")
-                .fields(Arrays.asList(
-                        EntityField.builder()
-                                .name("id")
-                                .type(ColumnType.INT)
-                                .primaryOrder(1)
-                                .ordinalPosition(0)
-                                .build(),
-                        EntityField.builder()
-                                .name("col1")
-                                .type(ColumnType.INT)
-                                .ordinalPosition(1)
-                                .build(),
-                        EntityField.builder()
-                                .name("col2")
-                                .type(type)
-                                .ordinalPosition(2)
-                                .build()
-                ))
+    private Entity getEntity(EntityType type) {
+        return Entity.builder()
+                .entityType(type)
                 .build();
-
-        return new InsertValuesRequest(UUID.randomUUID(), "dev", "datamart", 1L, entity, sqlNode, null);
     }
-
 }

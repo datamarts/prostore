@@ -26,7 +26,7 @@ public abstract class TruncateQueryBaseFactory implements TruncateQueryFactory {
     protected static final String DELETE_RECORDS_PATTERN = "DELETE FROM %s.%s_%s%s";
     protected static final String SYS_CN_CONDITION = "sys_to < %s";
 
-    public TruncateQueryBaseFactory(SqlDialect sqlDialect) {
+    protected TruncateQueryBaseFactory(SqlDialect sqlDialect) {
         this.sqlDialect = sqlDialect;
     }
 

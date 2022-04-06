@@ -15,13 +15,13 @@
  */
 package ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto;
 
-import ru.datamart.prostore.common.delta.DeltaInformation;
-import ru.datamart.prostore.query.execution.model.metadata.Datamart;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.rel.RelRoot;
+import ru.datamart.prostore.common.calcite.CalciteContext;
+import ru.datamart.prostore.common.delta.DeltaInformation;
 
 import java.util.List;
 
@@ -31,8 +31,10 @@ import java.util.List;
 @NoArgsConstructor
 public class EnrichQueryRequest {
     private List<DeltaInformation> deltaInformations;
-    private List<Datamart> schema;
     private String envName;
-    private SqlNode query;
-    private boolean isLocal;
+    private CalciteContext calciteContext;
+    private RelRoot relNode;
+    private boolean isLocal = false;
+    @Builder.Default
+    private boolean allowStar = true;
 }

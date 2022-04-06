@@ -41,6 +41,8 @@ data: {
       "ARCHIVE"
       "DOWNLOAD"
       "UPLOAD"
+      "WRITABLE"
+      "READABLE"
       "LOCATION"
       "CHUNK_SIZE"
       "MESSAGE_LIMIT"
@@ -70,11 +72,14 @@ data: {
       "CRASHED_WRITE_OPERATIONS"
       "GET_WRITE_OPERATIONS"
       "RESUME_WRITE_OPERATION"
+      "ERASE_CHANGE_OPERATION"
+      "ERASE_WRITE_OPERATION"
       "CONFIG_SHOW"
       "ALLOW_CHANGES"
       "DENY_CHANGES"
       "GET_CHANGES"
       "GET_ENTITY_DDL"
+      "RETRY"
     ]
 
     # List of keywords from "keywords" section that are not reserved.
@@ -403,6 +408,8 @@ data: {
       "ARCHIVE"
       "DOWNLOAD"
       "UPLOAD"
+      "WRITABLE"
+      "READABLE"
       "LOCATION"
       "CHUNK_SIZE"
       "MESSAGE_LIMIT"
@@ -425,6 +432,8 @@ data: {
         "SqlRollbackDelta()"
         "GetWriteOperations()"
         "ResumeWriteOperation()"
+        "EraseChangeOperation()"
+        "EraseWriteOperation()"
         "SqlUseSchema()"
         "SqlGetDeltaOk()"
         "SqlGetDeltaHot()"
@@ -483,6 +492,8 @@ data: {
       "SqlCreateFunction"
       "SqlCreateDownloadExternalTable"
       "SqlCreateUploadExternalTable"
+      "SqlCreateWriteableExternalTable"
+      "SqlCreateReadableExternalTable"
       "SqlCreateDatabase"
     ]
 
@@ -497,6 +508,8 @@ data: {
       "SqlDropFunction"
       "SqlDropDownloadExternalTable"
       "SqlDropUploadExternalTable"
+      "SqlDropWriteableExternalTable"
+      "SqlDropReadableExternalTable"
       "DropDatabase"
     ]
 

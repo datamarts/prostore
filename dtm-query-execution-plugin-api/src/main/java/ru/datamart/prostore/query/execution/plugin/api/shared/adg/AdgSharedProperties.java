@@ -25,4 +25,5 @@ public class AdgSharedProperties {
     private final Long connectTimeout;
     private final Long readTimeout;
     private final Long requestTimeout;
+    private final int bufferSize;
 }

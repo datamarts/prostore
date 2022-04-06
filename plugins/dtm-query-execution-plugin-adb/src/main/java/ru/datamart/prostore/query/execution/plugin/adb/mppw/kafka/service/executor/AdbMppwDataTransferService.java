@@ -15,15 +15,15 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.service.executor;
 
-import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.dto.AdbKafkaMppwTransferRequest;
-import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.dto.TransferDataRequest;
-import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.factory.MppwRequestFactory;
-import ru.datamart.prostore.query.execution.plugin.adb.query.service.DatabaseExecutor;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
+import lombok.val;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
+import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.dto.TransferDataRequest;
+import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.factory.MppwRequestFactory;
+import ru.datamart.prostore.query.execution.plugin.adb.query.service.DatabaseExecutor;
 
 @Component
 @Slf4j
@@ -41,7 +41,13 @@ public class AdbMppwDataTransferService {
 
     public Future<Void> execute(TransferDataRequest dataRequest) {
         return Future.future(promise -> {
-            AdbKafkaMppwTransferRequest transferRequest = mppwRequestFactory.create(dataRequest);
+            if (dataRequest.getHotDelta() == null) {
+                promise.complete();
+                return;
+            }
+
+            log.info("[ADB] Start transfer data");
+            val transferRequest = mppwRequestFactory.create(dataRequest);
             //if ADB_WITH_HISTORY_TABLE = false, then queries can be performed without transactions
             adbQueryExecutor.executeInTransaction(transferRequest.getFirstTransaction())
                     .compose(v -> adbQueryExecutor.executeInTransaction(transferRequest.getSecondTransaction()))

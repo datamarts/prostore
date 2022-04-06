@@ -15,7 +15,9 @@
  */
 package ru.datamart.prostore.query.execution.core.dml;
 
-import ru.datamart.prostore.common.exception.DtmException;
+import io.vertx.core.Promise;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import ru.datamart.prostore.common.model.ddl.ColumnType;
 import ru.datamart.prostore.common.model.ddl.Entity;
 import ru.datamart.prostore.common.model.ddl.EntityField;
@@ -23,31 +25,22 @@ import ru.datamart.prostore.common.model.ddl.EntityType;
 import ru.datamart.prostore.common.reader.QueryRequest;
 import ru.datamart.prostore.common.reader.QuerySourceRequest;
 import ru.datamart.prostore.common.reader.SourceType;
-import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.EntityDao;
 import ru.datamart.prostore.query.execution.core.dml.service.AcceptableSourceTypesDefinitionService;
 import ru.datamart.prostore.query.execution.model.metadata.ColumnMetadata;
 import ru.datamart.prostore.query.execution.model.metadata.Datamart;
-import io.vertx.core.Future;
-import io.vertx.core.Promise;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class AcceptableSourceTypesDefinitionServiceTest {
 
-    private final EntityDao entityDao = mock(EntityDao.class);
     private AcceptableSourceTypesDefinitionService acceptableSourceTypesDefinitionService;
 
     @BeforeEach
     void setUp() {
-        acceptableSourceTypesDefinitionService = new AcceptableSourceTypesDefinitionService(entityDao);
+        acceptableSourceTypesDefinitionService = new AcceptableSourceTypesDefinitionService();
     }
 
     @Test
@@ -63,53 +56,11 @@ class AcceptableSourceTypesDefinitionServiceTest {
         sourceRequest.setQueryRequest(request);
         sourceRequest.setMetadata(Collections.singletonList(new ColumnMetadata("id", ColumnType.BIGINT)));
 
-        when(entityDao.getEntity(eq(schema.get(0).getMnemonic()),
-                eq(schema.get(0).getEntities().get(0).getName())))
-                .thenReturn(Future.succeededFuture(schema.get(0).getEntities().get(0)));
-
-        when(entityDao.getEntity(eq(schema.get(0).getMnemonic()),
-                eq(schema.get(0).getEntities().get(1).getName())))
-                .thenReturn(Future.succeededFuture(schema.get(0).getEntities().get(1)));
-
-        when(entityDao.getEntity(eq(schema.get(1).getMnemonic()),
-                eq(schema.get(1).getEntities().get(0).getName())))
-                .thenReturn(Future.succeededFuture(schema.get(1).getEntities().get(0)));
-
         acceptableSourceTypesDefinitionService.define(sourceRequest.getLogicalSchema())
                 .onComplete(promise);
 
         assertTrue(promise.future().succeeded());
         assertEquals(expectedSourcetTypes, promise.future().result());
-    }
-
-    @Test
-    void getAcceptableSourceTypesEntitiesFailed() {
-        Promise<Set<SourceType>> promise = Promise.promise();
-        QueryRequest request = new QueryRequest();
-        request.setSql("select t1.id from table_1 t1 join dtm_1.table_2 t2 " +
-                "ON t2.id = t1.id JOIN dtm_2.table_3 t3 ON t3.id = t2.id");
-        List<Datamart> schema = createLogicalSchema();
-        QuerySourceRequest sourceRequest = new QuerySourceRequest();
-        sourceRequest.setLogicalSchema(schema);
-        sourceRequest.setQueryRequest(request);
-        sourceRequest.setMetadata(Collections.singletonList(new ColumnMetadata("id", ColumnType.BIGINT)));
-
-        when(entityDao.getEntity(eq(schema.get(0).getMnemonic()),
-                eq(schema.get(0).getEntities().get(0).getName())))
-                .thenReturn(Future.failedFuture(new DtmException(schema.get(0).getEntities().get(0).getName())));
-
-        when(entityDao.getEntity(eq(schema.get(0).getMnemonic()),
-                eq(schema.get(0).getEntities().get(1).getName())))
-                .thenReturn(Future.succeededFuture(schema.get(0).getEntities().get(1)));
-
-        when(entityDao.getEntity(eq(schema.get(1).getMnemonic()),
-                eq(schema.get(1).getEntities().get(0).getName())))
-                .thenReturn(Future.succeededFuture(schema.get(1).getEntities().get(0)));
-
-        acceptableSourceTypesDefinitionService.define(sourceRequest.getLogicalSchema())
-                .onComplete(promise);
-
-        assertTrue(promise.future().failed());
     }
 
     @Test
@@ -127,17 +78,26 @@ class AcceptableSourceTypesDefinitionServiceTest {
         sourceRequest.setQueryRequest(request);
         sourceRequest.setMetadata(Collections.singletonList(new ColumnMetadata("id", ColumnType.BIGINT)));
 
-        when(entityDao.getEntity(eq(schema.get(0).getMnemonic()),
-                eq(schema.get(0).getEntities().get(0).getName())))
-                .thenReturn(Future.succeededFuture(schema.get(0).getEntities().get(0)));
+        acceptableSourceTypesDefinitionService.define(sourceRequest.getLogicalSchema())
+                .onComplete(promise);
 
-        when(entityDao.getEntity(eq(schema.get(0).getMnemonic()),
-                eq(schema.get(0).getEntities().get(1).getName())))
-                .thenReturn(Future.succeededFuture(schema.get(0).getEntities().get(1)));
+        assertTrue(promise.future().failed());
+    }
 
-        when(entityDao.getEntity(eq(schema.get(1).getMnemonic()),
-                eq(schema.get(1).getEntities().get(0).getName())))
-                .thenReturn(Future.succeededFuture(schema.get(1).getEntities().get(0)));
+    @Test
+    void getAcceptableSourceTypesNoSingleDatasourceErrorWhenNullDestination() {
+        Promise<Set<SourceType>> promise = Promise.promise();
+        QueryRequest request = new QueryRequest();
+        request.setSql("select t1.id from table_1 t1 join dtm_1.table_2 t2 " +
+                "ON t2.id = t1.id JOIN dtm_2.table_3 t3 ON t3.id = t2.id");
+        List<Datamart> schema = createLogicalSchema();
+        schema.get(0).getEntities().get(0).setDestination(null);
+        schema.get(0).getEntities().get(1).setDestination(Collections.singleton(SourceType.ADG));
+        schema.get(1).getEntities().get(0).setDestination(Collections.singleton(SourceType.ADQM));
+        QuerySourceRequest sourceRequest = new QuerySourceRequest();
+        sourceRequest.setLogicalSchema(schema);
+        sourceRequest.setQueryRequest(request);
+        sourceRequest.setMetadata(Collections.singletonList(new ColumnMetadata("id", ColumnType.BIGINT)));
 
         acceptableSourceTypesDefinitionService.define(sourceRequest.getLogicalSchema())
                 .onComplete(promise);
@@ -158,10 +118,6 @@ class AcceptableSourceTypesDefinitionServiceTest {
         sourceRequest.setLogicalSchema(schema);
         sourceRequest.setQueryRequest(request);
         sourceRequest.setMetadata(Collections.singletonList(new ColumnMetadata("id", ColumnType.BIGINT)));
-
-        when(entityDao.getEntity(eq(schema.get(0).getMnemonic()),
-                eq(schema.get(0).getEntities().get(0).getName())))
-                .thenReturn(Future.succeededFuture(schema.get(0).getEntities().get(0)));
 
         acceptableSourceTypesDefinitionService.define(sourceRequest.getLogicalSchema())
                 .onComplete(promise);

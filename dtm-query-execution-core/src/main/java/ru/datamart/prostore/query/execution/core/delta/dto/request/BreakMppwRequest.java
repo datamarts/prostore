@@ -23,8 +23,6 @@ import lombok.Getter;
 @AllArgsConstructor
 @EqualsAndHashCode
 public class BreakMppwRequest {
-
     private String datamart;
-    private long sysCn;
-
+    private Long sysCn;
 }

@@ -15,6 +15,13 @@
  */
 package ru.datamart.prostore.query.execution.core.ddl.service.impl.view;
 
+import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.calcite.sql.SqlDialect;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Component;
 import ru.datamart.prostore.cache.service.CacheService;
 import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.common.model.ddl.Entity;
@@ -31,13 +38,6 @@ import ru.datamart.prostore.query.execution.core.base.service.metadata.MetadataE
 import ru.datamart.prostore.query.execution.core.ddl.dto.DdlRequestContext;
 import ru.datamart.prostore.query.execution.core.ddl.service.QueryResultDdlExecutor;
 import ru.datamart.prostore.query.execution.core.ddl.utils.SqlPreparer;
-import io.vertx.core.Future;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.apache.calcite.sql.SqlDialect;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
@@ -72,7 +72,7 @@ public class DropViewExecutor extends QueryResultDdlExecutor {
                         context.setEntity(entity);
                         return entity;
                     })
-                    .compose(this::checkEntityType)
+                    .map(this::checkEntityType)
                     .compose(v -> writeNewChangelogRecord(datamartName, viewName, changeQuery))
                     .compose(deltaOk -> entityDao.setEntityState(context.getEntity(), deltaOk, changeQuery, SetEntityState.DELETE))
                     .onSuccess(success -> promise.complete(QueryResult.emptyResult()))
@@ -80,12 +80,12 @@ public class DropViewExecutor extends QueryResultDdlExecutor {
         });
     }
 
-    private Future<Void> checkEntityType(Entity entity) {
-        if (EntityType.VIEW == entity.getEntityType()) {
-            return Future.succeededFuture();
-        } else {
-            return Future.failedFuture(new EntityNotExistsException(entity.getNameWithSchema()));
+    private Entity checkEntityType(Entity entity) {
+        if (EntityType.VIEW != entity.getEntityType()) {
+            throw new EntityNotExistsException(entity.getNameWithSchema());
         }
+
+        return entity;
     }
 
     @Override

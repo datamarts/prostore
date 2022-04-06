@@ -52,6 +52,14 @@ public class AdqmProcessingSqlFactory {
             "    FROM ${table_name}_buffer_shard\n" +
             "  )";
 
+    private static final String TABLE_NAME_PLACEHOLDER = "${table_name}";
+    private static final String LOGICAL_COLUMNS_PLACEHOLDER = "${logical_columns}";
+    private static final String PREV_SYS_CN_PLACEHOLDER = "${prev_sys_cn}";
+    private static final String NOW_PLACEHOLDER = "${now}";
+    private static final String PK_KEYS_PLACEHOLDER = "${pk_keys}";
+    private static final String PK_KEYS_FOR_IN_PLACEHOLDER = "${pk_keys_for_in}";
+    private static final String SYS_CN_PLACEHOLDER = "${sys_cn}";
+
     private final DdlProperties ddlProperties;
     private final SqlDialect sqlDialect;
 
@@ -95,13 +103,13 @@ public class AdqmProcessingSqlFactory {
         val pkKeysForIn = pkKeysList.size() == 1 ? pkKeys : "(" + pkKeys + ")";
 
         return CLOSE_VERSIONS_BY_TABLE_ACTUAL_TEMPLATE
-                .replace("${table_name}", tableName)
-                .replace("${logical_columns}", columnNames)
-                .replace("${prev_sys_cn}", Long.toString(sysCn - 1L))
-                .replace("${now}", now)
-                .replace("${pk_keys}", pkKeys)
-                .replace("${pk_keys_for_in}", pkKeysForIn)
-                .replace("${sys_cn}", Long.toString(sysCn));
+                .replace(TABLE_NAME_PLACEHOLDER, tableName)
+                .replace(LOGICAL_COLUMNS_PLACEHOLDER, columnNames)
+                .replace(PREV_SYS_CN_PLACEHOLDER, Long.toString(sysCn - 1L))
+                .replace(NOW_PLACEHOLDER, now)
+                .replace(PK_KEYS_PLACEHOLDER, pkKeys)
+                .replace(PK_KEYS_FOR_IN_PLACEHOLDER, pkKeysForIn)
+                .replace(SYS_CN_PLACEHOLDER, Long.toString(sysCn));
     }
 
     public String getCloseVersionSqlByTableActual(String tableName, String columnNames, String pkKeys, long sysCn) {
@@ -109,13 +117,13 @@ public class AdqmProcessingSqlFactory {
         val pkKeysForIn = pkKeys.contains(",") ? "(" + pkKeys + ")" : pkKeys;
 
         return CLOSE_VERSIONS_BY_TABLE_ACTUAL_TEMPLATE
-                .replace("${table_name}", tableName)
-                .replace("${logical_columns}", columnNames)
-                .replace("${prev_sys_cn}", Long.toString(sysCn - 1L))
-                .replace("${now}", now)
-                .replace("${pk_keys}", pkKeys)
-                .replace("${pk_keys_for_in}", pkKeysForIn)
-                .replace("${sys_cn}", Long.toString(sysCn));
+                .replace(TABLE_NAME_PLACEHOLDER, tableName)
+                .replace(LOGICAL_COLUMNS_PLACEHOLDER, columnNames)
+                .replace(PREV_SYS_CN_PLACEHOLDER, Long.toString(sysCn - 1L))
+                .replace(NOW_PLACEHOLDER, now)
+                .replace(PK_KEYS_PLACEHOLDER, pkKeys)
+                .replace(PK_KEYS_FOR_IN_PLACEHOLDER, pkKeysForIn)
+                .replace(SYS_CN_PLACEHOLDER, Long.toString(sysCn));
     }
 
     public String getCloseVersionSqlByTableBuffer(String tableName, String columnNames, String pkKeys, long sysCn) {
@@ -123,12 +131,12 @@ public class AdqmProcessingSqlFactory {
         val pkKeysForIn = pkKeys.contains(",") ? "(" + pkKeys + ")" : pkKeys;
 
         return CLOSE_VERSIONS_BY_TABLE_BUFFER_TEMPLATE
-                .replace("${table_name}", tableName)
-                .replace("${logical_columns}", columnNames)
-                .replace("${prev_sys_cn}", Long.toString(sysCn - 1L))
-                .replace("${now}", now)
-                .replace("${pk_keys}", pkKeys)
-                .replace("${pk_keys_for_in}", pkKeysForIn)
-                .replace("${sys_cn}", Long.toString(sysCn));
+                .replace(TABLE_NAME_PLACEHOLDER, tableName)
+                .replace(LOGICAL_COLUMNS_PLACEHOLDER, columnNames)
+                .replace(PREV_SYS_CN_PLACEHOLDER, Long.toString(sysCn - 1L))
+                .replace(NOW_PLACEHOLDER, now)
+                .replace(PK_KEYS_PLACEHOLDER, pkKeys)
+                .replace(PK_KEYS_FOR_IN_PLACEHOLDER, pkKeysForIn)
+                .replace(SYS_CN_PLACEHOLDER, Long.toString(sysCn));
     }
 }

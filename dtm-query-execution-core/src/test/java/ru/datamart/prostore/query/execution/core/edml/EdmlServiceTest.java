@@ -15,6 +15,17 @@
  */
 package ru.datamart.prostore.query.execution.core.edml;
 
+import io.vertx.core.Future;
+import io.vertx.junit5.VertxExtension;
+import io.vertx.junit5.VertxTestContext;
+import org.apache.calcite.sql.SqlInsert;
+import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlNode;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.common.metrics.RequestMetrics;
 import ru.datamart.prostore.common.model.ddl.Entity;
@@ -27,7 +38,6 @@ import ru.datamart.prostore.common.request.DatamartRequest;
 import ru.datamart.prostore.query.calcite.core.configuration.CalciteCoreConfiguration;
 import ru.datamart.prostore.query.calcite.core.service.DefinitionService;
 import ru.datamart.prostore.query.execution.core.base.repository.ServiceDbFacade;
-import ru.datamart.prostore.query.execution.core.base.repository.ServiceDbFacadeImpl;
 import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.EntityDao;
 import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.ServiceDbDao;
 import ru.datamart.prostore.query.execution.core.calcite.configuration.CalciteConfiguration;
@@ -36,42 +46,43 @@ import ru.datamart.prostore.query.execution.core.edml.dto.EdmlAction;
 import ru.datamart.prostore.query.execution.core.edml.dto.EdmlRequestContext;
 import ru.datamart.prostore.query.execution.core.edml.mppr.service.impl.DownloadExternalTableExecutor;
 import ru.datamart.prostore.query.execution.core.edml.mppw.service.impl.RollbackCrashedWriteOpExecutor;
-import ru.datamart.prostore.query.execution.core.edml.mppw.service.impl.UploadExternalTableExecutor;
-import ru.datamart.prostore.query.execution.core.edml.service.EdmlExecutor;
+import ru.datamart.prostore.query.execution.core.edml.mppw.service.impl.UploadLogicalExternalTableExecutor;
+import ru.datamart.prostore.query.execution.core.edml.mppw.service.impl.UploadStandaloneExternalTableExecutor;
 import ru.datamart.prostore.query.execution.core.edml.service.EdmlService;
 import ru.datamart.prostore.query.execution.core.utils.TestUtils;
-import io.vertx.core.Future;
-import io.vertx.core.Promise;
-import org.apache.calcite.sql.SqlInsert;
-import org.apache.calcite.sql.SqlKind;
-import org.apache.calcite.sql.SqlNode;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
-import java.util.List;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+@ExtendWith({MockitoExtension.class, VertxExtension.class})
 class EdmlServiceTest {
 
-    private static final int DOWNLOAD_EXECUTOR = 0;
-    private static final int UPLOAD_EXECUTOR = 1;
-    private static final int ROLLBACK_EXECUTOR = 2;
-    private final ServiceDbFacade serviceDbFacade = mock(ServiceDbFacadeImpl.class);
-    private final ServiceDbDao serviceDbDao = mock(ServiceDbDao.class);
-    private final EntityDao entityDao = mock(EntityDao.class);
-    private final List<EdmlExecutor> edmlExecutors = Arrays.asList(mock(DownloadExternalTableExecutor.class),
-            mock(UploadExternalTableExecutor.class),
-            mock(RollbackCrashedWriteOpExecutor.class));
     private final CalciteConfiguration config = new CalciteConfiguration();
     private final CalciteCoreConfiguration calciteCoreConfiguration = new CalciteCoreConfiguration();
     private final DefinitionService<SqlNode> definitionService =
             new CoreCalciteDefinitionService(config.configEddlParser(calciteCoreConfiguration.eddlParserImplFactory()));
+
+    @Mock
+    private DownloadExternalTableExecutor downloadExternalTableExecutor;
+    @Mock
+    private UploadLogicalExternalTableExecutor uploadLogicalExternalTableExecutor;
+    @Mock
+    private UploadStandaloneExternalTableExecutor uploadStandaloneExternalTableExecutor;
+    @Mock
+    private RollbackCrashedWriteOpExecutor rollbackCrashedWriteOpExecutor;
+    @Mock
+    private ServiceDbFacade serviceDbFacade;
+    @Mock
+    private ServiceDbDao serviceDbDao;
+    @Mock
+    private EntityDao entityDao;
+
     private EdmlService edmlService;
     private QueryRequest queryRequest;
 
@@ -82,16 +93,17 @@ class EdmlServiceTest {
         queryRequest.setRequestId(UUID.fromString("6efad624-b9da-4ba1-9fed-f2da478b08e8"));
         when(serviceDbFacade.getServiceDbDao()).thenReturn(serviceDbDao);
         when(serviceDbDao.getEntityDao()).thenReturn(entityDao);
-        when(edmlExecutors.get(DOWNLOAD_EXECUTOR).getAction()).thenReturn(EdmlAction.DOWNLOAD);
-        when(edmlExecutors.get(UPLOAD_EXECUTOR).getAction()).thenReturn(EdmlAction.UPLOAD);
-        when(edmlExecutors.get(ROLLBACK_EXECUTOR).getAction()).thenReturn(EdmlAction.ROLLBACK);
-        edmlService = new EdmlService(serviceDbFacade, edmlExecutors);
+        when(downloadExternalTableExecutor.getAction()).thenReturn(EdmlAction.DOWNLOAD);
+        when(uploadLogicalExternalTableExecutor.getAction()).thenReturn(EdmlAction.UPLOAD_LOGICAL);
+        when(uploadStandaloneExternalTableExecutor.getAction()).thenReturn(EdmlAction.UPLOAD_STANDALONE);
+        when(rollbackCrashedWriteOpExecutor.getAction()).thenReturn(EdmlAction.ROLLBACK);
+        edmlService = new EdmlService(serviceDbFacade, Arrays.asList(downloadExternalTableExecutor, uploadLogicalExternalTableExecutor,
+                uploadStandaloneExternalTableExecutor, rollbackCrashedWriteOpExecutor));
     }
 
     @Test
-    void executeDownloadExtTableSuccess() {
-        Promise<QueryResult> promise = Promise.promise();
-
+    void executeDownloadExtTableSuccess(VertxTestContext vertxTestContext) {
+        // arrange
         queryRequest.setSql("INSERT INTO test.download_table SELECT id, lst_nam FROM test.pso");
         SqlInsert sqlNode = (SqlInsert) definitionService.processingQuery(queryRequest.getSql());
         DatamartRequest request = new DatamartRequest(queryRequest);
@@ -118,20 +130,25 @@ class EdmlServiceTest {
 
         when(entityDao.getEntity("test", "pso")).thenReturn(Future.succeededFuture(sourceEntity));
 
-        when(edmlExecutors.get(DOWNLOAD_EXECUTOR).execute(any()))
+        when(downloadExternalTableExecutor.execute(any()))
                 .thenReturn(Future.succeededFuture(QueryResult.emptyResult()));
 
+        // act
         edmlService.execute(context)
-                .onComplete(promise);
+                .onComplete(ar -> vertxTestContext.verify(() -> {
+                    // assert
+                    if (ar.failed()) {
+                        fail(ar.cause());
+                    }
 
-        assertTrue(promise.future().succeeded());
-        assertEquals(context.getSourceEntity(), sourceEntity);
-        assertEquals(context.getDestinationEntity(), destinationEntity);
+                    assertEquals(context.getSourceEntity(), sourceEntity);
+                    assertEquals(context.getDestinationEntity(), destinationEntity);
+                }).completeNow());
     }
 
     @Test
-    void executeUploadExtTableSuccess() {
-        Promise<QueryResult> promise = Promise.promise();
+    void executeUploadExtTableSuccess(VertxTestContext testContext) {
+        // arrange
         queryRequest.setSql("INSERT INTO test.pso SELECT id, name FROM test.upload_table");
         SqlInsert sqlNode = (SqlInsert) definitionService.processingQuery(queryRequest.getSql());
         DatamartRequest request = new DatamartRequest(queryRequest);
@@ -160,102 +177,162 @@ class EdmlServiceTest {
         when(entityDao.getEntity("test", "upload_table"))
                 .thenReturn(Future.succeededFuture(sourceEntity));
 
-        when(edmlExecutors.get(UPLOAD_EXECUTOR).execute(any()))
+        when(uploadLogicalExternalTableExecutor.execute(any()))
                 .thenReturn(Future.succeededFuture(QueryResult.emptyResult()));
 
+        // act
         edmlService.execute(context)
-                .onComplete(promise);
-        assertTrue(promise.future().succeeded());
-        assertEquals(context.getSourceEntity(), sourceEntity);
-        assertEquals(context.getDestinationEntity(), destinationEntity);
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.failed()) {
+                        fail(ar.cause());
+                    }
+
+                    assertEquals(context.getSourceEntity(), sourceEntity);
+                    assertEquals(context.getDestinationEntity(), destinationEntity);
+                }).completeNow());
     }
 
     @Test
-    void executeDownloadExtTableAsSource() {
-        Promise<QueryResult> promise = Promise.promise();
-        queryRequest.setSql("INSERT INTO test.download_table SELECT id, lst_nam FROM test.pso");
-        SqlInsert sqlNode = (SqlInsert) definitionService.processingQuery(queryRequest.getSql());
-        DatamartRequest request = new DatamartRequest(queryRequest);
-        EdmlRequestContext context = new EdmlRequestContext(new RequestMetrics(), request, sqlNode, "env");
-
-        Entity destinationEntity = Entity.builder()
-                .entityType(EntityType.DOWNLOAD_EXTERNAL_TABLE)
-                .externalTableFormat(ExternalTableFormat.AVRO)
-                .externalTableLocationPath("kafka://kafka-1.dtm.local:9092/topic")
-                .externalTableLocationType(ExternalTableLocationType.KAFKA)
-                .externalTableUploadMessageLimit(1000)
-                .externalTableSchema("{\"schema\"}")
-                .name("download_table")
-                .schema("test")
-                .build();
-
-        Entity sourceEntity = Entity.builder()
-                .entityType(EntityType.DOWNLOAD_EXTERNAL_TABLE)
-                .externalTableFormat(ExternalTableFormat.AVRO)
-                .externalTableLocationPath("kafka://kafka-1.dtm.local:9092/topic")
-                .externalTableLocationType(ExternalTableLocationType.KAFKA)
-                .externalTableUploadMessageLimit(1000)
-                .externalTableSchema("{\"schema\"}")
-                .name("pso")
-                .schema("test")
-                .build();
-
-        when(entityDao.getEntity("test", "download_table"))
-                .thenReturn(Future.succeededFuture(destinationEntity));
-
-        when(entityDao.getEntity("test", "pso"))
-                .thenReturn(Future.succeededFuture(sourceEntity));
-
-        edmlService.execute(context)
-                .onComplete(promise);
-        assertNotNull(promise.future().cause());
-    }
-
-    @Test
-    void executeUploadExtTableAsDestination() {
-        Promise<QueryResult> promise = Promise.promise();
-        queryRequest.setSql("INSERT INTO test.download_table SELECT id, lst_nam FROM test.pso");
-        SqlInsert sqlNode = (SqlInsert) definitionService.processingQuery(queryRequest.getSql());
-        DatamartRequest request = new DatamartRequest(queryRequest);
-        EdmlRequestContext context = new EdmlRequestContext(new RequestMetrics(), request, sqlNode, "env");
-
-        Entity destinationEntity = Entity.builder()
-                .entityType(EntityType.UPLOAD_EXTERNAL_TABLE)
-                .externalTableFormat(ExternalTableFormat.AVRO)
-                .externalTableLocationPath("kafka://kafka-1.dtm.local:9092/topic")
-                .externalTableLocationType(ExternalTableLocationType.KAFKA)
-                .externalTableUploadMessageLimit(1000)
-                .externalTableSchema("{\"schema\"}")
-                .name("download_table")
-                .schema("test")
-                .build();
-
-        Entity sourceEntity = Entity.builder()
-                .entityType(EntityType.UPLOAD_EXTERNAL_TABLE)
-                .externalTableFormat(ExternalTableFormat.AVRO)
-                .externalTableLocationPath("kafka://kafka-1.dtm.local:9092/topic")
-                .externalTableLocationType(ExternalTableLocationType.KAFKA)
-                .externalTableUploadMessageLimit(1000)
-                .externalTableSchema("{\"schema\"}")
-                .name("pso")
-                .schema("test")
-                .build();
-
-        when(entityDao.getEntity("test", "download_table"))
-                .thenReturn(Future.succeededFuture(destinationEntity));
-
-        when(entityDao.getEntity("test", "pso"))
-                .thenReturn(Future.succeededFuture(sourceEntity));
-
-        edmlService.execute(context)
-                .onComplete(promise);
-        assertNotNull(promise.future().cause());
-    }
-
-    @Test
-    void executeUploadExtTableToMaterializedView() {
+    void executeUploadIntoStandaloneSuccess(VertxTestContext testContext) {
         // arrange
-        Promise<QueryResult> promise = Promise.promise();
+        queryRequest.setSql("INSERT INTO test.pso SELECT id, name FROM test.upload_table");
+        SqlInsert sqlNode = (SqlInsert) definitionService.processingQuery(queryRequest.getSql());
+        DatamartRequest request = new DatamartRequest(queryRequest);
+        EdmlRequestContext context = new EdmlRequestContext(new RequestMetrics(), request, sqlNode, "env");
+
+        Entity destinationEntity = Entity.builder()
+                .entityType(EntityType.WRITEABLE_EXTERNAL_TABLE)
+                .name("pso")
+                .schema("test")
+                .build();
+
+        Entity sourceEntity = Entity.builder()
+                .entityType(EntityType.UPLOAD_EXTERNAL_TABLE)
+                .externalTableFormat(ExternalTableFormat.AVRO)
+                .externalTableLocationPath("kafka://kafka-1.dtm.local:9092/topic")
+                .externalTableLocationType(ExternalTableLocationType.KAFKA)
+                .externalTableUploadMessageLimit(1000)
+                .externalTableSchema("{\"schema\"}")
+                .name("upload_table")
+                .schema("test")
+                .build();
+
+        when(entityDao.getEntity("test", "pso"))
+                .thenReturn(Future.succeededFuture(destinationEntity));
+
+        when(entityDao.getEntity("test", "upload_table"))
+                .thenReturn(Future.succeededFuture(sourceEntity));
+
+        when(uploadStandaloneExternalTableExecutor.execute(any()))
+                .thenReturn(Future.succeededFuture(QueryResult.emptyResult()));
+
+        // act
+        edmlService.execute(context)
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.failed()) {
+                        fail(ar.cause());
+                    }
+
+                    assertEquals(context.getSourceEntity(), sourceEntity);
+                    assertEquals(context.getDestinationEntity(), destinationEntity);
+                }).completeNow());
+    }
+
+    @Test
+    void executeDownloadExtTableAsSource(VertxTestContext testContext) {
+        // arrange
+        queryRequest.setSql("INSERT INTO test.download_table SELECT id, lst_nam FROM test.pso");
+        SqlInsert sqlNode = (SqlInsert) definitionService.processingQuery(queryRequest.getSql());
+        DatamartRequest request = new DatamartRequest(queryRequest);
+        EdmlRequestContext context = new EdmlRequestContext(new RequestMetrics(), request, sqlNode, "env");
+
+        Entity destinationEntity = Entity.builder()
+                .entityType(EntityType.DOWNLOAD_EXTERNAL_TABLE)
+                .externalTableFormat(ExternalTableFormat.AVRO)
+                .externalTableLocationPath("kafka://kafka-1.dtm.local:9092/topic")
+                .externalTableLocationType(ExternalTableLocationType.KAFKA)
+                .externalTableUploadMessageLimit(1000)
+                .externalTableSchema("{\"schema\"}")
+                .name("download_table")
+                .schema("test")
+                .build();
+
+        Entity sourceEntity = Entity.builder()
+                .entityType(EntityType.DOWNLOAD_EXTERNAL_TABLE)
+                .externalTableFormat(ExternalTableFormat.AVRO)
+                .externalTableLocationPath("kafka://kafka-1.dtm.local:9092/topic")
+                .externalTableLocationType(ExternalTableLocationType.KAFKA)
+                .externalTableUploadMessageLimit(1000)
+                .externalTableSchema("{\"schema\"}")
+                .name("pso")
+                .schema("test")
+                .build();
+
+        when(entityDao.getEntity("test", "download_table"))
+                .thenReturn(Future.succeededFuture(destinationEntity));
+
+        when(entityDao.getEntity("test", "pso"))
+                .thenReturn(Future.succeededFuture(sourceEntity));
+
+        // act
+        edmlService.execute(context)
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    if (ar.succeeded()) {
+                        fail("Unexpected success");
+                    }
+                }).completeNow());
+    }
+
+    @Test
+    void executeUploadExtTableAsDestination(VertxTestContext testContext) {
+        // arrange
+        queryRequest.setSql("INSERT INTO test.download_table SELECT id, lst_nam FROM test.pso");
+        SqlInsert sqlNode = (SqlInsert) definitionService.processingQuery(queryRequest.getSql());
+        DatamartRequest request = new DatamartRequest(queryRequest);
+        EdmlRequestContext context = new EdmlRequestContext(new RequestMetrics(), request, sqlNode, "env");
+
+        Entity destinationEntity = Entity.builder()
+                .entityType(EntityType.UPLOAD_EXTERNAL_TABLE)
+                .externalTableFormat(ExternalTableFormat.AVRO)
+                .externalTableLocationPath("kafka://kafka-1.dtm.local:9092/topic")
+                .externalTableLocationType(ExternalTableLocationType.KAFKA)
+                .externalTableUploadMessageLimit(1000)
+                .externalTableSchema("{\"schema\"}")
+                .name("download_table")
+                .schema("test")
+                .build();
+
+        Entity sourceEntity = Entity.builder()
+                .entityType(EntityType.UPLOAD_EXTERNAL_TABLE)
+                .externalTableFormat(ExternalTableFormat.AVRO)
+                .externalTableLocationPath("kafka://kafka-1.dtm.local:9092/topic")
+                .externalTableLocationType(ExternalTableLocationType.KAFKA)
+                .externalTableUploadMessageLimit(1000)
+                .externalTableSchema("{\"schema\"}")
+                .name("pso")
+                .schema("test")
+                .build();
+
+        when(entityDao.getEntity("test", "download_table"))
+                .thenReturn(Future.succeededFuture(destinationEntity));
+
+        when(entityDao.getEntity("test", "pso"))
+                .thenReturn(Future.succeededFuture(sourceEntity));
+
+        // act
+        edmlService.execute(context)
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    if (ar.succeeded()) {
+                        fail("Unexpected success");
+                    }
+                }).completeNow());
+    }
+
+    @Test
+    void executeUploadExtTableToMaterializedView(VertxTestContext testContext) {
+        // arrange
         queryRequest.setSql("INSERT INTO test.download_table SELECT id, lst_nam FROM test.pso");
         SqlInsert sqlNode = (SqlInsert) definitionService.processingQuery(queryRequest.getSql());
         DatamartRequest request = new DatamartRequest(queryRequest);
@@ -286,17 +363,19 @@ class EdmlServiceTest {
 
         // act
         edmlService.execute(context)
-                .onComplete(promise);
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    if (ar.succeeded()) {
+                        fail("Unexpected success");
+                    }
 
-        // assert
-        assertTrue(promise.future().failed());
-        TestUtils.assertException(DtmException.class, "MPPW operation doesn't support materialized views", promise.future().cause());
+                    TestUtils.assertException(DtmException.class, "MPPW operation doesn't support materialized views", ar.cause());
+                }).completeNow());
     }
 
     @Test
-    void executeDownloadFromMaterializedViewSuccess() {
-        Promise<QueryResult> promise = Promise.promise();
-
+    void executeDownloadFromMaterializedViewSuccess(VertxTestContext testContext) {
+        // arrange
         queryRequest.setSql("INSERT INTO test.download_table SELECT id, lst_nam FROM test.pso");
         SqlInsert sqlNode = (SqlInsert) definitionService.processingQuery(queryRequest.getSql());
         DatamartRequest request = new DatamartRequest(queryRequest);
@@ -323,40 +402,89 @@ class EdmlServiceTest {
 
         when(entityDao.getEntity("test", "pso")).thenReturn(Future.succeededFuture(sourceEntity));
 
-        when(edmlExecutors.get(DOWNLOAD_EXECUTOR).execute(any()))
+        when(downloadExternalTableExecutor.execute(any()))
                 .thenReturn(Future.succeededFuture(QueryResult.emptyResult()));
 
+        // act
         edmlService.execute(context)
-                .onComplete(promise);
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.failed()) {
+                        fail(ar.cause());
+                    }
 
-        assertTrue(promise.future().succeeded());
-        assertEquals(context.getSourceEntity(), sourceEntity);
-        assertEquals(context.getDestinationEntity(), destinationEntity);
+                    assertEquals(context.getSourceEntity(), sourceEntity);
+                    assertEquals(context.getDestinationEntity(), destinationEntity);
+                }).completeNow());
     }
 
     @Test
-    void executeRollbackSuccess() {
-        Promise<QueryResult> promise = Promise.promise();
+    void executeDownloadFromStandaloneTableSuccess(VertxTestContext testContext) {
+        // arrange
+        queryRequest.setSql("INSERT INTO test.download_table SELECT id, lst_nam FROM test.pso");
+        SqlInsert sqlNode = (SqlInsert) definitionService.processingQuery(queryRequest.getSql());
+        DatamartRequest request = new DatamartRequest(queryRequest);
+        EdmlRequestContext context = new EdmlRequestContext(new RequestMetrics(), request, sqlNode, "env");
 
+        Entity destinationEntity = Entity.builder()
+                .entityType(EntityType.DOWNLOAD_EXTERNAL_TABLE)
+                .externalTableFormat(ExternalTableFormat.AVRO)
+                .externalTableLocationPath("kafka://kafka-1.dtm.local:9092/topic")
+                .externalTableLocationType(ExternalTableLocationType.KAFKA)
+                .externalTableUploadMessageLimit(1000)
+                .externalTableSchema("{\"schema\"}")
+                .name("download_table")
+                .schema("test")
+                .build();
+
+        Entity sourceEntity = Entity.builder()
+                .entityType(EntityType.READABLE_EXTERNAL_TABLE)
+                .name("pso")
+                .schema("test")
+                .build();
+
+        when(entityDao.getEntity("test", "download_table")).thenReturn(Future.succeededFuture(destinationEntity));
+
+        when(entityDao.getEntity("test", "pso")).thenReturn(Future.succeededFuture(sourceEntity));
+
+        when(downloadExternalTableExecutor.execute(any()))
+                .thenReturn(Future.succeededFuture(QueryResult.emptyResult()));
+
+        // act
+        edmlService.execute(context)
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.failed()) {
+                        fail(ar.cause());
+                    }
+
+                    assertEquals(context.getSourceEntity(), sourceEntity);
+                    assertEquals(context.getDestinationEntity(), destinationEntity);
+                }).completeNow());
+    }
+
+    @Test
+    void executeRollbackSuccess(VertxTestContext testContext) {
+        // arrange
         SqlNode sqlNode = mock(SqlNode.class);
         when(sqlNode.getKind()).thenReturn(SqlKind.ROLLBACK);
         queryRequest.setSql("ROLLBACK DELTA");
         DatamartRequest request = new DatamartRequest(queryRequest);
         EdmlRequestContext context = new EdmlRequestContext(new RequestMetrics(), request, sqlNode, "env");
 
-        when(edmlExecutors.get(ROLLBACK_EXECUTOR).execute(any()))
+        when(rollbackCrashedWriteOpExecutor.execute(any()))
                 .thenReturn(Future.succeededFuture(QueryResult.emptyResult()));
 
+        // act
         edmlService.execute(context)
-                .onComplete(promise);
-
-        assertTrue(promise.future().succeeded());
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.failed()) {
+                        fail(ar.cause());
+                    }
+                }).completeNow());
     }
 
     @Test
-    void executeWithoutExtTables() {
-        Promise<QueryResult> promise = Promise.promise();
-
+    void executeWithoutExtTables(VertxTestContext testContext) {
+        // arrange
         String sql = "INSERT INTO test.download_table SELECT id, lst_nam FROM test.pso";
         queryRequest.setSql(sql);
         SqlInsert sqlNode = (SqlInsert) definitionService.processingQuery(queryRequest.getSql());
@@ -379,19 +507,22 @@ class EdmlServiceTest {
 
         when(entityDao.getEntity("test", "pso")).thenReturn(Future.succeededFuture(sourceEntity));
 
+        // act
         edmlService.execute(context)
-                .onComplete(promise);
-
-        assertTrue(promise.future().failed());
-        TestUtils.assertException(DtmException.class,
-                "Can't determine external table from query",
-                promise.future().cause());
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    if (ar.succeeded()) {
+                        fail("Unexpected success");
+                    }
+                    TestUtils.assertException(DtmException.class,
+                            "Can't determine external table from query",
+                            ar.cause());
+                }).completeNow());
     }
 
     @Test
-    void executeWithDifferentDatamarts() {
-        Promise<QueryResult> promise = Promise.promise();
-
+    void executeWithDifferentDatamarts(VertxTestContext testContext) {
+        // arrange
         queryRequest.setSql("INSERT INTO test1.download_table SELECT id, lst_nam FROM test2.pso");
         SqlInsert sqlNode = (SqlInsert) definitionService.processingQuery(queryRequest.getSql());
         DatamartRequest request = new DatamartRequest(queryRequest);
@@ -414,16 +545,16 @@ class EdmlServiceTest {
                 .schema("test2")
                 .build();
 
-        when(entityDao.getEntity("test1", "download_table")).thenReturn(Future.succeededFuture(destinationEntity));
-
-        when(entityDao.getEntity("test2", "pso")).thenReturn(Future.succeededFuture(sourceEntity));
-
+        // act
         edmlService.execute(context)
-                .onComplete(promise);
-
-        assertTrue(promise.future().failed());
-        TestUtils.assertException(DtmException.class,
-                "Unsupported operation for tables in different datamarts",
-                promise.future().cause());
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    if (ar.succeeded()) {
+                        fail("Unexpected success");
+                    }
+                    TestUtils.assertException(DtmException.class,
+                            "Unsupported operation for tables in different datamarts",
+                            ar.cause());
+                }).completeNow());
     }
 }

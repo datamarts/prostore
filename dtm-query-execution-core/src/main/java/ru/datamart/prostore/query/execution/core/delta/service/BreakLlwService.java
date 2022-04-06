@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -44,11 +45,23 @@ public class BreakLlwService {
                 .compose(ops -> writeOperationsError(ops, datamart));
     }
 
+    public Future<Void> breakLlw(String datamart, Long sysCn) {
+        return deltaServiceDao.getDeltaWriteOperations(datamart)
+                .map(ops -> ops.stream()
+                        .filter(this::isLlwOperation)
+                        .filter(op -> Objects.equals(op.getSysCn(),sysCn))
+                        .collect(Collectors.toList()))
+                .compose(ops -> writeOperationsError(ops, datamart));
+    }
+
     private boolean isLlwOperation(DeltaWriteOp op) {
         return op.getStatus() == WriteOperationStatus.EXECUTING.getValue() && op.getTableNameExt() == null;
     }
 
     private Future<Void> writeOperationsError(List<DeltaWriteOp> ops, String datamart) {
+        if (ops.isEmpty()) {
+            return Future.succeededFuture();
+        }
         List<Future> futures = new ArrayList<>(ops.size());
         ops.forEach(op -> futures.add(deltaServiceDao.writeOperationError(datamart, op.getSysCn())));
 

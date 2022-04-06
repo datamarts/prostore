@@ -22,7 +22,7 @@ import java.util.Properties;
 
 public abstract class ConnectionFactory {
 
-    public ConnectionFactory() {
+    protected ConnectionFactory() {
     }
 
     public static QueryExecutor openConnection(String host, String user, String database, String url, Properties info) throws SQLException {

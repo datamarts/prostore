@@ -15,6 +15,12 @@
  */
 package ru.datamart.prostore.query.execution.core.delta.service;
 
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
+import io.vertx.core.Vertx;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.springframework.stereotype.Service;
 import ru.datamart.prostore.query.execution.core.base.configuration.properties.RollbackDeltaProperties;
 import ru.datamart.prostore.query.execution.core.base.repository.ServiceDbFacade;
 import ru.datamart.prostore.query.execution.core.delta.dto.DeltaWriteOp;
@@ -22,13 +28,9 @@ import ru.datamart.prostore.query.execution.core.delta.repository.zookeeper.Delt
 import ru.datamart.prostore.query.execution.core.edml.mppw.dto.MppwStopReason;
 import ru.datamart.prostore.query.execution.core.edml.mppw.dto.WriteOperationStatus;
 import ru.datamart.prostore.query.execution.core.edml.mppw.service.impl.BreakMppwContext;
-import io.vertx.core.Future;
-import io.vertx.core.Promise;
-import io.vertx.core.Vertx;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -51,7 +53,17 @@ public class BreakMppwService {
         return deltaServiceDao.getDeltaWriteOperations(datamart)
                 .map(ops -> ops.stream().filter(this::isMppwOperation).collect(Collectors.toList()))
                 .compose(ops -> sendBreakMppwEvent(datamart, ops))
-                .compose(ar -> waitUntilDone(datamart));
+                .compose(ar -> waitUntilDone(datamart, null));
+    }
+
+    public Future<Void> breakMppw(String datamart, Long sysCn) {
+        return deltaServiceDao.getDeltaWriteOperations(datamart)
+                .map(ops -> ops.stream()
+                        .filter(this::isMppwOperation)
+                        .filter(op -> Objects.equals(op.getSysCn(), sysCn))
+                        .collect(Collectors.toList()))
+                .compose(ops -> sendBreakMppwEvent(datamart, ops))
+                .compose(ar -> waitUntilDone(datamart, sysCn));
     }
 
     private boolean isMppwOperation(DeltaWriteOp op) {
@@ -68,25 +80,30 @@ public class BreakMppwService {
         });
     }
 
-    private Future<Void> waitUntilDone(String datamart) {
+    private Future<Void> waitUntilDone(String datamart, Long sysCn) {
+        long count = sysCn != null
+                ? BreakMppwContext.getNumberOfTasksByDatamartAndSysCn(datamart, sysCn)
+                : BreakMppwContext.getNumberOfTasksByDatamart(datamart);
         return Future.future(promise -> {
-            if (BreakMppwContext.getNumberOfTasksByDatamart(datamart) == 0) {
+            if (count == 0) {
                 promise.complete();
                 return;
             }
 
-            periodicallyCheckTasks(datamart, promise);
+            periodicallyCheckTasks(datamart, promise, null);
         });
     }
 
-    private void periodicallyCheckTasks(String datamart, Promise<Void> promise) {
+    private void periodicallyCheckTasks(String datamart, Promise<Void> promise, Long sysCn) {
         vertx.setTimer(rollbackStatusCallsMs, timerId -> {
-            long count = BreakMppwContext.getNumberOfTasksByDatamart(datamart);
+            long count = sysCn != null
+                    ? BreakMppwContext.getNumberOfTasksByDatamartAndSysCn(datamart, sysCn)
+                    : BreakMppwContext.getNumberOfTasksByDatamart(datamart);
             log.debug("Break MPPW: Currently running {} tasks for datamart {}", count, datamart);
             if (count == 0) {
                 promise.complete();
             } else {
-                periodicallyCheckTasks(datamart, promise);
+                periodicallyCheckTasks(datamart, promise, sysCn);
             }
         });
     }

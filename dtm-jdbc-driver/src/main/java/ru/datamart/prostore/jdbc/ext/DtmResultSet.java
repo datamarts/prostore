@@ -554,7 +554,7 @@ public class DtmResultSet extends AbstractResultSet {
     private long getNanos(int columnIndex, long tsValue) {
         Field field = fields[columnIndex - 1];
         if (field.getSize() != null) {
-            long q = pow(10, 6 - field.getSize());
+            long q = pow(10, 6L - field.getSize());
             return tsValue % 1000000 / q * 1000 * q;
         } else {
             return 0;

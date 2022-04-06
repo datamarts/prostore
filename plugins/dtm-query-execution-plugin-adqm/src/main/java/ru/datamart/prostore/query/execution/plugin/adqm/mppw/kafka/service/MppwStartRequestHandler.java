@@ -15,6 +15,13 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adqm.mppw.kafka.service;
 
+import io.vertx.core.Future;
+import lombok.NonNull;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.avro.Schema;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 import ru.datamart.prostore.common.model.ddl.EntityFieldUtils;
 import ru.datamart.prostore.query.execution.plugin.adqm.base.utils.AdqmDdlUtil;
 import ru.datamart.prostore.query.execution.plugin.adqm.ddl.configuration.properties.DdlProperties;
@@ -27,15 +34,9 @@ import ru.datamart.prostore.query.execution.plugin.adqm.query.service.DatabaseEx
 import ru.datamart.prostore.query.execution.plugin.adqm.status.dto.StatusReportDto;
 import ru.datamart.prostore.query.execution.plugin.adqm.status.service.StatusReporter;
 import ru.datamart.prostore.query.execution.plugin.api.exception.DataSourceException;
+import ru.datamart.prostore.query.execution.plugin.api.exception.FeatureNotImplementedException;
 import ru.datamart.prostore.query.execution.plugin.api.exception.MppwDatasourceException;
 import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
-import io.vertx.core.Future;
-import lombok.NonNull;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.apache.avro.Schema;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
 import java.util.EnumMap;
@@ -90,8 +91,20 @@ public class MppwStartRequestHandler extends AbstractMppwRequestHandler {
             return Future.failedFuture(new DataSourceException("Error in starting mppw request", e));
         }
 
+        if (request.getSysCn() == null) {
+            if (mppwProperties.getLoadType() == KAFKA) {
+                return Future.failedFuture(new FeatureNotImplementedException("Kafka load type not implemented for standalone tables"));
+            }
+
+            reportStart(request.getTopic(), mppwProperties.getRestLoadConsumerGroup());
+            return createRestInitiator(request)
+                    .map(v -> mppwProperties.getRestLoadConsumerGroup())
+                    .onFailure(fail -> reportError(request.getTopic()));
+        }
+
         val fullName = AdqmDdlUtil.getQualifiedTableName(request);
-        reportStart(request.getTopic(), fullName);
+        val consumerGroupName = getConsumerGroupName(fullName);
+        reportStart(request.getTopic(), consumerGroupName);
 
         return sequenceAll(Arrays.asList(
                 fullName + EXT_SHARD_POSTFIX,
@@ -109,16 +122,11 @@ public class MppwStartRequestHandler extends AbstractMppwRequestHandler {
                 .compose(v -> createBufferLoaderShardTable(request))
                 .compose(v -> createActualLoaderShardTable(request))
                 .compose(v -> createRestInitiator(request))
-                .map(v -> getConsumerGroupName(fullName))
-                .onSuccess(Future::succeededFuture)
-                .onFailure(fail -> {
-                    reportError(request.getTopic());
-                    Future.failedFuture(new DataSourceException(fail));
-                });
+                .map(v -> consumerGroupName)
+                .onFailure(fail -> reportError(request.getTopic()));
     }
 
-    @NonNull
-    private String getConsumerGroupName(@NonNull String tableName) {
+    private String getConsumerGroupName(String tableName) {
         return mppwProperties.getLoadType() == KAFKA ?
                 mppwProperties.getConsumerGroup() + "_" + tableName :
                 mppwProperties.getRestLoadConsumerGroup();
@@ -170,8 +178,8 @@ public class MppwStartRequestHandler extends AbstractMppwRequestHandler {
         }
     }
 
-    private void reportStart(String topic, String fullName) {
-        StatusReportDto start = new StatusReportDto(topic, getConsumerGroupName(fullName));
+    private void reportStart(String topic, String consumerGroup) {
+        StatusReportDto start = new StatusReportDto(topic, consumerGroup);
         statusReporter.onStart(start);
     }
 

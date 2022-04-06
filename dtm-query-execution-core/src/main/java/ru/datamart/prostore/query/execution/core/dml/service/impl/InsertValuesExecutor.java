@@ -49,6 +49,12 @@ public class InsertValuesExecutor extends AbstractUpdateExecutor<InsertValuesReq
     }
 
     @Override
+    protected Future<Void> executeWriteableExternal(DmlRequestContext context, Entity entity) {
+        return buildRequest(context, null, entity)
+                .compose(request -> pluginService.insert(entity.getDestination().iterator().next(), context.getMetrics(), request));
+    }
+
+    @Override
     protected boolean isValidSource(SqlNode sqlInsert) {
         return LlwUtils.isValuesSqlNode(sqlInsert);
     }

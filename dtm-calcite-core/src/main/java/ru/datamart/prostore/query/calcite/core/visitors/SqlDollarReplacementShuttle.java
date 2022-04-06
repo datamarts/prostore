@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class SqlDollarReplacementShuttle extends SqlShuttle {
-    private static final String dollarReplacement = "__";
+    private static final String DOLLAR_REPLACEMENT = "__";
 
     @Override
     public SqlNode visit(SqlIdentifier id) {
@@ -36,7 +36,7 @@ public class SqlDollarReplacementShuttle extends SqlShuttle {
         }
 
         List<String> fixedNames = node.names.stream()
-                .map(s -> s.replace("$", dollarReplacement))
+                .map(s -> s.replace("$", DOLLAR_REPLACEMENT))
                 .collect(Collectors.toList());
 
         return new SqlIdentifier(fixedNames, node.getParserPosition());

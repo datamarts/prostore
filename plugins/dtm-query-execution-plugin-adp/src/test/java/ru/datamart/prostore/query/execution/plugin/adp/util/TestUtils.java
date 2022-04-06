@@ -31,6 +31,7 @@ import ru.datamart.prostore.query.calcite.core.service.DefinitionService;
 import ru.datamart.prostore.query.execution.plugin.adp.base.dto.metadata.AdpTableColumn;
 import ru.datamart.prostore.query.execution.plugin.adp.calcite.service.AdpCalciteDefinitionService;
 import ru.datamart.prostore.query.execution.plugin.api.request.DdlRequest;
+import ru.datamart.prostore.query.execution.plugin.api.request.EddlRequest;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -41,6 +42,7 @@ import java.util.stream.Collectors;
 import static ru.datamart.prostore.query.execution.plugin.adp.base.utils.AdpTypeUtil.adpTypeFromDtmType;
 
 public class TestUtils {
+
     public static final SqlParser.Config CONFIG_PARSER = SqlParser.configBuilder()
             .setParserFactory(new CalciteCoreConfiguration().eddlParserImplFactory())
             .setConformance(SqlConformanceEnum.DEFAULT)
@@ -53,6 +55,8 @@ public class TestUtils {
     public static final DefinitionService<SqlNode> DEFINITION_SERVICE = new AdpCalciteDefinitionService(CONFIG_PARSER);
     public static final String SCHEMA = "datamart";
     public static final String TABLE = "table";
+    public static final String LOCATION_PATH = "table_path";
+    public static final String ENV = "env";
 
     public static DdlRequest createDdlRequest() {
         return new DdlRequest(UUID.randomUUID(), "env", SCHEMA, new Entity(), null);
@@ -91,6 +95,7 @@ public class TestUtils {
         return Entity.builder()
                 .schema(SCHEMA)
                 .name(TABLE)
+                .externalTableLocationPath(LOCATION_PATH)
                 .fields(fields)
                 .entityType(EntityType.TABLE)
                 .build();
@@ -125,6 +130,16 @@ public class TestUtils {
 
     private static EntityField createEntityField(int ordinalPosition, String name, ColumnType type, Integer size) {
         return createEntityField(ordinalPosition, name, type, size, true, null, null);
+    }
+
+    public static EddlRequest createEddlRequest(boolean isCreate) {
+        return EddlRequest.builder()
+                .createRequest(isCreate)
+                .requestId(UUID.randomUUID())
+                .envName(ENV)
+                .entity(createAllTypesTable())
+                .datamartMnemonic(SCHEMA)
+                .build();
     }
 
     public static void assertNormalizedEquals(String actual, String expected) {

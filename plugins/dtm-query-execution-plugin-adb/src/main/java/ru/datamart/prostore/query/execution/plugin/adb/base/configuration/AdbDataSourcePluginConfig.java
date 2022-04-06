@@ -34,6 +34,7 @@ public class AdbDataSourcePluginConfig {
     @Bean("adbDtmDataSourcePlugin")
     public AdbDtmDataSourcePlugin adbDataSourcePlugin(
             @Qualifier("adbDdlService") DdlService<Void> ddlService,
+            @Qualifier("adbEddlService") EddlService eddlService,
             @Qualifier("adbLlrService") LlrService<QueryResult> llrService,
             @Qualifier("adbInsertValuesService") InsertValuesService insertValuesService,
             @Qualifier("adbInsertSelectService") InsertSelectService insertSelectService,
@@ -51,6 +52,7 @@ public class AdbDataSourcePluginConfig {
             @Qualifier("adbSynchronizeService") SynchronizeService synchronizeService) {
         return new AdbDtmDataSourcePlugin(
                 ddlService,
+                eddlService,
                 llrService,
                 insertValuesService,
                 insertSelectService,

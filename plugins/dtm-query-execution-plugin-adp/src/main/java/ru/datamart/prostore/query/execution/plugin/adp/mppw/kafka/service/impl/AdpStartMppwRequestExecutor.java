@@ -15,17 +15,18 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adp.mppw.kafka.service.impl;
 
+import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.avro.Schema;
+import org.springframework.stereotype.Service;
+import ru.datamart.prostore.common.model.ddl.EntityType;
 import ru.datamart.prostore.query.execution.plugin.adp.base.Constants;
 import ru.datamart.prostore.query.execution.plugin.adp.base.properties.AdpMppwProperties;
 import ru.datamart.prostore.query.execution.plugin.adp.connector.dto.AdpConnectorMppwStartRequest;
 import ru.datamart.prostore.query.execution.plugin.adp.connector.service.AdpConnectorClient;
 import ru.datamart.prostore.query.execution.plugin.adp.mppw.kafka.service.AdpMppwRequestExecutor;
 import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
-import io.vertx.core.Future;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.apache.avro.Schema;
-import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service("adpStartMppwRequestExecutor")
@@ -44,16 +45,30 @@ public class AdpStartMppwRequestExecutor implements AdpMppwRequestExecutor {
     public Future<String> execute(MppwKafkaRequest request) {
         return Future.future(promise -> {
             log.info("[ADP] Trying to start MPPW, request: [{}]", request);
+            val destinationEntity = request.getDestinationEntity();
+
+            String table;
+            String schema;
+            if (destinationEntity.getEntityType() == EntityType.WRITEABLE_EXTERNAL_TABLE) {
+                val schemaAndTableName = destinationEntity.getExternalTableLocationPath().split("\\.");
+                schema = schemaAndTableName[0];
+                table = schemaAndTableName[1];
+            } else {
+                schema = destinationEntity.getSchema();
+                table = destinationEntity.getName() + STAGING_POSTFIX;
+            }
+
             val connectorRequest = AdpConnectorMppwStartRequest.builder()
                     .requestId(request.getRequestId().toString())
-                    .datamart(request.getDatamartMnemonic())
-                    .tableName(request.getDestinationEntity().getName() + STAGING_POSTFIX)
+                    .datamart(schema)
+                    .tableName(table)
                     .kafkaBrokers(request.getBrokers())
                     .kafkaTopic(request.getTopic())
                     .consumerGroup(adpMppwProperties.getKafkaConsumerGroup())
                     .format(request.getUploadMetadata().getFormat().getName())
                     .schema(new Schema.Parser().parse(request.getUploadMetadata().getExternalSchema()))
                     .build();
+
             connectorClient.startMppw(connectorRequest)
                     .onSuccess(v -> {
                         log.info("[ADP] Mppw started successfully");

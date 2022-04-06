@@ -15,58 +15,48 @@
  */
 package ru.datamart.prostore.query.execution.core.dml.service;
 
-import ru.datamart.prostore.common.model.ddl.Entity;
-import ru.datamart.prostore.common.reader.SourceType;
-import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.EntityDao;
-import ru.datamart.prostore.query.execution.core.query.exception.NoSingleDataSourceContainsAllEntitiesException;
-import ru.datamart.prostore.query.execution.model.metadata.Datamart;
-import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
 import lombok.val;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import ru.datamart.prostore.common.model.ddl.Entity;
+import ru.datamart.prostore.common.reader.SourceType;
+import ru.datamart.prostore.query.execution.core.query.exception.NoSingleDataSourceContainsAllEntitiesException;
+import ru.datamart.prostore.query.execution.model.metadata.Datamart;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 public class AcceptableSourceTypesDefinitionService {
 
-    private final EntityDao entityDao;
-
-    @Autowired
-    public AcceptableSourceTypesDefinitionService(EntityDao entityDao) {
-        this.entityDao = entityDao;
+    public AcceptableSourceTypesDefinitionService() {
     }
 
     public Future<Set<SourceType>> define(List<Datamart> schema) {
-        return getEntities(schema)
-                .map(this::getSourceTypes);
+        return Future.future(promise -> {
+            val entities = getEntities(schema);
+            promise.complete(getSourceTypes(entities));
+        });
     }
 
-    private Future<List<Entity>> getEntities(List<Datamart> schema) {
-        return Future.future(promise -> {
-            List<Future> entityFutures = new ArrayList<>();
-            schema.forEach(datamart ->
-                    datamart.getEntities().forEach(entity ->
-                            entityFutures.add(entityDao.getEntity(datamart.getMnemonic(), entity.getName()))
-                    ));
+    private List<Entity> getEntities(List<Datamart> schema) {
+        if (schema == null) {
+            return Collections.emptyList();
+        }
 
-            CompositeFuture.join(entityFutures)
-                    .onSuccess(entities -> promise.complete(entities.list()))
-                    .onFailure(promise::fail);
-        });
+        return schema.stream()
+                .flatMap(datamart -> datamart.getEntities() != null ? datamart.getEntities().stream() : Stream.empty())
+                .collect(Collectors.toList());
     }
 
     private Set<SourceType> getSourceTypes(List<Entity> entities) {
         val stResult = getCommonSourceTypes(entities);
         if (stResult.isEmpty()) {
             throw new NoSingleDataSourceContainsAllEntitiesException();
-        } else {
-            return stResult;
         }
+
+        return stResult;
     }
 
     private Set<SourceType> getCommonSourceTypes(List<Entity> entities) {
@@ -74,8 +64,11 @@ public class AcceptableSourceTypesDefinitionService {
             return new HashSet<>();
         }
 
-        Set<SourceType> stResult = new HashSet<>(entities.get(0).getDestination());
-        entities.forEach(e -> stResult.retainAll(e.getDestination()));
-        return stResult;
+        val result = EnumSet.allOf(SourceType.class);
+        entities.stream()
+                .map(Entity::getDestination)
+                .map(sourceTypes -> sourceTypes == null ? Collections.<SourceType>emptySet() : sourceTypes)
+                .forEach(result::retainAll);
+        return result;
     }
 }

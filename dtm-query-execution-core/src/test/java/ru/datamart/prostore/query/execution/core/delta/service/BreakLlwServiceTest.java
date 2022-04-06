@@ -31,14 +31,13 @@ import org.mockito.MockitoAnnotations;
 
 import java.util.Arrays;
 
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(VertxExtension.class)
 public class BreakLlwServiceTest {
 
     private static final String DATAMART = "test_datamart";
+    private static final Long NOT_EXIST_SYS_CN = 100L;
 
     @Mock
     private DeltaServiceDao deltaServiceDao;
@@ -93,6 +92,34 @@ public class BreakLlwServiceTest {
                 verify(deltaServiceDao).writeOperationError(DATAMART, 4);
                 verify(deltaServiceDao, never()).writeOperationError(DATAMART, 1);
                 verify(deltaServiceDao, never()).writeOperationError(DATAMART, 3);
+                testContext.completeNow();
+            }
+        });
+    }
+
+    @Test
+    public void testBreakLlwWithSysCnSuccess(VertxTestContext testContext) {
+        breakLlwService.breakLlw(DATAMART, 2L).onComplete(ar -> {
+            if (ar.failed()) {
+                testContext.failNow(ar.cause());
+            } else {
+                verify(deltaServiceDao, times(1)).writeOperationError(DATAMART, 2L);
+                verify(deltaServiceDao, never()).writeOperationError(DATAMART, 1L);
+                verify(deltaServiceDao, never()).writeOperationError(DATAMART, 3L);
+                verify(deltaServiceDao, never()).writeOperationError(DATAMART, 4L);
+                testContext.completeNow();
+            }
+        });
+    }
+
+    @Test
+    public void testBreakLlwWithNotExistSysCnSuccess(VertxTestContext testContext) {
+        breakLlwService.breakLlw(DATAMART, NOT_EXIST_SYS_CN).onComplete(ar -> {
+            if (ar.failed()) {
+                testContext.failNow(ar.cause());
+            } else {
+                verify(deltaServiceDao, times(1)).getDeltaWriteOperations(DATAMART);
+                verify(deltaServiceDao, never()).writeOperationError(DATAMART, NOT_EXIST_SYS_CN);
                 testContext.completeNow();
             }
         });

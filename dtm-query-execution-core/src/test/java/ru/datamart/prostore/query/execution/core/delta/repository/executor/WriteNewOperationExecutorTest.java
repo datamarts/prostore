@@ -66,7 +66,7 @@ class WriteNewOperationExecutorTest {
     }
 
     @Test
-    public void shouldSuccessWhenHotDeltaIsNotNull(VertxTestContext testContext) {
+    void shouldSuccessWhenHotDeltaIsNotNull(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH))).thenReturn(Future.succeededFuture(CoreSerialization.serialize(getHotDelta())));
         when(executor.multi(any())).thenReturn(Future.succeededFuture(getCreateOpResult()));
 
@@ -77,7 +77,7 @@ class WriteNewOperationExecutorTest {
     }
 
     @Test
-    public void shouldFailWhenDeltaHotIsNull(VertxTestContext testContext) {
+    void shouldFailWhenDeltaHotIsNull(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH))).thenReturn(Future.succeededFuture(CoreSerialization.serialize(getOkDelta())));
 
         operationExecutor.execute(deltaWriteOpRequest)
@@ -91,7 +91,7 @@ class WriteNewOperationExecutorTest {
     }
 
     @Test
-    public void shouldFailWhenGetDataReturnNullBytes(VertxTestContext testContext) {
+    void shouldFailWhenGetDataReturnNullBytes(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH))).thenReturn(Future.succeededFuture(null));
         when(executor.multi(any())).thenReturn(Future.succeededFuture());
 
@@ -106,7 +106,7 @@ class WriteNewOperationExecutorTest {
     }
 
     @Test
-    public void shouldFailWhenIncorrectCreateResultPath(VertxTestContext testContext) {
+    void shouldFailWhenIncorrectCreateResultPath(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH))).thenReturn(Future.succeededFuture(CoreSerialization.serialize(getHotDelta())));
         when(executor.multi(any())).thenReturn(Future.succeededFuture(getCreateOpResultWithIncorrectPath()));
 
@@ -121,7 +121,7 @@ class WriteNewOperationExecutorTest {
     }
 
     @Test
-    public void shouldFailWhenExceptionInSequentialNodeCreation(VertxTestContext testContext) {
+    void shouldFailWhenExceptionInSequentialNodeCreation(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH))).thenReturn(Future.succeededFuture(CoreSerialization.serialize(getHotDelta())));
         when(executor.multi(any())).thenReturn(Future.succeededFuture(anyList()));
 
@@ -136,7 +136,7 @@ class WriteNewOperationExecutorTest {
     }
 
     @Test
-    public void shouldFailWhenNodeExists(VertxTestContext testContext) {
+    void shouldFailWhenNodeExists(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH))).thenReturn(Future.failedFuture(new KeeperException.NodeExistsException()));
 
         operationExecutor.execute(deltaWriteOpRequest)
@@ -150,7 +150,7 @@ class WriteNewOperationExecutorTest {
     }
 
     @Test
-    public void shouldFailWhenUnexpectedError(VertxTestContext testContext) {
+    void shouldFailWhenUnexpectedError(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH))).thenReturn(Future.failedFuture(new RuntimeException()));
 
         operationExecutor.execute(deltaWriteOpRequest)

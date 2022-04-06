@@ -15,24 +15,27 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adg.dml.service;
 
-import ru.datamart.prostore.common.dto.QueryParserRequest;
-import ru.datamart.prostore.common.model.ddl.ColumnType;
-import ru.datamart.prostore.common.model.ddl.Entity;
-import ru.datamart.prostore.common.model.ddl.EntityField;
-import ru.datamart.prostore.query.calcite.core.service.QueryParserService;
-import ru.datamart.prostore.query.execution.model.metadata.Datamart;
-import ru.datamart.prostore.query.execution.plugin.adg.calcite.configuration.AdgCalciteConfiguration;
-import ru.datamart.prostore.query.execution.plugin.adg.calcite.factory.AdgCalciteSchemaFactory;
-import ru.datamart.prostore.query.execution.plugin.adg.calcite.factory.AdgSchemaFactory;
-import ru.datamart.prostore.query.execution.plugin.adg.calcite.service.AdgCalciteContextProvider;
-import ru.datamart.prostore.query.execution.plugin.adg.calcite.service.AdgCalciteDMLQueryParserService;
-import ru.datamart.prostore.query.execution.plugin.adg.utils.TestUtils;
-import ru.datamart.prostore.query.execution.plugin.api.service.LlrValidationService;
 import io.vertx.core.Vertx;
 import io.vertx.junit5.VertxTestContext;
 import lombok.val;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import ru.datamart.prostore.common.dto.QueryParserRequest;
+import ru.datamart.prostore.common.model.ddl.ColumnType;
+import ru.datamart.prostore.common.model.ddl.Entity;
+import ru.datamart.prostore.common.model.ddl.EntityField;
+import ru.datamart.prostore.common.model.ddl.EntityType;
+import ru.datamart.prostore.query.calcite.core.service.QueryParserService;
+import ru.datamart.prostore.query.execution.model.metadata.Datamart;
+import ru.datamart.prostore.query.execution.plugin.adg.base.factory.AdgHelperTableNamesFactory;
+import ru.datamart.prostore.query.execution.plugin.adg.calcite.configuration.AdgCalciteConfiguration;
+import ru.datamart.prostore.query.execution.plugin.adg.calcite.factory.AdgCalciteSchemaFactory;
+import ru.datamart.prostore.query.execution.plugin.adg.calcite.factory.AdgSchemaFactory;
+import ru.datamart.prostore.query.execution.plugin.adg.calcite.service.AdgCalciteContextProvider;
+import ru.datamart.prostore.query.execution.plugin.adg.calcite.service.AdgCalciteDMLQueryParserService;
+import ru.datamart.prostore.query.execution.plugin.adg.enrichment.service.AdgSchemaExtender;
+import ru.datamart.prostore.query.execution.plugin.adg.utils.TestUtils;
+import ru.datamart.prostore.query.execution.plugin.api.service.LlrValidationService;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -44,6 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AdgValidationServiceTest {
 
+    public static final String ENV = "env";
     private final LlrValidationService validationService = new AdgValidationService();
     private QueryParserService queryParserService;
 
@@ -51,12 +55,12 @@ class AdgValidationServiceTest {
     void setUp() {
         val calciteConfiguration = new AdgCalciteConfiguration();
         calciteConfiguration.init();
-        val parserConfig = calciteConfiguration.configDdlParser(
-                calciteConfiguration.ddlParserImplFactory());
+        val parserConfig = calciteConfiguration.configDdlParser(calciteConfiguration.ddlParserImplFactory());
         val contextProvider = new AdgCalciteContextProvider(
                 parserConfig,
                 new AdgCalciteSchemaFactory(new AdgSchemaFactory()));
-        queryParserService = new AdgCalciteDMLQueryParserService(contextProvider, Vertx.vertx());
+        val schemaExtender = new AdgSchemaExtender(new AdgHelperTableNamesFactory());
+        queryParserService = new AdgCalciteDMLQueryParserService(contextProvider, Vertx.vertx(), schemaExtender);
     }
 
     @Test
@@ -64,7 +68,7 @@ class AdgValidationServiceTest {
         List<Datamart> datamarts = Collections.singletonList(getSchema("shares", true));
         String sql = "SELECT * FROM shares.accounts a INNER JOIN shares.transactions t ON a.account_id = t.account_id";
         val testContext = new VertxTestContext();
-        queryParserService.parse(new QueryParserRequest(TestUtils.DEFINITION_SERVICE.processingQuery(sql), datamarts))
+        queryParserService.parse(new QueryParserRequest(TestUtils.DEFINITION_SERVICE.processingQuery(sql), datamarts, ENV))
                 .map(parserResponse -> {
                     validationService.validate(parserResponse);
                     return parserResponse;
@@ -79,7 +83,7 @@ class AdgValidationServiceTest {
         List<Datamart> datamarts = Collections.singletonList(getSchema("shares", true));
         String sql = "SELECT * FROM shares.accounts a FULL JOIN shares.transactions t ON a.account_id = t.account_id";
         val testContext = new VertxTestContext();
-        queryParserService.parse(new QueryParserRequest(TestUtils.DEFINITION_SERVICE.processingQuery(sql), datamarts))
+        queryParserService.parse(new QueryParserRequest(TestUtils.DEFINITION_SERVICE.processingQuery(sql), datamarts, ENV))
                 .map(parserResponse -> {
                     validationService.validate(parserResponse);
                     return parserResponse;
@@ -93,6 +97,7 @@ class AdgValidationServiceTest {
         Entity accounts = Entity.builder()
                 .schema(schemaName)
                 .name("accounts")
+                .entityType(EntityType.TABLE)
                 .build();
         List<EntityField> accAttrs = Arrays.asList(
                 EntityField.builder()
@@ -121,6 +126,7 @@ class AdgValidationServiceTest {
         Entity transactions = Entity.builder()
                 .schema(schemaName)
                 .name("transactions")
+                .entityType(EntityType.TABLE)
                 .build();
 
         List<EntityField> trAttr = Arrays.asList(

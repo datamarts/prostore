@@ -34,7 +34,7 @@ public interface KafkaMppwSqlFactory {
                                           String consumerGroup,
                                           long pollTimeout);
 
-    String dropExtTableSqlQuery(String schema, String talbe, String requestId);
+    String dropExtTableSqlQuery(String schema, String table, String requestId);
 
     String moveOffsetsExtTableSqlQuery(String schema, String table);
 
@@ -55,7 +55,7 @@ public interface KafkaMppwSqlFactory {
 
     String dropForeignTableSqlQuery(String schema, String table);
 
-    String insertIntoStagingTableSqlQuery(String schema, String columns, String table, String extTable);
+    String insertIntoTableSqlQuery(String schema, String columns, String table, String extTable);
 
     String insertIntoStagingTablePxfSqlQuery(String schema, String insertColumns, String selectColumns, String table, String extTable);
 

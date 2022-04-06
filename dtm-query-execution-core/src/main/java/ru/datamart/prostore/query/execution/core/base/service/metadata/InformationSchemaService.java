@@ -15,23 +15,6 @@
  */
 package ru.datamart.prostore.query.execution.core.base.service.metadata;
 
-import ru.datamart.prostore.cache.service.CacheService;
-import ru.datamart.prostore.common.exception.DtmException;
-import ru.datamart.prostore.common.model.ddl.ColumnType;
-import ru.datamart.prostore.common.model.ddl.Entity;
-import ru.datamart.prostore.common.model.ddl.EntityField;
-import ru.datamart.prostore.common.model.ddl.EntityType;
-import ru.datamart.prostore.common.reader.InformationSchemaView;
-import ru.datamart.prostore.query.execution.core.base.dto.cache.EntityKey;
-import ru.datamart.prostore.query.execution.core.base.dto.cache.MaterializedViewCacheValue;
-import ru.datamart.prostore.query.execution.core.base.exception.datamart.DatamartAlreadyExistsException;
-import ru.datamart.prostore.query.execution.core.base.exception.entity.EntityNotExistsException;
-import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.DatamartDao;
-import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.EntityDao;
-import ru.datamart.prostore.query.execution.core.base.service.hsql.HSQLClient;
-import ru.datamart.prostore.query.execution.core.base.service.metadata.query.DdlQueryGenerator;
-import ru.datamart.prostore.query.execution.core.base.utils.InformationSchemaEntityType;
-import ru.datamart.prostore.query.execution.core.base.utils.InformationSchemaUtils;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
 import io.vertx.core.json.JsonArray;
@@ -45,6 +28,20 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
+import ru.datamart.prostore.cache.service.CacheService;
+import ru.datamart.prostore.common.exception.DtmException;
+import ru.datamart.prostore.common.model.ddl.*;
+import ru.datamart.prostore.common.reader.InformationSchemaView;
+import ru.datamart.prostore.query.execution.core.base.dto.cache.EntityKey;
+import ru.datamart.prostore.query.execution.core.base.dto.cache.MaterializedViewCacheValue;
+import ru.datamart.prostore.query.execution.core.base.exception.datamart.DatamartAlreadyExistsException;
+import ru.datamart.prostore.query.execution.core.base.exception.entity.EntityNotExistsException;
+import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.DatamartDao;
+import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.EntityDao;
+import ru.datamart.prostore.query.execution.core.base.service.hsql.HSQLClient;
+import ru.datamart.prostore.query.execution.core.base.service.metadata.query.DdlQueryGenerator;
+import ru.datamart.prostore.query.execution.core.base.utils.InformationSchemaEntityType;
+import ru.datamart.prostore.query.execution.core.base.utils.InformationSchemaUtils;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -64,6 +61,7 @@ public class InformationSchemaService {
     private static final String IS_NULLABLE_COLUMN_TRUE = "YES";
     private static final String MATERIALIZED_VIEW_PREFIX = "sys_";
     private static final String COMMENTS_DELIMETER = ";";
+    private static final Set<EntityType> TABLE_COMMENTS_ENTITY_TYPES = EnumSet.of(EntityType.TABLE, EntityType.WRITEABLE_EXTERNAL_TABLE, EntityType.READABLE_EXTERNAL_TABLE);
 
     private final ApplicationContext applicationContext;
     private final DdlQueryGenerator ddlQueryGenerator;
@@ -210,10 +208,7 @@ public class InformationSchemaService {
     }
 
     private String createShardingKeyIndex(Entity entity) {
-        val shardingKeyColumns = entity.getFields().stream()
-                .filter(field -> field.getShardingOrder() != null)
-                .map(EntityField::getName)
-                .collect(Collectors.toList());
+        val shardingKeyColumns = EntityFieldUtils.getShardingKeyNames(entity);
         return String.format(InformationSchemaUtils.CREATE_SHARDING_KEY_INDEX,
                 entity.getName(), entity.getNameWithSchema(), String.join(", ", shardingKeyColumns));
     }
@@ -305,8 +300,8 @@ public class InformationSchemaService {
     private Future<Void> storeLogicSchemaInDatasource(List<Entity> entities) {
         return Future.future(p ->
                 CompositeFuture.join(entities.stream()
-                                .map(this::createEntityIfNotExists)
-                                .collect(Collectors.toList()))
+                        .map(this::createEntityIfNotExists)
+                        .collect(Collectors.toList()))
                         .onSuccess(success -> p.complete())
                         .onFailure(p::fail));
     }
@@ -346,8 +341,8 @@ public class InformationSchemaService {
 
     private Future<List<Entity>> getAllEntities(List<String> datamarts) {
         return CompositeFuture.join(datamarts.stream()
-                        .map(this::getEntitiesByDatamart)
-                        .collect(Collectors.toList()))
+                .map(this::getEntitiesByDatamart)
+                .collect(Collectors.toList()))
                 .map(entityResult -> entityResult.list().stream()
                         .flatMap(list -> ((List<Entity>) list).stream())
                         .collect(Collectors.toList()));
@@ -360,8 +355,8 @@ public class InformationSchemaService {
 
     private Future<List<Entity>> getEntitiesByNames(String datamart, List<String> entitiesNames) {
         return Future.future(promise -> CompositeFuture.join(entitiesNames.stream()
-                        .map(entity -> entityDao.getEntity(datamart, entity))
-                        .collect(Collectors.toList()))
+                .map(entity -> entityDao.getEntity(datamart, entity))
+                .collect(Collectors.toList()))
                 .onSuccess(entityResult -> promise.complete(entityResult.list()))
                 .onFailure(promise::fail));
     }
@@ -372,16 +367,18 @@ public class InformationSchemaService {
         List<String> commentQueries = new ArrayList<>();
         List<String> createShardingKeys = new ArrayList<>();
         entities.forEach(entity -> {
-            if (EntityType.VIEW.equals(entity.getEntityType())) {
+            if (TABLE_COMMENTS_ENTITY_TYPES.contains(entity.getEntityType())) {
+                tableEntities.add(ddlQueryGenerator.generateCreateTableQuery(entity));
+                if (!EntityFieldUtils.getShardingKeyNames(entity).isEmpty()) {
+                    createShardingKeys.add(createShardingKeyIndex(entity));
+                }
+                commentQueries.addAll(getCommentQueries(entity));
+            }
+            if (EntityType.VIEW == entity.getEntityType()) {
                 viewEntities.add(ddlQueryGenerator.generateCreateViewQuery(entity, ""));
                 commentQueries.addAll(getCommentQueries(entity));
             }
-            if (EntityType.TABLE.equals(entity.getEntityType())) {
-                tableEntities.add(ddlQueryGenerator.generateCreateTableQuery(entity));
-                createShardingKeys.add(createShardingKeyIndex(entity));
-                commentQueries.addAll(getCommentQueries(entity));
-            }
-            if (EntityType.MATERIALIZED_VIEW.equals(entity.getEntityType())) {
+            if (EntityType.MATERIALIZED_VIEW == entity.getEntityType()) {
                 viewEntities.add(ddlQueryGenerator.generateCreateViewQuery(entity, MATERIALIZED_VIEW_PREFIX));
                 tableEntities.add(ddlQueryGenerator.generateCreateTableQuery(entity));
                 createShardingKeys.add(createShardingKeyIndex(entity));
@@ -417,19 +414,7 @@ public class InformationSchemaService {
                     .collect(Collectors.joining(", ")));
         }
         comment.append(COMMENTS_DELIMETER);
-        switch (entity.getEntityType()) {
-            case TABLE:
-                comment.append(InformationSchemaEntityType.BASE_TABLE.getValue());
-                break;
-            case VIEW:
-                comment.append(InformationSchemaEntityType.VIEW.getValue());
-                break;
-            case MATERIALIZED_VIEW:
-                comment.append(InformationSchemaEntityType.MATERIALIZED_VIEW.getValue());
-                break;
-            default:
-                throw new DtmException(String.format("Unexpected entity type %s", entity.getEntityType()));
-        }
+        comment.append(InformationSchemaEntityType.getByEntityType(entity.getEntityType()).getName());
         comment.append(COMMENTS_DELIMETER);
         return comment.toString();
     }

@@ -15,6 +15,10 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adqm.base.service;
 
+import io.vertx.core.Future;
+import lombok.val;
+import org.springframework.context.annotation.Primary;
+import org.springframework.stereotype.Service;
 import ru.datamart.prostore.common.model.ddl.Entity;
 import ru.datamart.prostore.common.model.ddl.EntityFieldUtils;
 import ru.datamart.prostore.query.execution.plugin.adqm.base.configuration.properties.ClickhouseProperties;
@@ -23,10 +27,6 @@ import ru.datamart.prostore.query.execution.plugin.adqm.factory.AdqmTablesSqlFac
 import ru.datamart.prostore.query.execution.plugin.adqm.query.service.DatabaseExecutor;
 import ru.datamart.prostore.query.execution.plugin.api.service.shared.adqm.AdqmSharedService;
 import ru.datamart.prostore.query.execution.plugin.api.shared.adqm.AdqmSharedProperties;
-import io.vertx.core.Future;
-import lombok.val;
-import org.springframework.context.annotation.Primary;
-import org.springframework.stereotype.Service;
 
 @Primary
 @Service
@@ -45,6 +45,11 @@ public class AdqmSharedServiceImpl implements AdqmSharedService {
         this.databaseExecutor = databaseExecutor;
         this.adqmProcessingSqlFactory = adqmProcessingSqlFactory;
         this.adqmTablesSqlFactory = adqmTablesSqlFactory;
+    }
+
+    @Override
+    public Future<Void> flushTable(String table) {
+        return databaseExecutor.executeUpdate(adqmProcessingSqlFactory.getFlushSql(table));
     }
 
     @Override
@@ -100,6 +105,6 @@ public class AdqmSharedServiceImpl implements AdqmSharedService {
     @Override
     public AdqmSharedProperties getSharedProperties() {
         return new AdqmSharedProperties(clickhouseProperties.getHosts(), clickhouseProperties.getUser(), clickhouseProperties.getPassword(),
-                clickhouseProperties.getSocketTimeout(), clickhouseProperties.getDataTransferTimeout());
+                clickhouseProperties.getSocketTimeout(), clickhouseProperties.getDataTransferTimeout(), clickhouseProperties.getBufferSize());
     }
 }

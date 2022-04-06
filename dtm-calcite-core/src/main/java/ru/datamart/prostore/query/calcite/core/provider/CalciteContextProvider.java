@@ -55,7 +55,7 @@ public abstract class CalciteContextProvider {
         });
     }
 
-    public CalciteContextProvider(SqlParser.Config configParser,
+    protected CalciteContextProvider(SqlParser.Config configParser,
                                   CalciteSchemaFactory calciteSchemaFactory) {
         this.configParser = configParser;
         prepareRules =

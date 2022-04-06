@@ -15,6 +15,30 @@
  */
 package ru.datamart.prostore.common.model.ddl;
 
+import ru.datamart.prostore.common.exception.DtmException;
+import ru.datamart.prostore.common.reader.SourceType;
+
 public enum ExternalTableLocationType {
-    KAFKA, FILE, HDFS
+    KAFKA,
+    FILE,
+    HDFS,
+    CORE_ADB,
+    CORE_ADP,
+    CORE_ADG,
+    CORE_ADQM;
+
+    public static ExternalTableLocationType fromSourceType(SourceType type) {
+        switch (type) {
+            case ADG:
+                return CORE_ADG;
+            case ADB:
+                return CORE_ADB;
+            case ADP:
+                return CORE_ADP;
+            case ADQM:
+                return CORE_ADQM;
+            default:
+                throw new DtmException(String.format("Invalid external table location of source type %s", type));
+        }
+    }
 }

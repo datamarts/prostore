@@ -33,7 +33,7 @@ public abstract class DtmConvention extends Convention.Impl {
     protected final Collection<String> functions = new ArrayList<>();
     protected final Collection<String> aggregateFunctions = new ArrayList<>();
 
-    public DtmConvention(Datamart datamart, Expression schemaExpression) {
+    protected DtmConvention(Datamart datamart, Expression schemaExpression) {
         super("DtmConvention", DtmRelation.class);
         this.datamart = datamart;
         this.schemaExpression = schemaExpression;

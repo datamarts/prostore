@@ -15,12 +15,14 @@
  */
 package ru.datamart.prostore.query.execution.core.eddl.dto;
 
-import ru.datamart.prostore.common.model.ddl.Entity;
-import ru.datamart.prostore.common.model.ddl.ExternalTableFormat;
-import ru.datamart.prostore.common.plugin.exload.Type;
 import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import ru.datamart.prostore.common.model.ddl.Entity;
+import ru.datamart.prostore.common.model.ddl.ExternalTableFormat;
+import ru.datamart.prostore.common.plugin.exload.Type;
+
+import java.util.Map;
 
 /**
  * Upload External table creation request
@@ -56,6 +58,10 @@ public class CreateUploadExternalTableQuery extends EddlQuery {
      * Chunk size
      */
     private Integer messageLimit;
+    /**
+     * Options
+     */
+    private Map<String, String> optionsMap;
 
     @Builder
     public CreateUploadExternalTableQuery(String schemaName,
@@ -65,7 +71,8 @@ public class CreateUploadExternalTableQuery extends EddlQuery {
                                           String locationPath,
                                           ExternalTableFormat format,
                                           String tableSchema,
-                                          Integer messageLimit) {
+                                          Integer messageLimit,
+                                          Map<String, String> optionsMap) {
         super(EddlAction.CREATE_UPLOAD_EXTERNAL_TABLE, schemaName, tableName);
         this.entity = entity;
         this.locationType = locationType;
@@ -73,5 +80,6 @@ public class CreateUploadExternalTableQuery extends EddlQuery {
         this.format = format;
         this.tableSchema = tableSchema;
         this.messageLimit = messageLimit;
+        this.optionsMap = optionsMap;
     }
 }

@@ -15,11 +15,6 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.enrichment.service;
 
-import ru.datamart.prostore.common.delta.DeltaInformation;
-import ru.datamart.prostore.common.delta.DeltaType;
-import ru.datamart.prostore.query.execution.plugin.api.exception.DataSourceException;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.QueryGeneratorContext;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryExtendService;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.apache.calcite.rel.RelNode;
@@ -31,26 +26,30 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexSubQuery;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.tools.RelBuilder;
+import ru.datamart.prostore.common.delta.DeltaInformation;
+import ru.datamart.prostore.common.delta.DeltaType;
+import ru.datamart.prostore.common.exception.DtmException;
+import ru.datamart.prostore.query.execution.plugin.adb.calcite.model.schema.AdbDtmTable;
+import ru.datamart.prostore.query.execution.plugin.api.exception.DataSourceException;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.QueryGeneratorContext;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryExtendService;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.stream.IntStream;
+import java.util.stream.Collectors;
 
 import static ru.datamart.prostore.query.execution.plugin.adb.base.factory.Constants.*;
 
 @Slf4j
 public class AdbDmlQueryExtendWithoutHistoryService implements QueryExtendService {
-
-    public static final String TABLE_PREFIX = "_";
     public static final long SYS_TO_MAX_VALUE = 9223372036854775807L;
 
     @Override
     public RelNode extendQuery(QueryGeneratorContext context) {
-        context.getRelBuilder().clear();
-        val relNode = iterateTree(context, context.getRelNode().rel);
-        context.getRelBuilder().clear();
-        return relNode;
+        val relBuilder = context.getRelBuilder();
+        relBuilder.clear();
+        return iterateTree(context, context.getRelNode().rel);
     }
 
     private RelNode iterateTree(QueryGeneratorContext context, RelNode node) {
@@ -109,17 +108,26 @@ public class AdbDmlQueryExtendWithoutHistoryService implements QueryExtendServic
         val qualifiedName = tableScan.getTable().getQualifiedName();
         val mutableQualifiedName = new ArrayList<>(qualifiedName);
         val rexBuilder = relBuilder.getCluster().getRexBuilder();
-        val rexNodes = createTableRexNodes(tableScan, rexBuilder);
-        RelNode subRelNode = createExtendedRelNode(deltaInfo, relBuilder, mutableQualifiedName, rexNodes);
-        return relBuilder.push(subRelNode).build();
+        val rexNodes = getRexNodes(tableScan, rexBuilder);
+
+        val entity = tableScan.getTable().unwrap(AdbDtmTable.class).getEntity();
+        switch (entity.getEntityType()) {
+            case WRITEABLE_EXTERNAL_TABLE:
+                throw new DtmException("Enriched query should not contain WRITABLE EXTERNAL tables");
+            case READABLE_EXTERNAL_TABLE:
+                if (deltaInfo.getType() != DeltaType.WITHOUT_SNAPSHOT) {
+                    throw new DtmException("FOR SYSTEM_TIME clause is not supported for external tables");
+                }
+                return relBuilder.scan(entity.getExternalTableLocationPath().split("\\.")).project(rexNodes).build();
+            default:
+                return createExtendedRelNode(deltaInfo, relBuilder, mutableQualifiedName, rexNodes);
+        }
     }
 
-    private List<RexNode> createTableRexNodes(RelNode tableScan, RexBuilder rexBuilder) {
-        val rexNodes = new ArrayList<RexNode>();
-        IntStream.range(0, tableScan.getTable().getRowType().getFieldList().size()).forEach(index ->
-                rexNodes.add(rexBuilder.makeInputRef(tableScan, index))
-        );
-        return rexNodes;
+    private List<RexNode> getRexNodes(RelNode tableScan, RexBuilder rexBuilder) {
+        return tableScan.getTable().getRowType().getFieldList().stream()
+                .map(relDataTypeField -> rexBuilder.makeInputRef(tableScan, relDataTypeField.getIndex()))
+                .collect(Collectors.toList());
     }
 
     private RelNode createExtendedRelNode(DeltaInformation deltaInfo,

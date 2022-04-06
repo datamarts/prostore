@@ -35,6 +35,8 @@ import ru.datamart.prostore.serialization.CoreSerialization;
 
 import java.time.LocalDateTime;
 
+import static ru.datamart.prostore.query.execution.core.delta.utils.DeltaQueryUtil.DELTA_DATE_TIME_FORMATTER;
+
 @Service
 public class PublishStatusDdlPostExecutor implements PostExecutor<DdlRequestContext> {
     private final Vertx vertx;
@@ -49,7 +51,7 @@ public class PublishStatusDdlPostExecutor implements PostExecutor<DdlRequestCont
         try {
             val eventData = DatamartSchemaChangedEvent.builder()
                     .datamart(context.getDatamartName())
-                    .changeDateTime(LocalDateTime.now(CoreConstants.CORE_ZONE_ID))
+                    .changeDateTime(LocalDateTime.now(CoreConstants.CORE_ZONE_ID).format(DELTA_DATE_TIME_FORMATTER))
                     .build();
             val message = CoreSerialization.serializeAsString(eventData);
             val options = new DeliveryOptions();

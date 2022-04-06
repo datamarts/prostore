@@ -28,7 +28,7 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor
 public class TransferDataRequest implements Serializable {
-    private long hotDelta;
+    private Long hotDelta;
     private String datamart;
     private String tableName;
     private List<String> columnList;

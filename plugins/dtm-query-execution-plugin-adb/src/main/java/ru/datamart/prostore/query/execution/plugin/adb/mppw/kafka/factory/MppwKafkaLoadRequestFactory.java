@@ -15,15 +15,18 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.factory;
 
-import ru.datamart.prostore.common.dto.KafkaBrokerInfo;
-import ru.datamart.prostore.query.execution.plugin.adb.mppw.configuration.properties.AdbMppwProperties;
-import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.dto.MppwKafkaLoadRequest;
-import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
-import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.UploadExternalEntityMetadata;
 import lombok.val;
 import org.apache.avro.Schema;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import ru.datamart.prostore.common.dto.KafkaBrokerInfo;
+import ru.datamart.prostore.common.model.ddl.Entity;
+import ru.datamart.prostore.common.model.ddl.EntityType;
+import ru.datamart.prostore.query.execution.plugin.adb.mppw.configuration.properties.AdbMppwProperties;
+import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.dto.MppwKafkaLoadRequest;
+import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.service.executor.AdbMppwUtils;
+import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
+import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.UploadExternalEntityMetadata;
 
 import java.util.Arrays;
 import java.util.List;
@@ -47,29 +50,31 @@ public class MppwKafkaLoadRequestFactory {
         val uploadMeta = (UploadExternalEntityMetadata) request.getUploadMetadata();
         val schema = new Schema.Parser().parse(uploadMeta.getExternalSchema());
         val reqId = request.getRequestId().toString();
+        val destinationEntity = request.getDestinationEntity();
+        val tableSchema = AdbMppwUtils.getTableSchema(destinationEntity);
         return MppwKafkaLoadRequest.builder()
-            .requestId(reqId)
-            .datamart(request.getDatamartMnemonic())
-            .tableName(request.getDestinationEntity().getName())
-            .writableExtTableName(kafkaMppwSqlFactory.getTableName(reqId))
-            .columns(getColumns(schema))
-            .schema(schema)
-            .brokers(request.getBrokers().stream()
-                    .map(KafkaBrokerInfo::getAddress)
-                    .collect(Collectors.joining(",")))
-            .consumerGroup(adbMppwProperties.getConsumerGroup())
-            .timeout(adbMppwProperties.getStopTimeoutMs())
-            .topic(request.getTopic())
-            .uploadMessageLimit(adbMppwProperties.getDefaultMessageLimit())
-            .server(server)
-            .build();
+                .requestId(reqId)
+                .datamart(tableSchema.getSchema())
+                .tableName(tableSchema.getTable())
+                .writableExtTableName(kafkaMppwSqlFactory.getTableName(reqId))
+                .columns(getColumns(destinationEntity, schema))
+                .schema(schema)
+                .brokers(request.getBrokers().stream()
+                        .map(KafkaBrokerInfo::getAddress)
+                        .collect(Collectors.joining(",")))
+                .consumerGroup(adbMppwProperties.getConsumerGroup())
+                .timeout(adbMppwProperties.getStopTimeoutMs())
+                .topic(request.getTopic())
+                .uploadMessageLimit(adbMppwProperties.getDefaultMessageLimit())
+                .server(server)
+                .build();
     }
 
-    private List<String> getColumns(Schema schema) {
+    private List<String> getColumns(Entity destinationEntity, Schema schema) {
         return schema.getFields().stream()
-            .map(Schema.Field::name)
-            .filter(field -> excludeSystemFields.stream()
-                .noneMatch(sysName -> sysName.equals(field)))
-            .collect(Collectors.toList());
+                .map(Schema.Field::name)
+                .filter(field -> destinationEntity.getEntityType() == EntityType.WRITEABLE_EXTERNAL_TABLE ||
+                        excludeSystemFields.stream().noneMatch(sysName -> sysName.equals(field)))
+                .collect(Collectors.toList());
     }
 }

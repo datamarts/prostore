@@ -15,6 +15,16 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.service.executor.impl.fdw;
 
+import io.vertx.core.Future;
+import io.vertx.core.Vertx;
+import io.vertx.core.json.Json;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Component;
 import ru.datamart.prostore.common.dto.KafkaBrokerInfo;
 import ru.datamart.prostore.common.model.ddl.ColumnType;
 import ru.datamart.prostore.common.model.ddl.EntityFieldUtils;
@@ -29,19 +39,10 @@ import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.factory.KafkaM
 import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.factory.MppwKafkaLoadRequestFactory;
 import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.factory.MppwTransferRequestFactory;
 import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.service.executor.AdbMppwRequestExecutor;
+import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.service.executor.AdbMppwUtils;
 import ru.datamart.prostore.query.execution.plugin.adb.query.service.DatabaseExecutor;
 import ru.datamart.prostore.query.execution.plugin.api.exception.MppwDatasourceException;
 import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
-import io.vertx.core.Future;
-import io.vertx.core.Vertx;
-import io.vertx.core.json.Json;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Component;
 
 import java.util.Collections;
 import java.util.List;
@@ -54,6 +55,7 @@ import java.util.stream.Collectors;
 @Component("adbMppwStartRequestExecutor")
 @Slf4j
 public class AdbMppwStartRequestExecutorFdwImpl implements AdbMppwRequestExecutor {
+    private static final String SYS_OP_INT = "sys_op int";
 
     private final DatabaseExecutor adbQueryExecutor;
     private final KafkaMppwSqlFactory kafkaMppwSqlFactory;
@@ -87,7 +89,7 @@ public class AdbMppwStartRequestExecutorFdwImpl implements AdbMppwRequestExecuto
             return Future.failedFuture(new MppwDatasourceException(String.format("Format %s not implemented", format)));
         }
         return Future.future(promise -> {
-            List<KafkaBrokerInfo> brokers = request.getBrokers();
+            val brokers = request.getBrokers();
             getOrCreateServer(brokers, dbName, request.getRequestId())
                     .compose(server -> createWritableExternalTable(request, server))
                     .map(server -> createMppwKafkaRequestContext(request, server))
@@ -127,11 +129,13 @@ public class AdbMppwStartRequestExecutorFdwImpl implements AdbMppwRequestExecuto
     private Future<String> createWritableExternalTable(MppwKafkaRequest request, String server) {
         val sourceEntity = request.getSourceEntity();
         val columns = kafkaMppwSqlFactory.getColumnsFromEntity(sourceEntity);
-        columns.add("sys_op int");
+        if (AdbMppwUtils.isWithSysOpField(sourceEntity.getExternalTableOptions()) && !columns.contains(SYS_OP_INT)) {
+            columns.add(SYS_OP_INT);
+        }
         return adbQueryExecutor.executeUpdate(kafkaMppwSqlFactory.createWritableExtTableSqlQuery(server,
-                columns,
-                request,
-                mppwProperties))
+                        columns,
+                        request,
+                        mppwProperties))
                 .map(v -> server);
     }
 

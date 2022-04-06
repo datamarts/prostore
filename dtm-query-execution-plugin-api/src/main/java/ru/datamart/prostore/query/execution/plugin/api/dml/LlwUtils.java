@@ -15,6 +15,15 @@
  */
 package ru.datamart.prostore.query.execution.plugin.api.dml;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.val;
+import lombok.var;
+import org.apache.calcite.sql.*;
+import org.apache.calcite.sql.fun.SqlRowOperator;
+import org.apache.calcite.sql.fun.SqlStdOperatorTable;
+import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.sql.type.SqlTypeName;
 import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.common.model.ddl.ColumnType;
 import ru.datamart.prostore.common.model.ddl.Entity;
@@ -28,20 +37,8 @@ import ru.datamart.prostore.query.calcite.core.node.SqlTreeNode;
 import ru.datamart.prostore.query.calcite.core.util.CalciteUtil;
 import ru.datamart.prostore.query.calcite.core.util.SqlNodeTemplates;
 import ru.datamart.prostore.query.calcite.core.util.SqlNodeUtil;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.val;
-import lombok.var;
-import org.apache.calcite.sql.*;
-import org.apache.calcite.sql.fun.SqlRowOperator;
-import org.apache.calcite.sql.fun.SqlStdOperatorTable;
-import org.apache.calcite.sql.parser.SqlParserPos;
-import org.apache.calcite.sql.type.SqlTypeName;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -79,7 +76,7 @@ public final class LlwUtils {
     public static List<ColumnType> getColumnTypesWithAnyForSystem(SqlNodeList sqlNodeList, Entity entity) {
         val fieldsMap = EntityFieldUtils.getFieldsMap(entity);
         return sqlNodeList.getList().stream()
-                .map(sqlNode -> (SqlIdentifier) sqlNode)
+                .map(SqlIdentifier.class::cast)
                 .map(SqlIdentifier::getSimple)
                 .map(key -> {
                     val entityField = fieldsMap.get(key);
@@ -144,6 +141,12 @@ public final class LlwUtils {
         return basicCall(valuesNode.getOperator(), newOperands);
     }
 
+    public static SqlBasicCall getConvertedRowsOfValues(SqlCall valuesNode,
+                                                            List<EntityField> fields,
+                                                            Function<TransformEntry, SqlNode> itemsTransform) {
+        return getExtendRowsOfValues(valuesNode, fields, Collections.emptyList(), itemsTransform);
+    }
+
     public static SqlBasicCall getExtendRowsOfValues(SqlCall valuesNode, List<EntityField> fields, List<SqlLiteral> extendWith) {
         return getExtendRowsOfValues(valuesNode, fields, extendWith, TransformEntry::getSqlNode);
     }
@@ -157,12 +160,12 @@ public final class LlwUtils {
 
         val fieldsMap = EntityFieldUtils.getFieldsMap(entity);
         return pickedColumns.getList().stream()
-                .peek(sqlNode -> {
+                .map(sqlNode -> {
                     if (sqlNode.getClass() != SqlIdentifier.class) {
                         throw new DtmException(String.format("Column name [%s] must be identifier", sqlNode));
                     }
+                    return (SqlIdentifier) sqlNode;
                 })
-                .map(sqlNode -> (SqlIdentifier) sqlNode)
                 .map(sqlIdentifier -> {
                     String fieldName = sqlIdentifier.getSimple();
                     if (!fieldsMap.containsKey(fieldName)) {
@@ -216,6 +219,14 @@ public final class LlwUtils {
             columnNodeList.add(sqlNode);
         }
         return result;
+    }
+
+    public static SqlNodeList convertEntityFieldsToSqlNodeList(List<EntityField> insertedColumns) {
+        val columnList = new SqlNodeList(SqlParserPos.ZERO);
+        for (EntityField insertedColumn : insertedColumns) {
+            columnList.add(identifier(insertedColumn.getName()));
+        }
+        return columnList;
     }
 
     @Getter

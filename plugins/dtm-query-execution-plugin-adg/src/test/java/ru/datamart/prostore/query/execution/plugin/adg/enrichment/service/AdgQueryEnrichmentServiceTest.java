@@ -15,6 +15,7 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adg.enrichment.service;
 
+import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
@@ -29,6 +30,7 @@ import ru.datamart.prostore.common.delta.DeltaInformation;
 import ru.datamart.prostore.common.delta.DeltaType;
 import ru.datamart.prostore.common.delta.SelectOnInterval;
 import ru.datamart.prostore.common.dto.QueryParserRequest;
+import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.common.model.ddl.ColumnType;
 import ru.datamart.prostore.common.model.ddl.Entity;
 import ru.datamart.prostore.common.model.ddl.EntityField;
@@ -70,41 +72,39 @@ class AdgQueryEnrichmentServiceTest {
                 parserConfig,
                 new AdgCalciteSchemaFactory(new AdgSchemaFactory()));
 
-        queryParserService = new AdgCalciteDMLQueryParserService(contextProvider, vertx);
         val helperTableNamesFactory = new AdgHelperTableNamesFactory();
+        val schemaExtender = new AdgSchemaExtender(helperTableNamesFactory);
+        queryParserService = new AdgCalciteDMLQueryParserService(contextProvider, vertx, schemaExtender);
         val queryExtendService = new AdgDmlQueryExtendService(helperTableNamesFactory);
 
         sqlDialect = calciteConfiguration.adgSqlDialect();
         val relToSqlConverter = new DtmRelToSqlConverter(sqlDialect);
         val collateReplacer = new AdgCollateValueReplacer();
-        enrichService = new AdgQueryEnrichmentService(
-                contextProvider,
-                new AdgQueryGenerator(queryExtendService, sqlDialect, relToSqlConverter, collateReplacer),
-                new AdgSchemaExtender(helperTableNamesFactory));
+        enrichService = new AdgQueryEnrichmentService(queryExtendService, sqlDialect, relToSqlConverter, collateReplacer);
     }
 
     @Test
     void enrichWithDeltaNum(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestDeltaNum("SELECT account_id FROM shares.accounts");
+        val enrichQueryRequestFuture = prepareRequestDeltaNum("SELECT account_id FROM shares.accounts");
 
         // act assert
-        enrichAndAssert(testContext, enrichQueryRequest, "SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\"");
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\"");
     }
 
     @Test
     void enrichWithFinishedIn(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestDeltaFinishedIn("SELECT account_id FROM shares.accounts");
+        val enrichQueryRequestFuture = prepareRequestDeltaFinishedIn("SELECT account_id FROM shares.accounts");
 
         // act assert
-        enrichAndAssert(testContext, enrichQueryRequest, "SELECT \"account_id\" FROM \"local__shares__accounts_history\" WHERE \"sys_to\" >= 0 AND (\"sys_to\" <= 0 AND \"sys_op\" = 1)");
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"account_id\" FROM \"local__shares__accounts_history\" WHERE \"sys_to\" >= 0 AND (\"sys_to\" <= 0 AND \"sys_op\" = 1)");
     }
 
     @Test
     void enrichWithDeltaInterval(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestDeltaInterval("select *, CASE WHEN (account_type = 'D' AND  amount >= 0) " +
+        val enrichQueryRequestFuture = prepareRequestDeltaInterval("select *, CASE WHEN (account_type = 'D' AND  amount >= 0) " +
                 "OR (account_type = 'C' AND  amount <= 0) THEN 'OK    ' ELSE 'NOT OK' END\n" +
                 "  from (\n" +
                 "    select a.account_id, coalesce(sum(amount),0) amount, account_type\n" +
@@ -114,120 +114,120 @@ class AdgQueryEnrichmentServiceTest {
                 ")x");
 
         // act assert
-        enrichAndAssert(testContext, enrichQueryRequest, "SELECT \"t3\".\"account_id\", COALESCE(SUM(\"t5\".\"amount\"), 0) AS \"amount\", \"t3\".\"account_type\", CASE WHEN \"t3\".\"account_type\" = 'D' AND COALESCE(SUM(\"t5\".\"amount\"), 0) >= 0 OR \"t3\".\"account_type\" = 'C' AND COALESCE(SUM(\"t5\".\"amount\"), 0) <= 0 THEN 'OK    ' ELSE 'NOT OK' END AS \"EXPR__3\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" >= 1 AND \"sys_from\" <= 5 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" >= 1 AND \"sys_from\" <= 5) AS \"t3\" LEFT JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_history\" WHERE \"sys_to\" >= 2 AND (\"sys_to\" <= 3 AND \"sys_op\" = 1)) AS \"t5\" ON \"t3\".\"account_id\" = \"t5\".\"account_id\" GROUP BY \"t3\".\"account_id\", \"t3\".\"account_type\"");
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"t3\".\"account_id\", COALESCE(SUM(\"t5\".\"amount\"), 0) AS \"amount\", \"t3\".\"account_type\", CASE WHEN \"t3\".\"account_type\" = 'D' AND COALESCE(SUM(\"t5\".\"amount\"), 0) >= 0 OR \"t3\".\"account_type\" = 'C' AND COALESCE(SUM(\"t5\".\"amount\"), 0) <= 0 THEN 'OK    ' ELSE 'NOT OK' END AS \"EXPR__3\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" >= 1 AND \"sys_from\" <= 5 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" >= 1 AND \"sys_from\" <= 5) AS \"t3\" LEFT JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_history\" WHERE \"sys_to\" >= 2 AND (\"sys_to\" <= 3 AND \"sys_op\" = 1)) AS \"t5\" ON \"t3\".\"account_id\" = \"t5\".\"account_id\" GROUP BY \"t3\".\"account_id\", \"t3\".\"account_type\"");
     }
 
     @Test
     void enrichWithQuotes(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestDeltaNum("SELECT \"account_id\" FROM \"shares\".\"accounts\"");
+        val enrichQueryRequestFuture = prepareRequestDeltaNum("SELECT \"account_id\" FROM \"shares\".\"accounts\"");
 
         // act assert
-        enrichAndAssert(testContext, enrichQueryRequest, "SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\"");
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\"");
     }
 
     @Test
     void enrichWithWhereCollate(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestDeltaWithoutSnapshot("SELECT account_id FROM shares.accounts WHERE account_type = 'type' COLLATE 'unicode_ci'");
+        val enrichQueryRequestFuture = prepareRequestDeltaWithoutSnapshot("SELECT account_id FROM shares.accounts WHERE account_type = 'type' COLLATE 'unicode_ci'");
 
         // act assert
-        enrichAndAssert(testContext, enrichQueryRequest, "SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" WHERE \"account_type\" = 'type' COLLATE \"unicode_ci\"");
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" WHERE \"account_type\" = 'type' COLLATE \"unicode_ci\"");
     }
 
     @Test
     void enrichWithManyInKeyword(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestDeltaNum(
+        val enrichQueryRequestFuture = prepareRequestDeltaNum(
                 "SELECT account_id FROM shares.accounts WHERE account_id IN (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23)");
 
         // act assert
-        enrichAndAssert(testContext, enrichQueryRequest, "SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" WHERE \"account_id\" = 1 OR \"account_id\" = 2 OR (\"account_id\" = 3 OR (\"account_id\" = 4 OR \"account_id\" = 5)) OR (\"account_id\" = 6 OR (\"account_id\" = 7 OR \"account_id\" = 8) OR (\"account_id\" = 9 OR (\"account_id\" = 10 OR \"account_id\" = 11))) OR (\"account_id\" = 12 OR (\"account_id\" = 13 OR \"account_id\" = 14) OR (\"account_id\" = 15 OR (\"account_id\" = 16 OR \"account_id\" = 17)) OR (\"account_id\" = 18 OR (\"account_id\" = 19 OR \"account_id\" = 20) OR (\"account_id\" = 21 OR (\"account_id\" = 22 OR \"account_id\" = 23))))");
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" WHERE \"account_id\" = 1 OR \"account_id\" = 2 OR (\"account_id\" = 3 OR (\"account_id\" = 4 OR \"account_id\" = 5)) OR (\"account_id\" = 6 OR (\"account_id\" = 7 OR \"account_id\" = 8) OR (\"account_id\" = 9 OR (\"account_id\" = 10 OR \"account_id\" = 11))) OR (\"account_id\" = 12 OR (\"account_id\" = 13 OR \"account_id\" = 14) OR (\"account_id\" = 15 OR (\"account_id\" = 16 OR \"account_id\" = 17)) OR (\"account_id\" = 18 OR (\"account_id\" = 19 OR \"account_id\" = 20) OR (\"account_id\" = 21 OR (\"account_id\" = 22 OR \"account_id\" = 23))))");
     }
 
     @Test
     void enrichEnrichWithSubquery(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest =
+        val enrichQueryRequestFuture =
                 prepareRequestDeltaNum("SELECT * FROM shares.accounts as b where b.account_id IN (select c.account_id from shares.transactions as c limit 1)");
 
         // act assert
-        enrichAndAssert(testContext, enrichQueryRequest, "SELECT * FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" WHERE \"account_id\" IN (SELECT \"account_id\" FROM (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_actual\" WHERE \"sys_from\" <= 1) AS \"t8\" LIMIT 1)");
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT * FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" WHERE \"account_id\" IN (SELECT \"account_id\" FROM (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_actual\" WHERE \"sys_from\" <= 1) AS \"t8\" LIMIT 1)");
     }
 
     @Test
     void enrichWithMultipleSchemas(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestMultipleSchema("SELECT a.account_id FROM accounts a " +
+        val enrichQueryRequestFuture = prepareRequestMultipleSchema("SELECT a.account_id FROM accounts a " +
                 "JOIN shares_2.accounts aa ON aa.account_id = a.account_id " +
                 "JOIN test_datamart.transactions t ON t.account_id = a.account_id");
 
         // act assert
-        enrichAndAssert(testContext, enrichQueryRequest, "SELECT \"t3\".\"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\"");
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"t3\".\"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\"");
     }
 
     @Test
     void enrichWithCustomSelect(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestDeltaNum(
+        val enrichQueryRequestFuture = prepareRequestDeltaNum(
                 "SELECT *, 0 FROM shares.accounts ORDER BY account_id");
 
         // act assert
-        enrichAndAssert(testContext, enrichQueryRequest, "SELECT \"account_id\", \"account_type\", 0 AS \"EXPR__2\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" ORDER BY \"account_id\"");
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"account_id\", \"account_type\", 0 AS \"EXPR__2\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" ORDER BY \"account_id\"");
     }
 
     @Test
     void enrichWithMultipleLogicalSchemaLimit(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestMultipleSchema(
+        val enrichQueryRequestFuture = prepareRequestMultipleSchema(
                 "select * from accounts a " +
                         "JOIN shares_2.accounts aa ON aa.account_id = a.account_id " +
                         "JOIN test_datamart.transactions t ON t.account_id = a.account_id LIMIT 10");
 
         // act assert
-        enrichAndAssert(testContext, enrichQueryRequest, "SELECT \"t3\".\"account_id\", \"t3\".\"account_type\", \"t8\".\"account_id\" AS \"account_id0\", \"t8\".\"account_type\" AS \"account_type0\", \"t13\".\"transaction_id\", \"t13\".\"transaction_date\", \"t13\".\"account_id\" AS \"account_id1\", \"t13\".\"amount\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\" LIMIT 10");
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"t3\".\"account_id\", \"t3\".\"account_type\", \"t8\".\"account_id\" AS \"account_id0\", \"t8\".\"account_type\" AS \"account_type0\", \"t13\".\"transaction_id\", \"t13\".\"transaction_date\", \"t13\".\"account_id\" AS \"account_id1\", \"t13\".\"amount\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\" LIMIT 10");
     }
 
     @Test
     void enrichWithMultipleLogicalSchemaLimitOrderBy(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestMultipleSchema(
+        val enrichQueryRequestFuture = prepareRequestMultipleSchema(
                 "select * from accounts a " +
                         "JOIN shares_2.accounts aa ON aa.account_id = a.account_id " +
                         "JOIN test_datamart.transactions t ON t.account_id = a.account_id ORDER BY aa.account_id LIMIT 10");
 
         // act assert
-        enrichAndAssert(testContext, enrichQueryRequest, "SELECT \"t3\".\"account_id\", \"t3\".\"account_type\", \"t8\".\"account_id\" AS \"account_id0\", \"t8\".\"account_type\" AS \"account_type0\", \"t13\".\"transaction_id\", \"t13\".\"transaction_date\", \"t13\".\"account_id\" AS \"account_id1\", \"t13\".\"amount\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\" ORDER BY \"t8\".\"account_id\" LIMIT 10");
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"t3\".\"account_id\", \"t3\".\"account_type\", \"t8\".\"account_id\" AS \"account_id0\", \"t8\".\"account_type\" AS \"account_type0\", \"t13\".\"transaction_id\", \"t13\".\"transaction_date\", \"t13\".\"account_id\" AS \"account_id1\", \"t13\".\"amount\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\" ORDER BY \"t8\".\"account_id\" LIMIT 10");
     }
 
     @Test
     void enrichWithMultipleLogicalSchemaLimitOrderByGroupBy(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestMultipleSchema(
+        val enrichQueryRequestFuture = prepareRequestMultipleSchema(
                 "select aa.account_id from accounts a " +
                         "JOIN shares_2.accounts aa ON aa.account_id = a.account_id " +
                         "JOIN test_datamart.transactions t ON t.account_id = a.account_id GROUP BY aa.account_id ORDER BY aa.account_id LIMIT 10");
 
         // act assert
-        enrichAndAssert(testContext, enrichQueryRequest, "SELECT \"t8\".\"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\" GROUP BY \"t8\".\"account_id\" ORDER BY \"t8\".\"account_id\" LIMIT 10");
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"t8\".\"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\" GROUP BY \"t8\".\"account_id\" ORDER BY \"t8\".\"account_id\" LIMIT 10");
     }
 
     @Test
     void enrichWithMultipleLogicalSchemaLimitOrderByGroupByAndAggregate(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestMultipleSchema(
+        val enrichQueryRequestFuture = prepareRequestMultipleSchema(
                 "select aa.account_id, count(*), 1 as K from accounts a " +
                         "JOIN shares_2.accounts aa ON aa.account_id = a.account_id " +
                         "JOIN test_datamart.transactions t ON t.account_id = a.account_id GROUP BY aa.account_id ORDER BY aa.account_id LIMIT 10");
 
         // act assert
-        enrichAndAssert(testContext, enrichQueryRequest, "SELECT \"t8\".\"account_id\", COUNT(*) AS \"EXPR__1\", 1 AS \"k\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\" GROUP BY \"t8\".\"account_id\" ORDER BY \"t8\".\"account_id\" LIMIT 10");
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"t8\".\"account_id\", COUNT(*) AS \"EXPR__1\", 1 AS \"k\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\" GROUP BY \"t8\".\"account_id\" ORDER BY \"t8\".\"account_id\" LIMIT 10");
     }
 
     @Test
     void enrichWithAliasesAndFunctions(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestDeltaNum("SELECT *\n" +
+        val enrichQueryRequestFuture = prepareRequestDeltaNum("SELECT *\n" +
                 "FROM (SELECT\n" +
                 "          account_id      as bc1,\n" +
                 "          true            as bc2,\n" +
@@ -241,13 +241,13 @@ class AdgQueryEnrichmentServiceTest {
         );
 
         // act assert
-        enrichAndAssert(testContext, enrichQueryRequest, "SELECT * FROM (SELECT \"t4\".\"bc1\", \"t4\".\"bc2\", \"t4\".\"bc3\", \"t4\".\"bc4\", \"t4\".\"EXPR__4\", \"t10\".\"transaction_id\", \"t10\".\"transaction_date\", \"t10\".\"account_id\", \"t10\".\"amount\" FROM (SELECT \"account_id\" AS \"bc1\", TRUE AS \"bc2\", ABS(\"account_id\") AS \"bc3\", 'some$' AS \"bc4\", '$some' AS \"EXPR__4\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\") AS \"t4\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\", ABS(\"account_id\") AS \"__f4\" FROM (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_actual\" WHERE \"sys_from\" <= 1) AS \"t9\") AS \"t10\" ON \"t4\".\"bc1\" = \"t10\".\"account_id\" AND \"t4\".\"bc3\" = \"t10\".\"__f4\") AS \"t11\" WHERE \"t11\".\"bc2\" = TRUE AND \"t11\".\"bc3\" = 0");
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT * FROM (SELECT \"t4\".\"bc1\", \"t4\".\"bc2\", \"t4\".\"bc3\", \"t4\".\"bc4\", \"t4\".\"EXPR__4\", \"t10\".\"transaction_id\", \"t10\".\"transaction_date\", \"t10\".\"account_id\", \"t10\".\"amount\" FROM (SELECT \"account_id\" AS \"bc1\", TRUE AS \"bc2\", ABS(\"account_id\") AS \"bc3\", 'some$' AS \"bc4\", '$some' AS \"EXPR__4\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\") AS \"t4\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\", ABS(\"account_id\") AS \"__f4\" FROM (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_actual\" WHERE \"sys_from\" <= 1) AS \"t9\") AS \"t10\" ON \"t4\".\"bc1\" = \"t10\".\"account_id\" AND \"t4\".\"bc3\" = \"t10\".\"__f4\") AS \"t11\" WHERE \"t11\".\"bc2\" = TRUE AND \"t11\".\"bc3\" = 0");
     }
 
     @Test
     void shouldFailWhenNotEnoughDeltas(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestDeltaNum(
+        val enrichQueryRequestFuture = prepareRequestDeltaNum(
                 "SELECT t1.account_id FROM shares.accounts t1" +
                         " join shares.accounts t2 on t2.account_id = t1.account_id" +
                         " join shares.accounts t3 on t3.account_id = t2.account_id" +
@@ -255,8 +255,7 @@ class AdgQueryEnrichmentServiceTest {
         );
 
         // act assert
-        queryParserService.parse(new QueryParserRequest(enrichQueryRequest.getQuery(), enrichQueryRequest.getSchema()))
-                .compose(parserResponse -> enrichService.enrich(enrichQueryRequest, parserResponse))
+        enrichQueryRequestFuture.compose(enrichService::enrich)
                 .onComplete(ar -> testContext.verify(() -> {
                     if (ar.succeeded()) {
                         Assertions.fail("Unexpected success");
@@ -270,25 +269,25 @@ class AdgQueryEnrichmentServiceTest {
     @Test
     void getEnrichedSqlWithDeltaNum(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestDeltaNum("SELECT account_id FROM shares.accounts");
+        val enrichQueryRequestFuture = prepareRequestDeltaNum("SELECT account_id FROM shares.accounts");
 
         // act assert
-        getEnrichedSqlAndAssert(testContext, enrichQueryRequest, "SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\"");
+        getEnrichedSqlAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\"");
     }
 
     @Test
     void getEnrichedSqlWithFinishedIn(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestDeltaFinishedIn("SELECT account_id FROM shares.accounts");
+        val enrichQueryRequestFuture = prepareRequestDeltaFinishedIn("SELECT account_id FROM shares.accounts");
 
         // act assert
-        getEnrichedSqlAndAssert(testContext, enrichQueryRequest, "SELECT \"account_id\" FROM \"local__shares__accounts_history\" WHERE \"sys_to\" >= 0 AND (\"sys_to\" <= 0 AND \"sys_op\" = 1)");
+        getEnrichedSqlAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"account_id\" FROM \"local__shares__accounts_history\" WHERE \"sys_to\" >= 0 AND (\"sys_to\" <= 0 AND \"sys_op\" = 1)");
     }
 
     @Test
     void getEnrichedSqlWithDeltaInterval(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestDeltaInterval("select *, CASE WHEN (account_type = 'D' AND  amount >= 0) " +
+        val enrichQueryRequestFuture = prepareRequestDeltaInterval("select *, CASE WHEN (account_type = 'D' AND  amount >= 0) " +
                 "OR (account_type = 'C' AND  amount <= 0) THEN 'OK    ' ELSE 'NOT OK' END\n" +
                 "  from (\n" +
                 "    select a.account_id, coalesce(sum(amount),0) amount, account_type\n" +
@@ -298,120 +297,120 @@ class AdgQueryEnrichmentServiceTest {
                 ")x");
 
         // act assert
-        getEnrichedSqlAndAssert(testContext, enrichQueryRequest, "SELECT \"t3\".\"account_id\", COALESCE(SUM(\"t5\".\"amount\"), 0) AS \"amount\", \"t3\".\"account_type\", CASE WHEN \"t3\".\"account_type\" = 'D' AND COALESCE(SUM(\"t5\".\"amount\"), 0) >= 0 OR \"t3\".\"account_type\" = 'C' AND COALESCE(SUM(\"t5\".\"amount\"), 0) <= 0 THEN 'OK    ' ELSE 'NOT OK' END AS \"EXPR__3\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" >= 1 AND \"sys_from\" <= 5 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" >= 1 AND \"sys_from\" <= 5) AS \"t3\" LEFT JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_history\" WHERE \"sys_to\" >= 2 AND (\"sys_to\" <= 3 AND \"sys_op\" = 1)) AS \"t5\" ON \"t3\".\"account_id\" = \"t5\".\"account_id\" GROUP BY \"t3\".\"account_id\", \"t3\".\"account_type\"");
+        getEnrichedSqlAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"t3\".\"account_id\", COALESCE(SUM(\"t5\".\"amount\"), 0) AS \"amount\", \"t3\".\"account_type\", CASE WHEN \"t3\".\"account_type\" = 'D' AND COALESCE(SUM(\"t5\".\"amount\"), 0) >= 0 OR \"t3\".\"account_type\" = 'C' AND COALESCE(SUM(\"t5\".\"amount\"), 0) <= 0 THEN 'OK    ' ELSE 'NOT OK' END AS \"EXPR__3\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" >= 1 AND \"sys_from\" <= 5 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" >= 1 AND \"sys_from\" <= 5) AS \"t3\" LEFT JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_history\" WHERE \"sys_to\" >= 2 AND (\"sys_to\" <= 3 AND \"sys_op\" = 1)) AS \"t5\" ON \"t3\".\"account_id\" = \"t5\".\"account_id\" GROUP BY \"t3\".\"account_id\", \"t3\".\"account_type\"");
     }
 
     @Test
     void getEnrichedSqlWithQuotes(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestDeltaNum("SELECT \"account_id\" FROM \"shares\".\"accounts\"");
+        val enrichQueryRequestFuture = prepareRequestDeltaNum("SELECT \"account_id\" FROM \"shares\".\"accounts\"");
 
         // act assert
-        getEnrichedSqlAndAssert(testContext, enrichQueryRequest, "SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\"");
+        getEnrichedSqlAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\"");
     }
 
     @Test
     void getEnrichedSqlWithWhereCollate(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestDeltaWithoutSnapshot("SELECT account_id FROM shares.accounts WHERE account_type = 'type' COLLATE 'unicode_ci'");
+        val enrichQueryRequestFuture = prepareRequestDeltaWithoutSnapshot("SELECT account_id FROM shares.accounts WHERE account_type = 'type' COLLATE 'unicode_ci'");
 
         // act assert
-        getEnrichedSqlAndAssert(testContext, enrichQueryRequest, "SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" WHERE \"account_type\" = 'type' COLLATE \"unicode_ci\"");
+        getEnrichedSqlAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" WHERE \"account_type\" = 'type' COLLATE \"unicode_ci\"");
     }
 
     @Test
     void getEnrichedSqlWithManyInKeyword(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestDeltaNum(
+        val enrichQueryRequestFuture = prepareRequestDeltaNum(
                 "SELECT account_id FROM shares.accounts WHERE account_id IN (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23)");
 
         // act assert
-        getEnrichedSqlAndAssert(testContext, enrichQueryRequest, "SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" WHERE \"account_id\" = 1 OR \"account_id\" = 2 OR (\"account_id\" = 3 OR (\"account_id\" = 4 OR \"account_id\" = 5)) OR (\"account_id\" = 6 OR (\"account_id\" = 7 OR \"account_id\" = 8) OR (\"account_id\" = 9 OR (\"account_id\" = 10 OR \"account_id\" = 11))) OR (\"account_id\" = 12 OR (\"account_id\" = 13 OR \"account_id\" = 14) OR (\"account_id\" = 15 OR (\"account_id\" = 16 OR \"account_id\" = 17)) OR (\"account_id\" = 18 OR (\"account_id\" = 19 OR \"account_id\" = 20) OR (\"account_id\" = 21 OR (\"account_id\" = 22 OR \"account_id\" = 23))))");
+        getEnrichedSqlAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" WHERE \"account_id\" = 1 OR \"account_id\" = 2 OR (\"account_id\" = 3 OR (\"account_id\" = 4 OR \"account_id\" = 5)) OR (\"account_id\" = 6 OR (\"account_id\" = 7 OR \"account_id\" = 8) OR (\"account_id\" = 9 OR (\"account_id\" = 10 OR \"account_id\" = 11))) OR (\"account_id\" = 12 OR (\"account_id\" = 13 OR \"account_id\" = 14) OR (\"account_id\" = 15 OR (\"account_id\" = 16 OR \"account_id\" = 17)) OR (\"account_id\" = 18 OR (\"account_id\" = 19 OR \"account_id\" = 20) OR (\"account_id\" = 21 OR (\"account_id\" = 22 OR \"account_id\" = 23))))");
     }
 
     @Test
     void getEnrichedSqlWithSubquery(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest =
+        val enrichQueryRequestFuture =
                 prepareRequestDeltaNum("SELECT * FROM shares.accounts as b where b.account_id IN (select c.account_id from shares.transactions as c limit 1)");
 
         // act assert
-        getEnrichedSqlAndAssert(testContext, enrichQueryRequest, "SELECT * FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" WHERE \"account_id\" IN (SELECT \"account_id\" FROM (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_actual\" WHERE \"sys_from\" <= 1) AS \"t8\" LIMIT 1)");
+        getEnrichedSqlAndAssert(testContext, enrichQueryRequestFuture, "SELECT * FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" WHERE \"account_id\" IN (SELECT \"account_id\" FROM (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_actual\" WHERE \"sys_from\" <= 1) AS \"t8\" LIMIT 1)");
     }
 
     @Test
     void getEnrichedSqlWithMultipleSchemas(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestMultipleSchema("SELECT a.account_id FROM accounts a " +
+        val enrichQueryRequestFuture = prepareRequestMultipleSchema("SELECT a.account_id FROM accounts a " +
                 "JOIN shares_2.accounts aa ON aa.account_id = a.account_id " +
                 "JOIN test_datamart.transactions t ON t.account_id = a.account_id");
 
         // act assert
-        getEnrichedSqlAndAssert(testContext, enrichQueryRequest, "SELECT \"t3\".\"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\"");
+        getEnrichedSqlAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"t3\".\"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\"");
     }
 
     @Test
     void getEnrichedSqlWithCustomSelect(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestDeltaNum(
+        val enrichQueryRequestFuture = prepareRequestDeltaNum(
                 "SELECT *, 0 FROM shares.accounts ORDER BY account_id");
 
         // act assert
-        getEnrichedSqlAndAssert(testContext, enrichQueryRequest, "SELECT \"account_id\", \"account_type\", 0 AS \"EXPR__2\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" ORDER BY \"account_id\"");
+        getEnrichedSqlAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"account_id\", \"account_type\", 0 AS \"EXPR__2\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" ORDER BY \"account_id\"");
     }
 
     @Test
     void getEnrichedSqlWithMultipleLogicalSchemaLimit(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestMultipleSchema(
+        val enrichQueryRequestFuture = prepareRequestMultipleSchema(
                 "select * from accounts a " +
                         "JOIN shares_2.accounts aa ON aa.account_id = a.account_id " +
                         "JOIN test_datamart.transactions t ON t.account_id = a.account_id LIMIT 10");
 
         // act assert
-        getEnrichedSqlAndAssert(testContext, enrichQueryRequest, "SELECT \"t3\".\"account_id\", \"t3\".\"account_type\", \"t8\".\"account_id\" AS \"account_id0\", \"t8\".\"account_type\" AS \"account_type0\", \"t13\".\"transaction_id\", \"t13\".\"transaction_date\", \"t13\".\"account_id\" AS \"account_id1\", \"t13\".\"amount\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\" LIMIT 10");
+        getEnrichedSqlAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"t3\".\"account_id\", \"t3\".\"account_type\", \"t8\".\"account_id\" AS \"account_id0\", \"t8\".\"account_type\" AS \"account_type0\", \"t13\".\"transaction_id\", \"t13\".\"transaction_date\", \"t13\".\"account_id\" AS \"account_id1\", \"t13\".\"amount\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\" LIMIT 10");
     }
 
     @Test
     void getEnrichedSqlWithMultipleLogicalSchemaLimitOrderBy(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestMultipleSchema(
+        val enrichQueryRequestFuture = prepareRequestMultipleSchema(
                 "select * from accounts a " +
                         "JOIN shares_2.accounts aa ON aa.account_id = a.account_id " +
                         "JOIN test_datamart.transactions t ON t.account_id = a.account_id ORDER BY aa.account_id LIMIT 10");
 
         // act assert
-        getEnrichedSqlAndAssert(testContext, enrichQueryRequest, "SELECT \"t3\".\"account_id\", \"t3\".\"account_type\", \"t8\".\"account_id\" AS \"account_id0\", \"t8\".\"account_type\" AS \"account_type0\", \"t13\".\"transaction_id\", \"t13\".\"transaction_date\", \"t13\".\"account_id\" AS \"account_id1\", \"t13\".\"amount\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\" ORDER BY \"t8\".\"account_id\" LIMIT 10");
+        getEnrichedSqlAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"t3\".\"account_id\", \"t3\".\"account_type\", \"t8\".\"account_id\" AS \"account_id0\", \"t8\".\"account_type\" AS \"account_type0\", \"t13\".\"transaction_id\", \"t13\".\"transaction_date\", \"t13\".\"account_id\" AS \"account_id1\", \"t13\".\"amount\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\" ORDER BY \"t8\".\"account_id\" LIMIT 10");
     }
 
     @Test
     void getEnrichedSqlWithMultipleLogicalSchemaLimitOrderByGroupBy(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestMultipleSchema(
+        val enrichQueryRequestFuture = prepareRequestMultipleSchema(
                 "select aa.account_id from accounts a " +
                         "JOIN shares_2.accounts aa ON aa.account_id = a.account_id " +
                         "JOIN test_datamart.transactions t ON t.account_id = a.account_id GROUP BY aa.account_id ORDER BY aa.account_id LIMIT 10");
 
         // act assert
-        getEnrichedSqlAndAssert(testContext, enrichQueryRequest, "SELECT \"t8\".\"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\" GROUP BY \"t8\".\"account_id\" ORDER BY \"t8\".\"account_id\" LIMIT 10");
+        getEnrichedSqlAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"t8\".\"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\" GROUP BY \"t8\".\"account_id\" ORDER BY \"t8\".\"account_id\" LIMIT 10");
     }
 
     @Test
     void getEnrichedSqlWithMultipleLogicalSchemaLimitOrderByGroupByAndAggregate(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestMultipleSchema(
+        val enrichQueryRequestFuture = prepareRequestMultipleSchema(
                 "select aa.account_id, count(*), 1 as K from accounts a " +
                         "JOIN shares_2.accounts aa ON aa.account_id = a.account_id " +
                         "JOIN test_datamart.transactions t ON t.account_id = a.account_id GROUP BY aa.account_id ORDER BY aa.account_id LIMIT 10");
 
         // act assert
-        getEnrichedSqlAndAssert(testContext, enrichQueryRequest, "SELECT \"t8\".\"account_id\", COUNT(*) AS \"EXPR__1\", 1 AS \"k\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\" GROUP BY \"t8\".\"account_id\" ORDER BY \"t8\".\"account_id\" LIMIT 10");
+        getEnrichedSqlAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"t8\".\"account_id\", COUNT(*) AS \"EXPR__1\", 1 AS \"k\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares_2__accounts_actual\" WHERE \"sys_from\" <= 2) AS \"t8\" ON \"t3\".\"account_id\" = \"t8\".\"account_id\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_history\" WHERE \"sys_from\" <= 2 AND \"sys_to\" >= 2 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__test_datamart__transactions_actual\" WHERE \"sys_from\" <= 2) AS \"t13\" ON \"t3\".\"account_id\" = \"t13\".\"account_id\" GROUP BY \"t8\".\"account_id\" ORDER BY \"t8\".\"account_id\" LIMIT 10");
     }
 
     @Test
     void getEnrichedSqlWithAliasesAndFunctions(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestDeltaNum("SELECT *\n" +
+        val enrichQueryRequestFuture = prepareRequestDeltaNum("SELECT *\n" +
                 "FROM (SELECT\n" +
                 "          account_id      as bc1,\n" +
                 "          true            as bc2,\n" +
@@ -425,13 +424,13 @@ class AdgQueryEnrichmentServiceTest {
         );
 
         // act assert
-        getEnrichedSqlAndAssert(testContext, enrichQueryRequest, "SELECT * FROM (SELECT \"t4\".\"bc1\", \"t4\".\"bc2\", \"t4\".\"bc3\", \"t4\".\"bc4\", \"t4\".\"EXPR__4\", \"t10\".\"transaction_id\", \"t10\".\"transaction_date\", \"t10\".\"account_id\", \"t10\".\"amount\" FROM (SELECT \"account_id\" AS \"bc1\", TRUE AS \"bc2\", ABS(\"account_id\") AS \"bc3\", 'some$' AS \"bc4\", '$some' AS \"EXPR__4\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\") AS \"t4\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\", ABS(\"account_id\") AS \"__f4\" FROM (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_actual\" WHERE \"sys_from\" <= 1) AS \"t9\") AS \"t10\" ON \"t4\".\"bc1\" = \"t10\".\"account_id\" AND \"t4\".\"bc3\" = \"t10\".\"__f4\") AS \"t11\" WHERE \"t11\".\"bc2\" = TRUE AND \"t11\".\"bc3\" = 0");
+        getEnrichedSqlAndAssert(testContext, enrichQueryRequestFuture, "SELECT * FROM (SELECT \"t4\".\"bc1\", \"t4\".\"bc2\", \"t4\".\"bc3\", \"t4\".\"bc4\", \"t4\".\"EXPR__4\", \"t10\".\"transaction_id\", \"t10\".\"transaction_date\", \"t10\".\"account_id\", \"t10\".\"amount\" FROM (SELECT \"account_id\" AS \"bc1\", TRUE AS \"bc2\", ABS(\"account_id\") AS \"bc3\", 'some$' AS \"bc4\", '$some' AS \"EXPR__4\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\") AS \"t4\" INNER JOIN (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\", ABS(\"account_id\") AS \"__f4\" FROM (SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"transaction_id\", \"transaction_date\", \"account_id\", \"amount\" FROM \"local__shares__transactions_actual\" WHERE \"sys_from\" <= 1) AS \"t9\") AS \"t10\" ON \"t4\".\"bc1\" = \"t10\".\"account_id\" AND \"t4\".\"bc3\" = \"t10\".\"__f4\") AS \"t11\" WHERE \"t11\".\"bc2\" = TRUE AND \"t11\".\"bc3\" = 0");
     }
 
     @Test
     void shouldFailgetEnrichedSqlWhenNotEnoughDeltas(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest = prepareRequestDeltaNum(
+        val enrichQueryRequestFuture = prepareRequestDeltaNum(
                 "SELECT t1.account_id FROM shares.accounts t1" +
                         " join shares.accounts t2 on t2.account_id = t1.account_id" +
                         " join shares.accounts t3 on t3.account_id = t2.account_id" +
@@ -439,8 +438,7 @@ class AdgQueryEnrichmentServiceTest {
         );
 
         // act assert
-        queryParserService.parse(new QueryParserRequest(enrichQueryRequest.getQuery(), enrichQueryRequest.getSchema()))
-                .compose(parserResponse -> enrichService.getEnrichedSqlNode(enrichQueryRequest, parserResponse))
+        enrichQueryRequestFuture.compose(enrichService::getEnrichedSqlNode)
                 .onComplete(ar -> testContext.verify(() -> {
                     if (ar.succeeded()) {
                         Assertions.fail("Unexpected success");
@@ -451,45 +449,201 @@ class AdgQueryEnrichmentServiceTest {
     }
 
     @Test
+    void shouldFailEnrichWithWritableStandaloneTable(VertxTestContext testContext) {
+        // arrange
+        val enrichQueryRequestFuture = prepareRequest("SELECT * FROM standalone a WHERE a.id > 0",
+                Arrays.asList(DeltaInformation.builder().schemaName("shares").type(DeltaType.WITHOUT_SNAPSHOT).build()),
+                EntityType.WRITEABLE_EXTERNAL_TABLE);
+
+        // act assert
+
+
+        // act assert
+        enrichQueryRequestFuture.compose(enrichService::enrich)
+                .onComplete(ar -> testContext.verify(() -> {
+                    if (ar.succeeded()) {
+                        Assertions.fail("Unexpected success");
+                    }
+
+                    Assertions.assertSame(DtmException.class, ar.cause().getClass());
+                }).completeNow());
+    }
+
+    @Test
     void testEnrichWithUnions(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest =
+        val enrichQueryRequestFuture =
                 prepareRequestDeltaNum("select account_id\n" +
                         "from (select * from (select * from shares.accounts order by account_id limit 1)\n" +
                         "         union all\n" +
                         "         select * from shares.accounts)");
 
         // act assert
-        enrichAndAssert(testContext, enrichQueryRequest, "SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM (SELECT \"account_id\", \"account_type\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t\" ORDER BY \"account_id\" LIMIT 1) AS \"t5\" UNION ALL SELECT * FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t\") AS \"t12\"");
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM (SELECT \"account_id\", \"account_type\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t\" ORDER BY \"account_id\" LIMIT 1) AS \"t5\" UNION ALL SELECT * FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t\") AS \"t12\"");
     }
 
     @Test
     void testEnrichWithUnions2(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest =
+        val enrichQueryRequestFuture =
                 prepareRequestDeltaNum("select account_id\n" +
                         "from (select account_id from (select account_id from shares.accounts order by account_id limit 1) where account_id = 0\n" +
                         "         union all\n" +
                         "         select account_id from shares.accounts)");
 
         // act assert
-        enrichAndAssert(testContext, enrichQueryRequest, "SELECT * FROM (SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" ORDER BY \"account_id\" LIMIT 1) AS \"t6\" WHERE \"account_id\" = 0 UNION ALL SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t12\"");
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT * FROM (SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" ORDER BY \"account_id\" LIMIT 1) AS \"t6\" WHERE \"account_id\" = 0 UNION ALL SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t12\"");
     }
 
     @Test
     void testEnrichWithUnions3(VertxTestContext testContext) {
         // arrange
-        EnrichQueryRequest enrichQueryRequest =
+        val enrichQueryRequestFuture =
                 prepareRequestDeltaNum("select account_id\n" +
                         "from (select account_id from (select account_id from shares.accounts where account_id = 0 order by account_id limit 1)\n" +
                         "         union all\n" +
                         "         select account_id from shares.accounts)");
 
         // act assert
-        enrichAndAssert(testContext, enrichQueryRequest, "SELECT \"account_id\" FROM (SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" WHERE \"account_id\" = 0 ORDER BY \"account_id\" LIMIT 1) AS \"t7\" UNION ALL SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t13\"");
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT \"account_id\" FROM (SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" WHERE \"account_id\" = 0 ORDER BY \"account_id\" LIMIT 1) AS \"t7\" UNION ALL SELECT \"account_id\" FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t13\"");
     }
 
-    private EnrichQueryRequest prepareRequestDeltaWithoutSnapshot(String sql) {
+    @Test
+    void testEnrichWithStandaloneTable(VertxTestContext testContext) {
+        // arrange
+        val enrichQueryRequestFuture = prepareRequest("SELECT * FROM standalone a WHERE a.id > 0",
+                Arrays.asList(DeltaInformation.builder().schemaName("shares").type(DeltaType.WITHOUT_SNAPSHOT).build()),
+                EntityType.READABLE_EXTERNAL_TABLE);
+
+        // act assert
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT * FROM \"tbl\" WHERE \"id\" > 0");
+    }
+
+    @Test
+    void testEnrichWithStandaloneTableWithSystemColums(VertxTestContext testContext) {
+        // arrange
+        val enrichQueryRequestFuture = prepareRequest("SELECT * FROM standalone a WHERE a.id > 0 AND sys_from BETWEEN 1 AND 10",
+                Arrays.asList(DeltaInformation.builder().schemaName("shares").type(DeltaType.WITHOUT_SNAPSHOT).build()),
+                EntityType.READABLE_EXTERNAL_TABLE);
+
+        // act assert
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT * FROM \"tbl\" WHERE \"id\" > 0 AND (\"sys_from\" >= 1 AND \"sys_from\" <= 10)");
+    }
+
+    @Test
+    void testEnrichJoinStandaloneTables(VertxTestContext testContext) {
+        // arrange
+        val enrichQueryRequestFuture = prepareRequest("SELECT * FROM standalone a JOIN standalone b ON a.id = b.id WHERE a.id > 0",
+                Arrays.asList(DeltaInformation.builder().schemaName("shares").type(DeltaType.WITHOUT_SNAPSHOT).build(),
+                        DeltaInformation.builder().schemaName("shares").type(DeltaType.WITHOUT_SNAPSHOT).build()),
+                EntityType.READABLE_EXTERNAL_TABLE);
+
+        // act assert
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT * FROM \"tbl\" INNER JOIN \"tbl\" AS \"tbl0\" ON \"tbl\".\"id\" = \"tbl0\".\"id\" WHERE \"tbl\".\"id\" > 0");
+    }
+
+    @Test
+    void testEnrichJoinStandaloneAndLogical(VertxTestContext testContext) {
+        // arrange
+        val enrichQueryRequestFuture = prepareRequest("SELECT * FROM shares.standalone a JOIN shares.accounts b ON a.id = b.account_id WHERE a.id > 0",
+                Arrays.asList(DeltaInformation.builder().schemaName("shares").type(DeltaType.WITHOUT_SNAPSHOT).build(),
+                        DeltaInformation.builder().schemaName("shares").type(DeltaType.WITHOUT_SNAPSHOT).selectOnNum(1L).build()),
+                EntityType.READABLE_EXTERNAL_TABLE);
+
+        // act assert
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT * FROM \"tbl\" INNER JOIN (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" ON \"tbl\".\"id\" = \"t3\".\"account_id\" WHERE \"tbl\".\"id\" > 0");
+    }
+
+    @Test
+    void testEnrichJoinLogicalAndStandalone(VertxTestContext testContext) {
+        // arrange
+        val enrichQueryRequestFuture = prepareRequest("SELECT * FROM shares.accounts b JOIN shares.standalone a ON a.id = b.account_id WHERE a.id > 0",
+                Arrays.asList(DeltaInformation.builder().schemaName("shares").type(DeltaType.WITHOUT_SNAPSHOT).selectOnNum(1L).build(),
+                        DeltaInformation.builder().schemaName("shares").type(DeltaType.WITHOUT_SNAPSHOT).build()),
+                EntityType.READABLE_EXTERNAL_TABLE);
+
+        // act assert
+        enrichAndAssert(testContext, enrichQueryRequestFuture, "SELECT * FROM (SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_history\" WHERE \"sys_from\" <= 1 AND \"sys_to\" >= 1 UNION ALL SELECT \"account_id\", \"account_type\" FROM \"local__shares__accounts_actual\" WHERE \"sys_from\" <= 1) AS \"t3\" INNER JOIN \"tbl\" ON \"t3\".\"account_id\" = \"tbl\".\"id\" WHERE \"tbl\".\"id\" > 0");
+    }
+
+    private Future<EnrichQueryRequest> prepareRequest(String sql, List<DeltaInformation> deltaInformations, EntityType sourceEntityType) {
+        val datamartName = "shares";
+        Datamart datamart = new Datamart();
+        datamart.setMnemonic(datamartName);
+        datamart.setIsDefault(true);
+        datamart.setEntities(Arrays.asList(Entity.builder()
+                        .name("accounts")
+                        .schema(datamartName)
+                        .entityType(EntityType.TABLE)
+                        .destination(Collections.singleton(SourceType.ADG))
+                        .fields(Arrays.asList(EntityField.builder()
+                                        .ordinalPosition(0)
+                                        .name("account_id")
+                                        .type(ColumnType.INT)
+                                        .nullable(false)
+                                        .primaryOrder(1)
+                                        .shardingOrder(1)
+                                        .build(),
+                                EntityField.builder()
+                                        .ordinalPosition(1)
+                                        .name("account_type")
+                                        .type(ColumnType.VARCHAR)
+                                        .size(36)
+                                        .nullable(true)
+                                        .build()))
+                        .build(),
+                Entity.builder()
+                        .schema(datamartName)
+                        .name("standalone")
+                        .entityType(sourceEntityType)
+                        .externalTableLocationPath("tbl")
+                        .fields(Arrays.asList(
+                                EntityField.builder()
+                                        .type(ColumnType.BIGINT)
+                                        .name("id")
+                                        .ordinalPosition(1)
+                                        .shardingOrder(1)
+                                        .primaryOrder(1)
+                                        .nullable(false)
+                                        .accuracy(null)
+                                        .size(null)
+                                        .build(),
+                                EntityField.builder()
+                                        .type(ColumnType.VARCHAR)
+                                        .name("name")
+                                        .ordinalPosition(2)
+                                        .shardingOrder(null)
+                                        .primaryOrder(null)
+                                        .nullable(false)
+                                        .accuracy(null)
+                                        .size(1)
+                                        .build(),
+                                EntityField.builder()
+                                        .type(ColumnType.BIGINT)
+                                        .name("sys_from")
+                                        .ordinalPosition(3)
+                                        .shardingOrder(null)
+                                        .primaryOrder(null)
+                                        .nullable(false)
+                                        .accuracy(null)
+                                        .size(null)
+                                        .build()
+                        ))
+                        .build()));
+
+        List<Datamart> datamarts = Collections.singletonList(datamart);
+
+        val query = TestUtils.DEFINITION_SERVICE.processingQuery(sql);
+        return queryParserService.parse(new QueryParserRequest(query, datamarts, ENV_NAME))
+                .map(parserResponse -> EnrichQueryRequest.builder()
+                        .envName(ENV_NAME)
+                        .deltaInformations(deltaInformations)
+                        .calciteContext(parserResponse.getCalciteContext())
+                        .relNode(parserResponse.getRelNode())
+                        .build());
+    }
+
+    private Future<EnrichQueryRequest> prepareRequestDeltaWithoutSnapshot(String sql) {
         val datamartName = "shares";
         Datamart datamart = new Datamart();
         datamart.setMnemonic(datamartName);
@@ -518,7 +672,7 @@ class AdgQueryEnrichmentServiceTest {
         List<Datamart> datamarts = Collections.singletonList(datamart);
         String schemaName = datamarts.get(0).getMnemonic();
 
-        List<DeltaInformation> deltaInforamtions = Collections.singletonList(
+        List<DeltaInformation> deltaInformations = Collections.singletonList(
                 DeltaInformation.builder()
                         .tableAlias("a")
                         .deltaTimestamp("2019-12-23 15:15:14")
@@ -532,22 +686,24 @@ class AdgQueryEnrichmentServiceTest {
                         .build()
         );
 
-        return EnrichQueryRequest.builder()
-                .query(TestUtils.DEFINITION_SERVICE.processingQuery(sql))
-                .deltaInformations(deltaInforamtions)
-                .envName(ENV_NAME)
-                .schema(datamarts)
-                .build();
+        val query = TestUtils.DEFINITION_SERVICE.processingQuery(sql);
+        return queryParserService.parse(new QueryParserRequest(query, datamarts, ENV_NAME))
+                .map(parserResponse -> EnrichQueryRequest.builder()
+                        .envName(ENV_NAME)
+                        .deltaInformations(deltaInformations)
+                        .calciteContext(parserResponse.getCalciteContext())
+                        .relNode(parserResponse.getRelNode())
+                        .build());
     }
 
-    private EnrichQueryRequest prepareRequestMultipleSchema(String sql) {
+    private Future<EnrichQueryRequest> prepareRequestMultipleSchema(String sql) {
         List<Datamart> datamarts = Arrays.asList(
                 getSchema("shares", true),
                 getSchema("shares_2", false),
                 getSchema("test_datamart", false));
         String defaultSchema = datamarts.get(0).getMnemonic();
         SqlParserPos pos = new SqlParserPos(0, 0);
-        List<DeltaInformation> deltaInforamtions = Arrays.asList(
+        List<DeltaInformation> deltaInformations = Arrays.asList(
                 DeltaInformation.builder()
                         .tableAlias("a")
                         .deltaTimestamp("2019-12-23 15:15:14")
@@ -584,18 +740,20 @@ class AdgQueryEnrichmentServiceTest {
                         .build()
         );
 
-        return EnrichQueryRequest.builder()
-                .query(TestUtils.DEFINITION_SERVICE.processingQuery(sql))
-                .deltaInformations(deltaInforamtions)
-                .envName(ENV_NAME)
-                .schema(datamarts)
-                .build();
+        val query = TestUtils.DEFINITION_SERVICE.processingQuery(sql);
+        return queryParserService.parse(new QueryParserRequest(query, datamarts, ENV_NAME))
+                .map(parserResponse -> EnrichQueryRequest.builder()
+                        .envName(ENV_NAME)
+                        .deltaInformations(deltaInformations)
+                        .calciteContext(parserResponse.getCalciteContext())
+                        .relNode(parserResponse.getRelNode())
+                        .build());
     }
 
-    private EnrichQueryRequest prepareRequestDeltaNum(String sql) {
+    private Future<EnrichQueryRequest> prepareRequestDeltaNum(String sql) {
         List<Datamart> datamarts = Collections.singletonList(getSchema("shares", true));
         String schemaName = datamarts.get(0).getMnemonic();
-        List<DeltaInformation> deltaInforamtions = Arrays.asList(
+        List<DeltaInformation> deltaInformations = Arrays.asList(
                 DeltaInformation.builder()
                         .tableAlias("a")
                         .deltaTimestamp("2019-12-23 15:15:14")
@@ -619,19 +777,21 @@ class AdgQueryEnrichmentServiceTest {
                         .build()
         );
 
-        return EnrichQueryRequest.builder()
-                .query(TestUtils.DEFINITION_SERVICE.processingQuery(sql))
-                .deltaInformations(deltaInforamtions)
-                .envName(ENV_NAME)
-                .schema(datamarts)
-                .build();
+        val query = TestUtils.DEFINITION_SERVICE.processingQuery(sql);
+        return queryParserService.parse(new QueryParserRequest(query, datamarts, ENV_NAME))
+                .map(parserResponse -> EnrichQueryRequest.builder()
+                        .envName(ENV_NAME)
+                        .deltaInformations(deltaInformations)
+                        .calciteContext(parserResponse.getCalciteContext())
+                        .relNode(parserResponse.getRelNode())
+                        .build());
     }
 
-    private EnrichQueryRequest prepareRequestDeltaInterval(String sql) {
+    private Future<EnrichQueryRequest> prepareRequestDeltaInterval(String sql) {
         List<Datamart> datamarts = Collections.singletonList(getSchema("shares", true));
         String schemaName = datamarts.get(0).getMnemonic();
         SqlParserPos pos = new SqlParserPos(0, 0);
-        List<DeltaInformation> deltaInforamtions = Arrays.asList(
+        List<DeltaInformation> deltaInformations = Arrays.asList(
                 DeltaInformation.builder()
                         .tableAlias("a")
                         .deltaTimestamp(null)
@@ -657,19 +817,21 @@ class AdgQueryEnrichmentServiceTest {
                         .pos(pos)
                         .build()
         );
-        return EnrichQueryRequest.builder()
-                .query(TestUtils.DEFINITION_SERVICE.processingQuery(sql))
-                .deltaInformations(deltaInforamtions)
-                .envName(ENV_NAME)
-                .schema(datamarts)
-                .build();
+        val query = TestUtils.DEFINITION_SERVICE.processingQuery(sql);
+        return queryParserService.parse(new QueryParserRequest(query, datamarts, ENV_NAME))
+                .map(parserResponse -> EnrichQueryRequest.builder()
+                        .envName(ENV_NAME)
+                        .deltaInformations(deltaInformations)
+                        .calciteContext(parserResponse.getCalciteContext())
+                        .relNode(parserResponse.getRelNode())
+                        .build());
     }
 
-    private EnrichQueryRequest prepareRequestDeltaFinishedIn(String sql) {
+    private Future<EnrichQueryRequest> prepareRequestDeltaFinishedIn(String sql) {
         List<Datamart> datamarts = Collections.singletonList(getSchema("shares", true));
         String schemaName = datamarts.get(0).getMnemonic();
         SqlParserPos pos = new SqlParserPos(0, 0);
-        List<DeltaInformation> deltaInforamtions = Collections.singletonList(
+        List<DeltaInformation> deltaInformations = Collections.singletonList(
                 DeltaInformation.builder()
                         .tableAlias("a")
                         .deltaTimestamp(null)
@@ -683,18 +845,21 @@ class AdgQueryEnrichmentServiceTest {
                         .pos(pos)
                         .build()
         );
-        return EnrichQueryRequest.builder()
-                .query(TestUtils.DEFINITION_SERVICE.processingQuery(sql))
-                .deltaInformations(deltaInforamtions)
-                .envName(ENV_NAME)
-                .schema(datamarts)
-                .build();
+        val query = TestUtils.DEFINITION_SERVICE.processingQuery(sql);
+        return queryParserService.parse(new QueryParserRequest(query, datamarts, ENV_NAME))
+                .map(parserResponse -> EnrichQueryRequest.builder()
+                        .envName(ENV_NAME)
+                        .deltaInformations(deltaInformations)
+                        .calciteContext(parserResponse.getCalciteContext())
+                        .relNode(parserResponse.getRelNode())
+                        .build());
     }
 
     private Datamart getSchema(String schemaName, boolean isDefault) {
         Entity accounts = Entity.builder()
                 .schema(schemaName)
                 .name("accounts")
+                .entityType(EntityType.TABLE)
                 .build();
         List<EntityField> accAttrs = Arrays.asList(
                 EntityField.builder()
@@ -723,6 +888,7 @@ class AdgQueryEnrichmentServiceTest {
         Entity transactions = Entity.builder()
                 .schema(schemaName)
                 .name("transactions")
+                .entityType(EntityType.TABLE)
                 .build();
 
         List<EntityField> trAttr = Arrays.asList(
@@ -773,10 +939,9 @@ class AdgQueryEnrichmentServiceTest {
         return new Datamart(schemaName, isDefault, Arrays.asList(transactions, accounts));
     }
 
-    private void enrichAndAssert(VertxTestContext testContext, EnrichQueryRequest enrichRequest,
+    private void enrichAndAssert(VertxTestContext testContext, Future<EnrichQueryRequest> enrichRequestFuture,
                                  String expectedSql) {
-        queryParserService.parse(new QueryParserRequest(enrichRequest.getQuery(), enrichRequest.getSchema()))
-                .compose(parserResponse -> enrichService.enrich(enrichRequest, parserResponse))
+        enrichRequestFuture.compose(enrichService::enrich)
                 .onComplete(ar -> testContext.verify(() -> {
                     if (ar.failed()) {
                         Assertions.fail(ar.cause());
@@ -786,10 +951,9 @@ class AdgQueryEnrichmentServiceTest {
                 }).completeNow());
     }
 
-    private void getEnrichedSqlAndAssert(VertxTestContext testContext, EnrichQueryRequest enrichRequest,
+    private void getEnrichedSqlAndAssert(VertxTestContext testContext, Future<EnrichQueryRequest> enrichRequestFuture,
                                          String expectedSql) {
-        queryParserService.parse(new QueryParserRequest(enrichRequest.getQuery(), enrichRequest.getSchema()))
-                .compose(parserResponse -> enrichService.getEnrichedSqlNode(enrichRequest, parserResponse))
+        enrichRequestFuture.compose(enrichService::getEnrichedSqlNode)
                 .map(sqlNode -> Util.toLinux(sqlNode.toSqlString(sqlDialect).getSql())
                         .replaceAll("\r\n|\r|\n", " "))
                 .onComplete(ar -> testContext.verify(() -> {

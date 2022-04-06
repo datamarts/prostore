@@ -15,6 +15,14 @@
  */
 package ru.datamart.prostore.query.execution.core.edml.service;
 
+import io.vertx.core.CompositeFuture;
+import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.calcite.sql.SqlDialect;
+import org.apache.calcite.sql.SqlKind;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 import ru.datamart.prostore.common.dto.TableInfo;
 import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.common.model.SqlProcessingType;
@@ -27,14 +35,6 @@ import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.Entit
 import ru.datamart.prostore.query.execution.core.base.service.DatamartExecutionService;
 import ru.datamart.prostore.query.execution.core.edml.dto.EdmlAction;
 import ru.datamart.prostore.query.execution.core.edml.dto.EdmlRequestContext;
-import io.vertx.core.CompositeFuture;
-import io.vertx.core.Future;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.apache.calcite.sql.SqlDialect;
-import org.apache.calcite.sql.SqlKind;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
 
 import java.util.EnumSet;
 import java.util.List;
@@ -49,8 +49,7 @@ import java.util.stream.Collectors;
 @Service("coreEdmlService")
 public class EdmlService implements DatamartExecutionService<EdmlRequestContext> {
     private static final SqlDialect SQL_DIALECT = new SqlDialect(SqlDialect.EMPTY_CONTEXT);
-    private static final Set<EntityType> DOWNLOAD_SOURCES = EnumSet.of(EntityType.TABLE, EntityType.VIEW, EntityType.MATERIALIZED_VIEW);
-    private static final Set<EntityType> UPLOAD_DESTINATIONS = EnumSet.of(EntityType.TABLE);
+    private static final Set<EntityType> DOWNLOAD_SOURCES = EnumSet.of(EntityType.TABLE, EntityType.VIEW, EntityType.MATERIALIZED_VIEW, EntityType.READABLE_EXTERNAL_TABLE);
 
     private final EntityDao entityDao;
     private final Map<EdmlAction, EdmlExecutor> executors;
@@ -90,8 +89,8 @@ public class EdmlService implements DatamartExecutionService<EdmlRequestContext>
                     destinationTable.getSchemaName(), sourceTable.getSchemaName())));
         }
         return CompositeFuture.join(
-                entityDao.getEntity(destinationTable.getSchemaName(), destinationTable.getTableName()),
-                entityDao.getEntity(sourceTable.getSchemaName(), sourceTable.getTableName()))
+                        entityDao.getEntity(destinationTable.getSchemaName(), destinationTable.getTableName()),
+                        entityDao.getEntity(sourceTable.getSchemaName(), sourceTable.getTableName()))
                 .map(CompositeFuture::list);
     }
 
@@ -117,12 +116,14 @@ public class EdmlService implements DatamartExecutionService<EdmlRequestContext>
 
             return EdmlAction.DOWNLOAD;
         } else if (source.getEntityType() == EntityType.UPLOAD_EXTERNAL_TABLE) {
-            if (!UPLOAD_DESTINATIONS.contains(destination.getEntityType())) {
-                throw new DtmException(String.format("UPLOAD_EXTERNAL_TABLE destination entity type mismatch. %s found, but %s expected.",
-                        destination.getEntityType(), UPLOAD_DESTINATIONS));
+            if (destination.getEntityType() == EntityType.TABLE) {
+                return EdmlAction.UPLOAD_LOGICAL;
+            } else if (destination.getEntityType() == EntityType.WRITEABLE_EXTERNAL_TABLE) {
+                return EdmlAction.UPLOAD_STANDALONE;
             }
 
-            return EdmlAction.UPLOAD;
+            throw new DtmException(String.format("UPLOAD_EXTERNAL_TABLE destination entity type mismatch. %s found, but [%s,%s] expected.",
+                    destination.getEntityType(), EntityType.TABLE, EntityType.WRITEABLE_EXTERNAL_TABLE));
         }
 
         throw new DtmException(String.format("Can't determine external table from query [%s]",

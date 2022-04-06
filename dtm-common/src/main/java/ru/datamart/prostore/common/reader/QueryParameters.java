@@ -15,6 +15,7 @@
  */
 package ru.datamart.prostore.common.reader;
 
+import lombok.ToString;
 import ru.datamart.prostore.common.model.ddl.ColumnType;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -25,8 +26,10 @@ import java.util.List;
 @Getter
 @AllArgsConstructor
 @NoArgsConstructor
+@ToString
 public class QueryParameters {
     private List<Object> values;
+    @ToString.Exclude
     private List<ColumnType> types;
 
     public QueryParameters copy() {

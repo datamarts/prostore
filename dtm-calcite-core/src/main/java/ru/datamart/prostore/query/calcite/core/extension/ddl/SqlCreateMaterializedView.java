@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.Objects;
 
 @Getter
-public class SqlCreateMaterializedView extends SqlCreate implements SqlLogicalCall {
+public class SqlCreateMaterializedView extends SqlCreate implements SqlLogicalCall, SqlDistributedByGetter {
     private static final SqlOperator OPERATOR =
             new SqlSpecialOperator(OperationNames.CREATE_MATERIALIZED_VIEW,
                     SqlKind.CREATE_MATERIALIZED_VIEW);

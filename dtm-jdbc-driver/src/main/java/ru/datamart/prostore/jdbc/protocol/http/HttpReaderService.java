@@ -17,14 +17,6 @@ package ru.datamart.prostore.jdbc.protocol.http;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import ru.datamart.prostore.jdbc.core.QueryRequest;
-import ru.datamart.prostore.jdbc.core.QueryResult;
-import ru.datamart.prostore.jdbc.model.ColumnInfo;
-import ru.datamart.prostore.jdbc.model.SchemaInfo;
-import ru.datamart.prostore.jdbc.model.TableInfo;
-import ru.datamart.prostore.jdbc.protocol.Protocol;
-import ru.datamart.prostore.jdbc.util.DtmSqlException;
-import ru.datamart.prostore.jdbc.util.ResponseException;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpStatus;
@@ -34,6 +26,14 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
+import ru.datamart.prostore.jdbc.core.QueryRequest;
+import ru.datamart.prostore.jdbc.core.QueryResult;
+import ru.datamart.prostore.jdbc.model.ColumnInfo;
+import ru.datamart.prostore.jdbc.model.SchemaInfo;
+import ru.datamart.prostore.jdbc.model.TableInfo;
+import ru.datamart.prostore.jdbc.protocol.Protocol;
+import ru.datamart.prostore.jdbc.util.DtmSqlException;
+import ru.datamart.prostore.jdbc.util.ResponseError;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -41,9 +41,9 @@ import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
 
+import static org.apache.http.util.TextUtils.isEmpty;
 import static ru.datamart.prostore.jdbc.protocol.http.MapperUtils.configureMapper;
 import static ru.datamart.prostore.jdbc.util.DriverConstants.HOST_PROPERTY;
-import static org.apache.http.util.TextUtils.isEmpty;
 
 /**
  * Http implementation of data reader service
@@ -57,8 +57,8 @@ public class HttpReaderService implements Protocol {
     private static final TypeReference<List<ColumnInfo>> DATABASE_COLUMNS_TYPE = new TypeReference<List<ColumnInfo>>() {
     };
     private static final String GET_META_URL = "/meta";
-    private static final String GET_ENTITIES_URL = "/meta/%s/entities";
-    private static final String GET_ATTRIBUTES_URL = "/meta/%s/entity/%s/attributes";
+    private static final String GET_ENTITIES_URL = "%s/meta/%s/entities";
+    private static final String GET_ATTRIBUTES_URL = "%s/meta/%s/entity/%s/attributes";
     private static final ObjectMapper MAPPER = configureMapper();
     private final CloseableHttpClient client;
     private final String backendHostUrl;
@@ -91,7 +91,7 @@ public class HttpReaderService implements Protocol {
     @Override
     public List<TableInfo> getDatabaseTables(String schemaPattern) {
         try {
-            String uri = String.format(backendHostUrl + GET_ENTITIES_URL, schemaPattern);
+            String uri = String.format(GET_ENTITIES_URL, backendHostUrl, schemaPattern);
             HttpGet httpGet = new HttpGet(uri);
             try (CloseableHttpResponse response = client.execute(httpGet)) {
                 checkResponseStatus(response);
@@ -109,7 +109,7 @@ public class HttpReaderService implements Protocol {
     public List<ColumnInfo> getDatabaseColumns(String schema, String tableName) {
         try {
             log.debug("schema: {}, table: {}", schema, tableName);
-            String uri = String.format(backendHostUrl + GET_ATTRIBUTES_URL, schema, tableName);
+            String uri = String.format(GET_ATTRIBUTES_URL, backendHostUrl, schema, tableName);
             log.debug("uri: {}", uri);
             HttpGet httpGet = new HttpGet(uri);
             try (CloseableHttpResponse response = client.execute(httpGet)) {
@@ -153,7 +153,7 @@ public class HttpReaderService implements Protocol {
     private void checkResponseStatus(CloseableHttpResponse response) {
         if (HttpStatus.SC_OK != response.getStatusLine().getStatusCode()) {
             try {
-                String res = MAPPER.readValue(response.getEntity().getContent(), ResponseException.class)
+                String res = MAPPER.readValue(response.getEntity().getContent(), ResponseError.class)
                         .getExceptionMessage();
                 log.error("The system returned an unsuccessful response: {}", res);
                 throw new DtmSqlException(res != null && !res.isEmpty() ? res :

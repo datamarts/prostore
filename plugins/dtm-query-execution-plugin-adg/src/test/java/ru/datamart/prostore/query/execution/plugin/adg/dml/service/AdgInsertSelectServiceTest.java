@@ -24,8 +24,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.common.model.ddl.Entity;
+import ru.datamart.prostore.common.model.ddl.EntityType;
 import ru.datamart.prostore.common.reader.SourceType;
-import ru.datamart.prostore.query.execution.plugin.adg.dml.service.insert.DestinationInsertSelectHandler;
+import ru.datamart.prostore.query.execution.plugin.adg.dml.service.insert.select.DestinationInsertSelectHandler;
 import ru.datamart.prostore.query.execution.plugin.api.request.InsertSelectRequest;
 
 import java.util.Arrays;
@@ -117,7 +118,7 @@ class AdgInsertSelectServiceTest {
     }
 
     @Test
-    void shouldFailedWhenUnknownedDestination(VertxTestContext testContext) {
+    void shouldFailedWhenUnknownDestination(VertxTestContext testContext) {
         //arrange
         val request = getRequest(SourceType.ADB);
 
@@ -127,7 +128,7 @@ class AdgInsertSelectServiceTest {
                     //assert
                     assertTrue(ar.failed());
                     assertTrue(ar.cause() instanceof DtmException);
-                    assertEquals(String.format("Insert select from [ADG] to [%s] is not implemented", SourceType.ADB), ar.cause().getMessage());
+                    assertEquals(String.format("Feature is not implemented [insert select from [ADG] to [%s]]", SourceType.ADB), ar.cause().getMessage());
                 }).completeNow());
     }
 
@@ -140,6 +141,7 @@ class AdgInsertSelectServiceTest {
                 Entity.builder()
                         .destination(Arrays.stream(sourceTypes)
                                 .collect(Collectors.toSet()))
+                        .entityType(EntityType.WRITEABLE_EXTERNAL_TABLE)
                         .build(),
                 null,
                 null,

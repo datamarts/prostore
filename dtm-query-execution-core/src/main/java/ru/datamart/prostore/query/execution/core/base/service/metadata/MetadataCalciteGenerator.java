@@ -15,14 +15,6 @@
  */
 package ru.datamart.prostore.query.execution.core.base.service.metadata;
 
-import ru.datamart.prostore.common.exception.DtmException;
-import ru.datamart.prostore.common.model.ddl.ColumnType;
-import ru.datamart.prostore.common.model.ddl.Entity;
-import ru.datamart.prostore.common.model.ddl.EntityField;
-import ru.datamart.prostore.query.calcite.core.extension.ddl.SqlCreateMaterializedView;
-import ru.datamart.prostore.query.calcite.core.extension.ddl.SqlCreateTable;
-import ru.datamart.prostore.query.calcite.core.extension.eddl.SqlNodeUtils;
-import ru.datamart.prostore.query.execution.core.base.utils.ColumnTypeUtil;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.apache.calcite.sql.*;
@@ -31,6 +23,13 @@ import org.apache.calcite.sql.ddl.SqlKeyConstraint;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Component;
+import ru.datamart.prostore.common.exception.DtmException;
+import ru.datamart.prostore.common.model.ddl.ColumnType;
+import ru.datamart.prostore.common.model.ddl.Entity;
+import ru.datamart.prostore.common.model.ddl.EntityField;
+import ru.datamart.prostore.query.calcite.core.extension.ddl.SqlDistributedByGetter;
+import ru.datamart.prostore.query.calcite.core.extension.eddl.SqlNodeUtils;
+import ru.datamart.prostore.query.execution.core.base.utils.ColumnTypeUtil;
 
 import java.util.*;
 
@@ -142,7 +141,7 @@ public class MetadataCalciteGenerator {
     }
 
     private List<SqlNode> getPrimaryKeys(SqlKeyConstraint col) {
-        if (col.getOperandList().size() > 0) {
+        if (!col.getOperandList().isEmpty()) {
             return ((SqlNodeList) col.getOperandList().get(1)).getList();
         } else {
             throw new DtmException("Primary key definition failed");
@@ -158,18 +157,12 @@ public class MetadataCalciteGenerator {
     }
 
     private void initDistributedKeyColumns(SqlCreate sqlCreate, Map<String, EntityField> fieldMap) {
-        if (!(sqlCreate instanceof SqlCreateTable || sqlCreate instanceof SqlCreateMaterializedView)) {
+        if (!(sqlCreate instanceof SqlDistributedByGetter)) {
             return;
         }
 
-        SqlNodeList distributedBy;
-        if (sqlCreate instanceof SqlCreateTable) {
-            SqlCreateTable createTable = (SqlCreateTable) sqlCreate;
-            distributedBy = createTable.getDistributedBy().getNodeList();
-        } else {
-            SqlCreateMaterializedView createTable = (SqlCreateMaterializedView) sqlCreate;
-            distributedBy = createTable.getDistributedBy().getNodeList();
-        }
+        SqlDistributedByGetter distributedByGetter = (SqlDistributedByGetter) sqlCreate;
+        SqlNodeList distributedBy = distributedByGetter.getDistributedBy().getNodeList();
 
         if (distributedBy != null) {
             List<SqlNode> distrColumnList = distributedBy.getList();

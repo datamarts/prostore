@@ -44,6 +44,14 @@ public class DistributedOperator extends SqlCall {
         return ImmutableNullableList.of(nodeList);
     }
 
+    public boolean isEmpty() {
+        if (nodeList == null) {
+            return true;
+        }
+
+        return nodeList.getList().isEmpty();
+    }
+
     @Override
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec) {
         if (nodeList != null) {

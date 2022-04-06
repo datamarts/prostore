@@ -26,4 +26,5 @@ public class TarantoolDatabaseSyncProperties {
     Long timeoutConnect = 5000L;
     Long timeoutRead = 5000L;
     Long timeoutRequest = 5000L;
+    int bufferSize = 5000;
 }

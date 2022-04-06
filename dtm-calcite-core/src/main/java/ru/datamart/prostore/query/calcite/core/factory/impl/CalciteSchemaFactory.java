@@ -26,7 +26,7 @@ import org.apache.calcite.schema.SchemaPlus;
 public abstract class CalciteSchemaFactory {
     private final SchemaFactory schemaFactory;
 
-    public CalciteSchemaFactory(SchemaFactory schemaFactory) {
+    protected CalciteSchemaFactory(SchemaFactory schemaFactory) {
         this.schemaFactory = schemaFactory;
     }
 

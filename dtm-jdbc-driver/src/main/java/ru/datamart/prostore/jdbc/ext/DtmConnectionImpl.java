@@ -31,7 +31,7 @@ public class DtmConnectionImpl implements BaseConnection {
     /**
      * Hold level of resultSet
      */
-    private final int rsHoldability = ResultSet.CLOSE_CURSORS_AT_COMMIT;
+    private static final int RS_HOLDABILITY = ResultSet.CLOSE_CURSORS_AT_COMMIT;
     /**
      * Autocommit permission state on connection
      */
@@ -49,7 +49,7 @@ public class DtmConnectionImpl implements BaseConnection {
     public DtmConnectionImpl(String dbHost, String user, String schema, Properties info, String url) throws SQLException {
         this.queryExecutor = ConnectionFactory.openConnection(dbHost, user, schema, url, info);
         this.clientInfo = new Properties();
-        this.typeInfoCache = new TypeInfoCache(this);
+        this.typeInfoCache = new TypeInfoCache();
         LOGGER.info("Connection created host = {} schema = {} user = {}", dbHost, schema, user);
     }
 
@@ -196,7 +196,7 @@ public class DtmConnectionImpl implements BaseConnection {
     @Override
     public int getHoldability() throws SQLException {
         checkClosed();
-        return rsHoldability;
+        return RS_HOLDABILITY;
     }
 
     @Override

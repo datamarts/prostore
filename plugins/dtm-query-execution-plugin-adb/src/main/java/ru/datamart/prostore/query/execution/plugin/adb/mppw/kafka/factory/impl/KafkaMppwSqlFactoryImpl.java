@@ -15,6 +15,8 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.factory.impl;
 
+import lombok.val;
+import org.springframework.stereotype.Service;
 import ru.datamart.prostore.common.model.ddl.ColumnType;
 import ru.datamart.prostore.common.model.ddl.Entity;
 import ru.datamart.prostore.common.model.ddl.EntityField;
@@ -23,14 +25,10 @@ import ru.datamart.prostore.query.execution.plugin.adb.mppw.configuration.proper
 import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.factory.KafkaMppwSqlFactory;
 import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
 import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.UploadExternalEntityMetadata;
-import lombok.val;
-import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import static ru.datamart.prostore.query.execution.plugin.adb.base.factory.Constants.STAGING_TABLE_SUFFIX;
 
 @Service("kafkaMppwSqlFactoryImpl")
 public class KafkaMppwSqlFactoryImpl implements KafkaMppwSqlFactory {
@@ -97,8 +95,8 @@ public class KafkaMppwSqlFactoryImpl implements KafkaMppwSqlFactory {
     }
 
     @Override
-    public String dropExtTableSqlQuery(String schema, String talbe, String requestId) {
-        return String.format(DROP_EXT_TABLE_SQL, schema, talbe, requestId);
+    public String dropExtTableSqlQuery(String schema, String table, String requestId) {
+        return String.format(DROP_EXT_TABLE_SQL, schema, table, requestId);
     }
 
     @Override
@@ -187,15 +185,13 @@ public class KafkaMppwSqlFactoryImpl implements KafkaMppwSqlFactory {
     }
 
     @Override
-    public String insertIntoStagingTableSqlQuery(String schema, String columns, String table, String extTable) {
-        val stagingTable = table + STAGING_TABLE_SUFFIX;
-        return String.format(INSERT_INTO_STAGING_TABLE_SQL, schema, stagingTable, columns, columns, schema, extTable);
+    public String insertIntoTableSqlQuery(String schema, String columns, String table, String extTable) {
+        return String.format(INSERT_INTO_STAGING_TABLE_SQL, schema, table, columns, columns, schema, extTable);
     }
 
     @Override
     public String insertIntoStagingTablePxfSqlQuery(String schema, String insertColumns, String selectColumns, String table, String extTable) {
-        val stagingTable = table + STAGING_TABLE_SUFFIX;
-        return String.format(INSERT_INTO_STAGING_TABLE_SQL, schema, stagingTable, insertColumns, selectColumns, schema, extTable);
+        return String.format(INSERT_INTO_STAGING_TABLE_SQL, schema, table, insertColumns, selectColumns, schema, extTable);
     }
 
     @Override

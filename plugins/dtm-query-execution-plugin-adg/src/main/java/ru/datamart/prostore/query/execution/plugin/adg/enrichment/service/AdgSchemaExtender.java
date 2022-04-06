@@ -15,18 +15,20 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adg.enrichment.service;
 
+import lombok.val;
+import org.springframework.stereotype.Service;
 import ru.datamart.prostore.common.model.ddl.ColumnType;
 import ru.datamart.prostore.common.model.ddl.Entity;
 import ru.datamart.prostore.common.model.ddl.EntityField;
+import ru.datamart.prostore.common.model.ddl.EntityUtils;
+import ru.datamart.prostore.query.calcite.core.service.AbstractSchemaExtender;
 import ru.datamart.prostore.query.execution.model.metadata.Datamart;
 import ru.datamart.prostore.query.execution.plugin.adg.base.factory.AdgHelperTableNamesFactory;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.SchemaExtender;
-import lombok.val;
-import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
 
 import static ru.datamart.prostore.query.execution.plugin.adg.base.utils.ColumnFields.*;
 
@@ -35,7 +37,7 @@ import static ru.datamart.prostore.query.execution.plugin.adg.base.utils.ColumnF
  * Implementing a Logic to Physical Conversion
  */
 @Service("adgSchemaExtender")
-public class AdgSchemaExtender implements SchemaExtender {
+public class AdgSchemaExtender extends AbstractSchemaExtender {
     private final AdgHelperTableNamesFactory helperTableNamesFactory;
 
     public AdgSchemaExtender(AdgHelperTableNamesFactory helperTableNamesFactory) {
@@ -43,43 +45,34 @@ public class AdgSchemaExtender implements SchemaExtender {
     }
 
     @Override
-    public Datamart createPhysicalSchema(Datamart logicalSchema, String systemName) {
-        Datamart extendedSchema = new Datamart();
-        extendedSchema.setMnemonic(logicalSchema.getMnemonic());
-        List<Entity> extendedDatamartClasses = new ArrayList<>();
-        logicalSchema.getEntities().forEach(entity -> {
-            val extendedEntity = entity.copy();
-            val helperTableNames = helperTableNamesFactory.create(systemName,
-                    logicalSchema.getMnemonic(),
-                    extendedEntity.getName());
-            val extendedEntityFields = new ArrayList<>(extendedEntity.getFields());
-            extendedEntityFields.addAll(getExtendedColumns());
-            extendedEntity.setFields(extendedEntityFields);
-            extendedDatamartClasses.add(extendedEntity);
-            extendedDatamartClasses.add(getExtendedSchema(extendedEntity, helperTableNames.getHistory()));
-            extendedDatamartClasses.add(getExtendedSchema(extendedEntity, helperTableNames.getStaging()));
-            extendedDatamartClasses.add(getExtendedSchema(extendedEntity, helperTableNames.getActual()));
-        });
-        extendedSchema.setEntities(extendedDatamartClasses);
-        return extendedSchema;
+    protected void extendLogicalEntity(Map<String, Datamart> extendedDatamarts, Entity entity, String datamartMnemonic, String systemName) {
+        val extendedDatamart = getOrCreateDatamart(extendedDatamarts, datamartMnemonic);
+        extendedDatamart.getEntities().add(entity);
+
+        val extendedEntity = entity.copy();
+        val helperTableNames = helperTableNamesFactory.create(systemName, datamartMnemonic, extendedEntity.getName());
+        val extendedEntityFields = new ArrayList<>(extendedEntity.getFields());
+        extendedEntityFields.addAll(getExtendedColumns());
+        extendedEntity.setFields(extendedEntityFields);
+        extendedDatamart.getEntities().add(EntityUtils.renameEntity(extendedEntity, helperTableNames.getHistory()));
+        extendedDatamart.getEntities().add(EntityUtils.renameEntity(extendedEntity, helperTableNames.getStaging()));
+        extendedDatamart.getEntities().add(EntityUtils.renameEntity(extendedEntity, helperTableNames.getActual()));
     }
 
-
-    private Entity getExtendedSchema(Entity entity, String tableName) {
-        return entity.toBuilder()
-                .fields(entity.getFields().stream()
-                        .map(EntityField::copy)
-                        .collect(Collectors.toList()))
-                .name(tableName)
-                .build();
+    @Override
+    protected void extendStandaloneEntity(Map<String, Datamart> extendedDatamarts, Entity entity, String datamartMnemonic) {
+        val standaloneTableName = entity.getExternalTableLocationPath();
+        val logicalDatamart = getOrCreateDatamart(extendedDatamarts, datamartMnemonic);
+        logicalDatamart.getEntities().add(entity);
+        logicalDatamart.getEntities().add(EntityUtils.renameEntity(entity, standaloneTableName));
     }
 
     private List<EntityField> getExtendedColumns() {
-        List<EntityField> tableAttributeList = new ArrayList<>();
-        tableAttributeList.add(generateNewField(SYS_OP_FIELD));
-        tableAttributeList.add(generateNewField(SYS_TO_FIELD));
-        tableAttributeList.add(generateNewField(SYS_FROM_FIELD));
-        return tableAttributeList;
+        return Arrays.asList(
+                generateNewField(SYS_OP_FIELD),
+                generateNewField(SYS_TO_FIELD),
+                generateNewField(SYS_FROM_FIELD)
+        );
     }
 
     private EntityField generateNewField(String name) {

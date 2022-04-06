@@ -20,7 +20,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>dtm-query-execution-plugin-adg</artifactId>
-    <version>5.4.0</version>
+    <version>5.5.0</version>
     <name>DTM Tarantool Plugin</name>
     <packaging>jar</packaging>
     <description>Plugin for ADG (Tarantool) Query Execution</description>
@@ -28,7 +28,7 @@
     <parent>
         <groupId>ru.datamart.prostore</groupId>
         <artifactId>plugins</artifactId>
-        <version>5.4.0</version>
+        <version>5.5.0</version>
     </parent>
 
     <dependencies>

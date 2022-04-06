@@ -35,7 +35,6 @@ import org.apache.calcite.sql2rel.SqlToRelConverter;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 
 public class DtmSqlToRelConverter extends SqlToRelConverter {
@@ -59,10 +58,7 @@ public class DtmSqlToRelConverter extends SqlToRelConverter {
         assert select != null;
 
         if (orderList != null) {
-            Iterator<SqlNode> orderIter = orderList.iterator();
-
-            while(orderIter.hasNext()) {
-                SqlNode orderItem = orderIter.next();
+            for (SqlNode orderItem : orderList) {
                 collationList.add(this.convertOrderItem(select,
                         orderItem,
                         extraOrderExprs,
@@ -84,7 +80,7 @@ public class DtmSqlToRelConverter extends SqlToRelConverter {
             assert collation.getFieldCollations().isEmpty();
 
             if ((offset == null || offset instanceof SqlLiteral
-                    && ((SqlLiteral)offset).bigDecimalValue().equals(BigDecimal.ZERO))
+                    && ((SqlLiteral) offset).bigDecimalValue().equals(BigDecimal.ZERO))
                     && fetch == null) {
                 return;
             }
@@ -95,11 +91,11 @@ public class DtmSqlToRelConverter extends SqlToRelConverter {
                 offset == null ? null : this.convertExpression(offset),
                 fetch == null ? null : this.convertExpression(fetch)), false);
         if (!orderExprList.isEmpty()) {
-            List<RexNode> exprs = new ArrayList();
+            List<RexNode> exprs = new ArrayList<>();
             RelDataType rowType = bb.root.getRowType();
             int fieldCount = rowType.getFieldCount() - orderExprList.size();
 
-            for(int i = 0; i < fieldCount; ++i) {
+            for (int i = 0; i < fieldCount; ++i) {
                 exprs.add(this.rexBuilder.makeInputRef(bb.root, i));
             }
 

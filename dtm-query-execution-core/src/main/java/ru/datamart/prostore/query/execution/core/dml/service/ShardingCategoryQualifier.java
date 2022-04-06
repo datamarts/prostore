@@ -15,6 +15,7 @@
  */
 package ru.datamart.prostore.query.execution.core.dml.service;
 
+import org.jetbrains.annotations.NotNull;
 import ru.datamart.prostore.common.dml.ShardingCategory;
 import ru.datamart.prostore.common.model.ddl.ColumnType;
 import ru.datamart.prostore.common.model.ddl.Entity;
@@ -65,33 +66,7 @@ public class ShardingCategoryQualifier {
             }
 
             if (sqlSelect.hasWhere()) {
-                val entities = getAllEntities(schema);
-                val shardingKeyList = EntityFieldUtils.getShardingKeyList(entities.stream()
-                        .flatMap(entity -> entity.getFields().stream())
-                        .collect(Collectors.toList()));
-                List<List<SqlBasicCall>> conditionGroups = getConditionGroups(sqlSelect.getWhere(), shardingKeyList);
-                conditionGroups = conditionGroups.stream()
-                        .map(conditionGroup -> removeNonShardingKeyConditions(conditionGroup, shardingKeyList))
-                        .collect(Collectors.toList());
-                conditionGroups = replaceSingleInAndIsNullTrueClauses(conditionGroups);
-                if (sqlSelect.getFrom() instanceof SqlJoin) {
-                    val joinCondition = ((SqlJoin) sqlSelect.getFrom()).getCondition();
-                    val joinConditionGroups = getConditionGroups(joinCondition, shardingKeyList);
-                    conditionGroups = addJoinCondition(conditionGroups, joinConditionGroups);
-                }
-                List<ShardingCategory> groupsCategories = calculateGroupsCategories(conditionGroups, shardingKeyList, entities);
-                Set<ShardingCategory> categorySet = new HashSet<>(groupsCategories);
-                if (categorySet.contains(ShardingCategory.SHARD_ALL)) {
-                    return ShardingCategory.SHARD_ALL;
-                }
-                if (categorySet.contains(ShardingCategory.SHARD_SET)) {
-                    return ShardingCategory.SHARD_SET;
-                }
-                if (groupsCategories.stream().filter(category -> category.equals(ShardingCategory.SHARD_ONE)).count() == 1) {
-                    return ShardingCategory.SHARD_ONE;
-                } else {
-                    return ShardingCategory.SHARD_SET;
-                }
+                return calculateShardingCategory(schema, sqlSelect);
             }
             return ShardingCategory.SHARD_ALL;
         } catch (Exception e) {
@@ -100,32 +75,66 @@ public class ShardingCategoryQualifier {
         }
     }
 
+    @NotNull
+    private ShardingCategory calculateShardingCategory(List<Datamart> schema, SqlSelect sqlSelect) {
+        val entities = getAllEntities(schema);
+        val shardingKeyList = EntityFieldUtils.getShardingKeyList(entities.stream()
+                .flatMap(entity -> entity.getFields().stream())
+                .collect(Collectors.toList()));
+        List<List<SqlBasicCall>> conditionGroups = getConditionGroups(sqlSelect.getWhere(), shardingKeyList);
+        conditionGroups = conditionGroups.stream()
+                .map(conditionGroup -> removeNonShardingKeyConditions(conditionGroup, shardingKeyList))
+                .collect(Collectors.toList());
+        conditionGroups = replaceSingleInAndIsNullTrueClauses(conditionGroups);
+        if (sqlSelect.getFrom() instanceof SqlJoin) {
+            val joinCondition = ((SqlJoin) sqlSelect.getFrom()).getCondition();
+            val joinConditionGroups = getConditionGroups(joinCondition, shardingKeyList);
+            conditionGroups = addJoinCondition(conditionGroups, joinConditionGroups);
+        }
+        List<ShardingCategory> groupsCategories = calculateGroupsCategories(conditionGroups, shardingKeyList, entities);
+        Set<ShardingCategory> categorySet = new HashSet<>(groupsCategories);
+        if (categorySet.contains(ShardingCategory.SHARD_ALL)) {
+            return ShardingCategory.SHARD_ALL;
+        }
+        if (categorySet.contains(ShardingCategory.SHARD_SET)) {
+            return ShardingCategory.SHARD_SET;
+        }
+        if (groupsCategories.stream().filter(category -> category.equals(ShardingCategory.SHARD_ONE)).count() == 1) {
+            return ShardingCategory.SHARD_ONE;
+        } else {
+            return ShardingCategory.SHARD_SET;
+        }
+    }
+
     private List<List<SqlBasicCall>> addJoinCondition(List<List<SqlBasicCall>> conditionGroups, List<List<SqlBasicCall>> joinConditionGroups) {
         List<List<SqlBasicCall>> newCondGroups = new ArrayList<>();
         for (List<SqlBasicCall> conditionGroup : conditionGroups) {
             for (List<SqlBasicCall> joinConditionGroup : joinConditionGroups) {
                 List<SqlBasicCall> newCondGroup = new ArrayList<>(conditionGroup);
-                for (SqlBasicCall joinCondition : joinConditionGroup) {
-                    for (SqlBasicCall condition : conditionGroup) {
-                        val leftName = getIdentifier(joinCondition.getOperandList().get(0));
-                        val rightName = getIdentifier(joinCondition.getOperandList().get(1));
-                        if (condition.getOperator().getKind().equals(SqlKind.EQUALS)) {
-                            val identifier = getIdentifierName(condition);
-                            if (leftName.equals(identifier)) {
-                                newCondGroup.add(basicCall(condition.getOperator(), identifier(rightName), condition.getOperandList().get(1)));
-                            }
-                            if (rightName.equals(identifier)) {
-                                newCondGroup.add(basicCall(condition.getOperator(), identifier(leftName), condition.getOperandList().get(1)));
-                            }
-                        }
-                    }
-
-                }
+                addPairedIdentifiers(conditionGroup, joinConditionGroup, newCondGroup);
                 newCondGroups.add(newCondGroup);
             }
         }
 
         return newCondGroups;
+    }
+
+    private void addPairedIdentifiers(List<SqlBasicCall> conditionGroup, List<SqlBasicCall> joinConditionGroup, List<SqlBasicCall> newCondGroup) {
+        for (SqlBasicCall joinCondition : joinConditionGroup) {
+            for (SqlBasicCall condition : conditionGroup) {
+                val leftName = getIdentifier(joinCondition.getOperandList().get(0));
+                val rightName = getIdentifier(joinCondition.getOperandList().get(1));
+                if (condition.getOperator().getKind().equals(SqlKind.EQUALS)) {
+                    val identifier = getIdentifierName(condition);
+                    if (leftName.equals(identifier)) {
+                        newCondGroup.add(basicCall(condition.getOperator(), identifier(rightName), condition.getOperandList().get(1)));
+                    }
+                    if (rightName.equals(identifier)) {
+                        newCondGroup.add(basicCall(condition.getOperator(), identifier(leftName), condition.getOperandList().get(1)));
+                    }
+                }
+            }
+        }
     }
 
     private String getIdentifier(SqlNode node) {

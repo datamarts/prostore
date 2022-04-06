@@ -15,6 +15,15 @@
  */
 package ru.datamart.prostore.query.execution.core.dml.service.view;
 
+import io.vertx.core.Future;
+import io.vertx.junit5.VertxExtension;
+import io.vertx.junit5.VertxTestContext;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.calcite.sql.SqlNode;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import ru.datamart.prostore.common.delta.DeltaInformation;
 import ru.datamart.prostore.common.delta.DeltaType;
 import ru.datamart.prostore.common.delta.SelectOnInterval;
@@ -32,16 +41,6 @@ import ru.datamart.prostore.query.execution.core.base.service.delta.DeltaInforma
 import ru.datamart.prostore.query.execution.core.base.service.delta.DeltaInformationService;
 import ru.datamart.prostore.query.execution.core.calcite.configuration.CalciteConfiguration;
 import ru.datamart.prostore.query.execution.core.calcite.service.CoreCalciteDefinitionService;
-import io.vertx.core.Future;
-import io.vertx.junit5.VertxTestContext;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.apache.calcite.sql.SqlNode;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
-import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -49,6 +48,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @Slf4j
+@ExtendWith(VertxExtension.class)
 class ViewReplacerServiceTest {
 
     public static final String EXPECTED_WITHOUT_JOIN = "SELECT `v`.`col1` AS `c`, `v`.`col2` AS `r`\n" +
@@ -107,27 +107,14 @@ class ViewReplacerServiceTest {
     private final MaterializedViewReplacer materializedViewReplacer = new MaterializedViewReplacer(definitionService, deltaInformationExtractor, deltaInformationService);
     private final ViewReplacerService viewReplacerService = new ViewReplacerService(entityDao, logicViewReplacer, materializedViewReplacer);
 
-    private VertxTestContext testContext;
-
     @BeforeEach
     void setUp() {
         when(serviceDbFacade.getServiceDbDao()).thenReturn(serviceDbDao);
         when(serviceDbDao.getEntityDao()).thenReturn(entityDao);
-
-        testContext = new VertxTestContext();
-    }
-
-    @AfterEach
-    public void check() throws InterruptedException {
-        assertThat(testContext.awaitCompletion(5, TimeUnit.SECONDS)).isTrue();
-        if (testContext.failed()) {
-            fail(testContext.causeOfFailure());
-        }
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void withoutJoin() {
+    void withoutJoin(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(
                         Future.succeededFuture(Entity.builder()
@@ -136,7 +123,8 @@ class ViewReplacerServiceTest {
                                 .viewQuery("SELECT Col4, Col5 \n" +
                                         "FROM tblX \n" +
                                         "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -148,27 +136,105 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
-                    if (sqlResult.succeeded()) {
-                        assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITHOUT_JOIN);
-                        testContext.completeNow();
-                    } else {
-                        testContext.failNow(sqlResult.cause());
+                .onComplete(sqlResult -> testContext.verify(() -> {
+                    if (sqlResult.failed()) {
+                        fail(sqlResult.cause());
                     }
-                });
+                    assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITHOUT_JOIN);
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void withDatamart() {
+    void shouldSuccessWhenReadableExternalTable(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
-                .thenReturn(Future.succeededFuture(Entity.builder()
+                .thenReturn(
+                        Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.VIEW)
                                 .name("view")
                                 .viewQuery("SELECT Col4, Col5 \n" +
                                         "FROM tblX \n" +
                                         "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(
+                        Future.succeededFuture(Entity.builder()
+                                .entityType(EntityType.READABLE_EXTERNAL_TABLE)
+                                .name("tblY")
+                                .build())
+                );
+
+        val sql = "SELECT v.Col1 as c, v.Col2 r\n" +
+                "FROM test.view FOR SYSTEM_TIME AS OF '2019-12-23 15:15:14' v";
+        SqlNode sqlNode = definitionService.processingQuery(sql);
+
+        viewReplacerService.replace(sqlNode, "datamart")
+                .onComplete(sqlResult -> testContext.verify(() -> {
+                    if (sqlResult.failed()) {
+                        fail(sqlResult.cause());
+                    }
+
+                    String expected = "SELECT `v`.`col1` AS `c`, `v`.`col2` AS `r`\n" +
+                            "FROM (SELECT `col4`, `col5`\n" +
+                            "FROM `tblx`\n" +
+                            "WHERE `tblx`.`col6` = 0) AS `v`";
+                    assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(expected);
+                }).completeNow());
+    }
+
+    @Test
+    void shouldSuccessWhenReadableExternalTableJoinLogicalTable(VertxTestContext testContext) {
+        when(entityDao.getEntity(any(), any()))
+                .thenReturn(
+                        Future.succeededFuture(Entity.builder()
+                                .entityType(EntityType.VIEW)
+                                .name("view")
+                                .viewQuery("SELECT Col4, Col5 \n" +
+                                        "FROM tblX JOIN tblY \n" +
+                                        "ON tblX.id = tblY.id \n" +
+                                        "WHERE tblX.Col6 = 0")
+                                .build()))
+                .thenReturn(
+                        Future.succeededFuture(Entity.builder()
+                                .entityType(EntityType.TABLE)
+                                .name("tblX")
+                                .build())
+                )
+                .thenReturn(
+                        Future.succeededFuture(Entity.builder()
+                                .entityType(EntityType.READABLE_EXTERNAL_TABLE)
+                                .name("tblY")
+                                .build())
+                );
+
+        val sql = "SELECT v.Col1 as c, v.Col2 r\n" +
+                "FROM test.view FOR SYSTEM_TIME AS OF '2019-12-23 15:15:14' v";
+        SqlNode sqlNode = definitionService.processingQuery(sql);
+
+        viewReplacerService.replace(sqlNode, "datamart")
+                .onComplete(sqlResult -> testContext.verify(() -> {
+                    if (sqlResult.failed()) {
+                        fail(sqlResult.cause());
+                    }
+
+                    String expected = "SELECT `v`.`col1` AS `c`, `v`.`col2` AS `r`\n" +
+                            "FROM (SELECT `col4`, `col5`\n" +
+                            "FROM `tblx` FOR SYSTEM_TIME AS OF '2019-12-23 15:15:14'\n" +
+                            "INNER JOIN `tbly` ON `tblx`.`id` = `tbly`.`id`\n" +
+                            "WHERE `tblx`.`col6` = 0) AS `v`";
+                    assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(expected);
+                }).completeNow());
+    }
+
+    @Test
+    void withDatamart(VertxTestContext testContext) {
+        when(entityDao.getEntity(any(), any()))
+                .thenReturn(Future.succeededFuture(Entity.builder()
+                        .entityType(EntityType.VIEW)
+                        .name("view")
+                        .viewQuery("SELECT Col4, Col5 \n" +
+                                "FROM tblX \n" +
+                                "WHERE tblX.Col6 = 0")
+                        .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -180,27 +246,25 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
-                    if (sqlResult.succeeded()) {
-                        assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITH_DATAMART);
-                        testContext.completeNow();
-                    } else {
-                        testContext.failNow(sqlResult.cause());
+                .onComplete(sqlResult -> testContext.verify(() -> {
+                    if (sqlResult.failed()) {
+                        fail(sqlResult.cause());
                     }
-                });
+                    assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITH_DATAMART);
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void withoutJoin_withoutAlias() {
+    void withoutJoin_withoutAlias(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(Future.succeededFuture(Entity.builder()
-                                .entityType(EntityType.VIEW)
-                                .name("view")
-                                .viewQuery("SELECT Col4, Col5 \n" +
-                                        "FROM tblX \n" +
-                                        "WHERE tblX.Col6 = 0")
-                                .build()),
+                        .entityType(EntityType.VIEW)
+                        .name("view")
+                        .viewQuery("SELECT Col4, Col5 \n" +
+                                "FROM tblX \n" +
+                                "WHERE tblX.Col6 = 0")
+                        .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -212,32 +276,31 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
-                    if (sqlResult.succeeded()) {
-                        assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITH_JOIN_WITHOUT_ALIAS);
-                        testContext.completeNow();
-                    } else {
-                        testContext.failNow(sqlResult.cause());
+                .onComplete(sqlResult -> testContext.verify(() -> {
+                    if (sqlResult.failed()) {
+                        fail(sqlResult.cause());
                     }
-                });
+                    assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITH_JOIN_WITHOUT_ALIAS);
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void withJoin() {
+    void withJoin(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tbl")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.VIEW)
                                 .name("view")
                                 .viewQuery("SELECT Col4, Col5 \n" +
                                         "FROM tblX \n" +
                                         "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -250,41 +313,42 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
-                    if (sqlResult.succeeded()) {
-                        assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITH_JOIN);
-                        testContext.completeNow();
-                    } else {
-                        testContext.failNow(sqlResult.cause());
+                .onComplete(sqlResult -> testContext.verify(() -> {
+                    if (sqlResult.failed()) {
+                        fail(sqlResult.cause());
                     }
-                });
+                    assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITH_JOIN);
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void withJoinAndWhere() {
+    void withJoinAndWhere(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(Future.succeededFuture(Entity.builder()
-                                .entityType(EntityType.TABLE)
-                                .name("tbl")
-                                .build()),
+                        .entityType(EntityType.TABLE)
+                        .name("tbl")
+                        .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.VIEW)
                                 .name("view")
                                 .viewQuery("SELECT Col4, Col5 \n" +
                                         "FROM tblX \n" +
                                         "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
-                                .build()), Future.succeededFuture(Entity.builder()
-                                .entityType(EntityType.VIEW)
-                                .name("view")
-                                .viewQuery("SELECT Col4, Col5 \n" +
-                                        "FROM tblX \n" +
-                                        "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(Future.succeededFuture(Entity.builder()
+                        .entityType(EntityType.VIEW)
+                        .name("view")
+                        .viewQuery("SELECT Col4, Col5 \n" +
+                                "FROM tblX \n" +
+                                "WHERE tblX.Col6 = 0")
+                        .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -299,19 +363,16 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
-                    if (sqlResult.succeeded()) {
-                        assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITH_JOIN_AND_WHERE);
-                        testContext.completeNow();
-                    } else {
-                        testContext.failNow(sqlResult.cause());
+                .onComplete(sqlResult -> testContext.verify(() -> {
+                    if (sqlResult.failed()) {
+                        fail(sqlResult.cause());
                     }
-                });
+                    assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITH_JOIN_AND_WHERE);
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void withJoinAndSelect() {
+    void withJoinAndSelect(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(
                         Future.succeededFuture(Entity.builder()
@@ -320,11 +381,13 @@ class ViewReplacerServiceTest {
                                 .viewQuery("SELECT Col4, Col5 \n" +
                                         "FROM tblX \n" +
                                         "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblt")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -336,19 +399,16 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
-                    if (sqlResult.succeeded()) {
-                        assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITH_SELECT);
-                        testContext.completeNow();
-                    } else {
-                        testContext.failNow(sqlResult.cause());
+                .onComplete(sqlResult -> testContext.verify(() -> {
+                    if (sqlResult.failed()) {
+                        fail(sqlResult.cause());
                     }
-                });
+                    assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITH_SELECT);
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void testMatViewNotReplacedWhenNoHints() {
+    void testMatViewNotReplacedWhenNoHints(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(
                         Future.succeededFuture(Entity.builder()
@@ -375,19 +435,16 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
-                    if (sqlResult.succeeded()) {
-                        assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines("SELECT *\nFROM `mat_view` AS `v`");
-                        testContext.completeNow();
-                    } else {
-                        testContext.failNow(sqlResult.cause());
+                .onComplete(sqlResult -> testContext.verify(() -> {
+                    if (sqlResult.failed()) {
+                        fail(sqlResult.cause());
                     }
-                });
+                    assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines("SELECT *\nFROM `mat_view` AS `v`");
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void testMatViewWithoutDeltaNumReplacedForSystemTime() {
+    void testMatViewWithoutDeltaNumReplacedForSystemTime(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(
                         Future.succeededFuture(Entity.builder()
@@ -397,7 +454,8 @@ class ViewReplacerServiceTest {
                                 .viewQuery("SELECT Col4, Col5 \n" +
                                         "FROM tblX \n" +
                                         "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -425,19 +483,16 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
-                    if (sqlResult.succeeded()) {
-                        assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITHOUT_JOIN);
-                        testContext.completeNow();
-                    } else {
-                        testContext.failNow(sqlResult.cause());
+                .onComplete(sqlResult -> testContext.verify(() -> {
+                    if (sqlResult.failed()) {
+                        fail(sqlResult.cause());
                     }
-                });
+                    assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITHOUT_JOIN);
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void testMatViewReplacedForSystemTimeWhenNotSync() {
+    void testMatViewReplacedForSystemTimeWhenNotSync(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(
                         Future.succeededFuture(Entity.builder()
@@ -447,7 +502,8 @@ class ViewReplacerServiceTest {
                                 .viewQuery("SELECT Col4, Col5 \n" +
                                         "FROM tblX \n" +
                                         "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -475,19 +531,16 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
-                    if (sqlResult.succeeded()) {
-                        assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITHOUT_JOIN);
-                        testContext.completeNow();
-                    } else {
-                        testContext.failNow(sqlResult.cause());
+                .onComplete(sqlResult -> testContext.verify(() -> {
+                    if (sqlResult.failed()) {
+                        fail(sqlResult.cause());
                     }
-                });
+                    assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITHOUT_JOIN);
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void testMatViewNotReplacedForSystemTimeWhenSync() {
+    void testMatViewNotReplacedForSystemTimeWhenSync(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(
                         Future.succeededFuture(Entity.builder()
@@ -497,7 +550,8 @@ class ViewReplacerServiceTest {
                                 .viewQuery("SELECT Col4, Col5 \n" +
                                         "FROM tblX \n" +
                                         "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -525,20 +579,17 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
-                    if (sqlResult.succeeded()) {
-                        assertThat(sqlResult.result().toString())
-                                .isEqualToNormalizingNewlines("SELECT `v`.`col1` AS `c`, `v`.`col2` AS `r`\nFROM `mat_view` FOR SYSTEM_TIME AS OF '2019-12-23 15:15:14' AS `v`");
-                        testContext.completeNow();
-                    } else {
-                        testContext.failNow(sqlResult.cause());
+                .onComplete(sqlResult -> testContext.verify(() -> {
+                    if (sqlResult.failed()) {
+                        fail(sqlResult.cause());
                     }
-                });
+                    assertThat(sqlResult.result().toString())
+                            .isEqualToNormalizingNewlines("SELECT `v`.`col1` AS `c`, `v`.`col2` AS `r`\nFROM `mat_view` FOR SYSTEM_TIME AS OF '2019-12-23 15:15:14' AS `v`");
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void testMatViewWithoutDeltaNumReplacedForDeltaNum() {
+    void testMatViewWithoutDeltaNumReplacedForDeltaNum(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(
                         Future.succeededFuture(Entity.builder()
@@ -548,7 +599,8 @@ class ViewReplacerServiceTest {
                                 .viewQuery("SELECT Col4, Col5 \n" +
                                         "FROM tblX \n" +
                                         "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -574,19 +626,16 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
-                    if (sqlResult.succeeded()) {
-                        assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITH_DELTA_NUM);
-                        testContext.completeNow();
-                    } else {
-                        testContext.failNow(sqlResult.cause());
+                .onComplete(sqlResult -> testContext.verify(() -> {
+                    if (sqlResult.failed()) {
+                        fail(sqlResult.cause());
                     }
-                });
+                    assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITH_DELTA_NUM);
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void testMatViewReplacedForDeltaNumWhenNotSynced() {
+    void testMatViewReplacedForDeltaNumWhenNotSynced(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(
                         Future.succeededFuture(Entity.builder()
@@ -596,7 +645,8 @@ class ViewReplacerServiceTest {
                                 .viewQuery("SELECT Col4, Col5 \n" +
                                         "FROM tblX \n" +
                                         "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -622,19 +672,16 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
-                    if (sqlResult.succeeded()) {
-                        assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITH_DELTA_NUM);
-                        testContext.completeNow();
-                    } else {
-                        testContext.failNow(sqlResult.cause());
+                .onComplete(sqlResult -> testContext.verify(() -> {
+                    if (sqlResult.failed()) {
+                        fail(sqlResult.cause());
                     }
-                });
+                    assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines(EXPECTED_WITH_DELTA_NUM);
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void testMatViewNotReplacedForDeltaNumWhenSynced() {
+    void testMatViewNotReplacedForDeltaNumWhenSynced(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(
                         Future.succeededFuture(Entity.builder()
@@ -644,7 +691,8 @@ class ViewReplacerServiceTest {
                                 .viewQuery("SELECT Col4, Col5 \n" +
                                         "FROM tblX \n" +
                                         "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -670,20 +718,17 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
-                    if (sqlResult.succeeded()) {
-                        assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines("SELECT `v`.`col1` AS `c`, `v`.`col2` AS `r`\n" +
-                                "FROM `mat_view` FOR SYSTEM_TIME AS OF DELTA_NUM 5 AS `v`");
-                        testContext.completeNow();
-                    } else {
-                        testContext.failNow(sqlResult.cause());
+                .onComplete(sqlResult -> testContext.verify(() -> {
+                    if (sqlResult.failed()) {
+                        fail(sqlResult.cause());
                     }
-                });
+                    assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines("SELECT `v`.`col1` AS `c`, `v`.`col2` AS `r`\n" +
+                            "FROM `mat_view` FOR SYSTEM_TIME AS OF DELTA_NUM 5 AS `v`");
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void testLatestUncommittedDeltaIsNotSupportedForMatViews() {
+    void testLatestUncommittedDeltaIsNotSupportedForMatViews(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(
                         Future.succeededFuture(Entity.builder()
@@ -693,7 +738,8 @@ class ViewReplacerServiceTest {
                                 .viewQuery("SELECT Col4, Col5 \n" +
                                         "FROM tblX \n" +
                                         "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -719,20 +765,16 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
+                .onComplete(sqlResult -> testContext.verify(() -> {
                     if (sqlResult.succeeded()) {
-                        // DeltaRangeInvalidException is expected, the test should fail
-                        testContext.failNow(sqlResult.cause());
-                    } else {
-                        assertThat(sqlResult.cause()).isInstanceOf(DeltaRangeInvalidException.class);
-                        testContext.completeNow();
+                        fail("Unexpected success");
                     }
-                });
+                    assertThat(sqlResult.cause()).isInstanceOf(DeltaRangeInvalidException.class);
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void testMatViewThrowsErrorForStartedInWrongPeriod() {
+    void testMatViewThrowsErrorForStartedInWrongPeriod(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(
                         Future.succeededFuture(Entity.builder()
@@ -742,7 +784,8 @@ class ViewReplacerServiceTest {
                                 .viewQuery("SELECT Col4, Col5 \n" +
                                         "FROM tblX \n" +
                                         "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -768,20 +811,16 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
+                .onComplete(sqlResult -> testContext.verify(() -> {
                     if (sqlResult.succeeded()) {
-                        // DeltaRangeInvalidException is expected, the test should fail
-                        testContext.failNow(sqlResult.cause());
-                    } else {
-                        assertThat(sqlResult.cause()).isInstanceOf(DeltaRangeInvalidException.class);
-                        testContext.completeNow();
+                        fail("Unexpected success");
                     }
-                });
+                    assertThat(sqlResult.cause()).isInstanceOf(DeltaRangeInvalidException.class);
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void testMatViewThrowsErrorForStartedInWhenNotSynced() {
+    void testMatViewThrowsErrorForStartedInWhenNotSynced(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(
                         Future.succeededFuture(Entity.builder()
@@ -791,7 +830,8 @@ class ViewReplacerServiceTest {
                                 .viewQuery("SELECT Col4, Col5 \n" +
                                         "FROM tblX \n" +
                                         "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -817,20 +857,16 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
+                .onComplete(sqlResult -> testContext.verify(() -> {
                     if (sqlResult.succeeded()) {
-                        // DeltaRangeInvalidException is expected, the test should fail
-                        testContext.failNow(sqlResult.cause());
-                    } else {
-                        assertThat(sqlResult.cause()).isInstanceOf(DeltaRangeInvalidException.class);
-                        testContext.completeNow();
+                        fail("Unexpected success");
                     }
-                });
+                    assertThat(sqlResult.cause()).isInstanceOf(DeltaRangeInvalidException.class);
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void testMatViewForStartedIn() {
+    void testMatViewForStartedIn(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(
                         Future.succeededFuture(Entity.builder()
@@ -840,7 +876,8 @@ class ViewReplacerServiceTest {
                                 .viewQuery("SELECT Col4, Col5 \n" +
                                         "FROM tblX \n" +
                                         "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -866,20 +903,17 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
-                    if (sqlResult.succeeded()) {
-                        assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines("SELECT `v`.`col1` AS `c`, `v`.`col2` AS `r`\n" +
-                                "FROM `mat_view` FOR SYSTEM_TIME STARTED IN (10,15) AS `v`");
-                        testContext.completeNow();
-                    } else {
-                        testContext.failNow(sqlResult.cause());
+                .onComplete(sqlResult -> testContext.verify(() -> {
+                    if (sqlResult.failed()) {
+                        fail(sqlResult.cause());
                     }
-                });
+                    assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines("SELECT `v`.`col1` AS `c`, `v`.`col2` AS `r`\n" +
+                            "FROM `mat_view` FOR SYSTEM_TIME STARTED IN (10,15) AS `v`");
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void testMatViewThrowsErrorForFinishedInWrongPeriod() {
+    void testMatViewThrowsErrorForFinishedInWrongPeriod(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(
                         Future.succeededFuture(Entity.builder()
@@ -889,7 +923,8 @@ class ViewReplacerServiceTest {
                                 .viewQuery("SELECT Col4, Col5 \n" +
                                         "FROM tblX \n" +
                                         "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -915,20 +950,16 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
+                .onComplete(sqlResult -> testContext.verify(() -> {
                     if (sqlResult.succeeded()) {
-                        // DeltaRangeInvalidException is expected, the test should fail
-                        testContext.failNow(sqlResult.cause());
-                    } else {
-                        assertThat(sqlResult.cause()).isInstanceOf(DeltaRangeInvalidException.class);
-                        testContext.completeNow();
+                        fail("Unexpected success");
                     }
-                });
+                    assertThat(sqlResult.cause()).isInstanceOf(DeltaRangeInvalidException.class);
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void testMatViewThrowsErrorForFinishedInWhenNotSynced() {
+    void testMatViewThrowsErrorForFinishedInWhenNotSynced(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(
                         Future.succeededFuture(Entity.builder()
@@ -938,7 +969,8 @@ class ViewReplacerServiceTest {
                                 .viewQuery("SELECT Col4, Col5 \n" +
                                         "FROM tblX \n" +
                                         "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -964,20 +996,16 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
+                .onComplete(sqlResult -> testContext.verify(() -> {
                     if (sqlResult.succeeded()) {
-                        // DeltaRangeInvalidException is expected, the test should fail
-                        testContext.failNow(sqlResult.cause());
-                    } else {
-                        assertThat(sqlResult.cause()).isInstanceOf(DeltaRangeInvalidException.class);
-                        testContext.completeNow();
+                        fail("Unexpected success");
                     }
-                });
+                    assertThat(sqlResult.cause()).isInstanceOf(DeltaRangeInvalidException.class);
+                }).completeNow());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void testMatViewForFinishedIn() {
+    void testMatViewForFinishedIn(VertxTestContext testContext) {
         when(entityDao.getEntity(any(), any()))
                 .thenReturn(
                         Future.succeededFuture(Entity.builder()
@@ -987,7 +1015,8 @@ class ViewReplacerServiceTest {
                                 .viewQuery("SELECT Col4, Col5 \n" +
                                         "FROM tblX \n" +
                                         "WHERE tblX.Col6 = 0")
-                                .build()),
+                                .build()))
+                .thenReturn(
                         Future.succeededFuture(Entity.builder()
                                 .entityType(EntityType.TABLE)
                                 .name("tblX")
@@ -1013,14 +1042,12 @@ class ViewReplacerServiceTest {
         SqlNode sqlNode = definitionService.processingQuery(sql);
 
         viewReplacerService.replace(sqlNode, "datamart")
-                .onComplete(sqlResult -> {
-                    if (sqlResult.succeeded()) {
-                        assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines("SELECT `v`.`col1` AS `c`, `v`.`col2` AS `r`\n" +
-                                "FROM `mat_view` FOR SYSTEM_TIME FINISHED IN (10,15) AS `v`");
-                        testContext.completeNow();
-                    } else {
-                        testContext.failNow(sqlResult.cause());
+                .onComplete(sqlResult -> testContext.verify(() -> {
+                    if (sqlResult.failed()) {
+                        fail(sqlResult.cause());
                     }
-                });
+                    assertThat(sqlResult.result().toString()).isEqualToNormalizingNewlines("SELECT `v`.`col1` AS `c`, `v`.`col2` AS `r`\n" +
+                            "FROM `mat_view` FOR SYSTEM_TIME FINISHED IN (10,15) AS `v`");
+                }).completeNow());
     }
 }

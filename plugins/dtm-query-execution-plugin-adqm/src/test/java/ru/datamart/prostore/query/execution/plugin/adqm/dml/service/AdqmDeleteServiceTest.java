@@ -15,17 +15,6 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adqm.dml.service;
 
-import ru.datamart.prostore.common.model.ddl.ColumnType;
-import ru.datamart.prostore.common.model.ddl.Entity;
-import ru.datamart.prostore.common.model.ddl.EntityField;
-import ru.datamart.prostore.query.execution.model.metadata.Datamart;
-import ru.datamart.prostore.query.execution.plugin.adqm.base.service.converter.AdqmPluginSpecificLiteralConverter;
-import ru.datamart.prostore.query.execution.plugin.adqm.calcite.configuration.CalciteConfiguration;
-import ru.datamart.prostore.query.execution.plugin.adqm.ddl.configuration.properties.DdlProperties;
-import ru.datamart.prostore.query.execution.plugin.adqm.factory.AdqmProcessingSqlFactory;
-import ru.datamart.prostore.query.execution.plugin.adqm.query.service.AdqmQueryTemplateExtractor;
-import ru.datamart.prostore.query.execution.plugin.adqm.query.service.DatabaseExecutor;
-import ru.datamart.prostore.query.execution.plugin.api.request.DeleteRequest;
 import io.vertx.core.Future;
 import lombok.val;
 import org.apache.calcite.sql.SqlDelete;
@@ -41,16 +30,30 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import ru.datamart.prostore.common.model.ddl.ColumnType;
+import ru.datamart.prostore.common.model.ddl.Entity;
+import ru.datamart.prostore.common.model.ddl.EntityField;
+import ru.datamart.prostore.common.model.ddl.EntityType;
+import ru.datamart.prostore.query.execution.model.metadata.Datamart;
+import ru.datamart.prostore.query.execution.plugin.adqm.base.service.converter.AdqmPluginSpecificLiteralConverter;
+import ru.datamart.prostore.query.execution.plugin.adqm.calcite.configuration.CalciteConfiguration;
+import ru.datamart.prostore.query.execution.plugin.adqm.ddl.configuration.properties.DdlProperties;
+import ru.datamart.prostore.query.execution.plugin.adqm.dml.service.delete.AdqmLogicalDeleteService;
+import ru.datamart.prostore.query.execution.plugin.adqm.dml.service.delete.AdqmStandaloneDeleteService;
+import ru.datamart.prostore.query.execution.plugin.adqm.factory.AdqmProcessingSqlFactory;
+import ru.datamart.prostore.query.execution.plugin.adqm.query.service.AdqmQueryTemplateExtractor;
+import ru.datamart.prostore.query.execution.plugin.adqm.query.service.DatabaseExecutor;
+import ru.datamart.prostore.query.execution.plugin.api.request.DeleteRequest;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
-import static ru.datamart.prostore.query.execution.plugin.adqm.utils.TestUtils.DEFINITION_SERVICE;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
+import static ru.datamart.prostore.query.execution.plugin.adqm.utils.TestUtils.DEFINITION_SERVICE;
 
 @ExtendWith(MockitoExtension.class)
 class AdqmDeleteServiceTest {
@@ -70,7 +73,9 @@ class AdqmDeleteServiceTest {
         val calciteConfiguration = new CalciteConfiguration();
         val queryTemplateExtractor = new AdqmQueryTemplateExtractor(DEFINITION_SERVICE, calciteConfiguration.adqmSqlDialect());
         val adqmCommonSqlFactory = new AdqmProcessingSqlFactory(ddlProperties, calciteConfiguration.adqmSqlDialect());
-        adqmDeleteService = new AdqmDeleteService(new AdqmPluginSpecificLiteralConverter(), adqmCommonSqlFactory, databaseExecutor, queryTemplateExtractor);
+        val adqmStandaloneDeleteService = new AdqmStandaloneDeleteService();
+        val adqmLogicalDeleteService = new AdqmLogicalDeleteService(new AdqmPluginSpecificLiteralConverter(), adqmCommonSqlFactory, databaseExecutor, queryTemplateExtractor);
+        adqmDeleteService = new AdqmDeleteService(adqmLogicalDeleteService, adqmStandaloneDeleteService);
 
         lenient().when(ddlProperties.getCluster()).thenReturn(CLUSTER_NAME);
         lenient().when(databaseExecutor.executeWithParams(anyString(), any(), any())).thenReturn(Future.succeededFuture());
@@ -100,6 +105,24 @@ class AdqmDeleteServiceTest {
                 Matchers.is("OPTIMIZE TABLE dev__datamart.abc_actual_shard ON CLUSTER cluster FINAL")
         ));
         assertTrue(result.succeeded());
+    }
+
+    @Test
+    void shouldFailWhenDelteFromStandaloneTable() {
+        // arrange
+        val request = getDeleteRequest("DELETE FROM datamart.abc WHERE id > ? OR col1 = ?");
+        request.getEntity().setEntityType(EntityType.WRITEABLE_EXTERNAL_TABLE);
+
+        // act
+        val result = adqmDeleteService.execute(request);
+
+        // assert
+        if (result.succeeded()) {
+            fail("Unexpected success");
+        }
+
+        verifyNoInteractions(databaseExecutor);
+        assertEquals("Feature is not implemented [adqm standalone delete]", result.cause().getMessage());
     }
 
     @Test
@@ -316,6 +339,7 @@ class AdqmDeleteServiceTest {
     private Entity getEntity() {
         return Entity.builder()
                 .name("abc")
+                .entityType(EntityType.TABLE)
                 .fields(Arrays.asList(
                         EntityField.builder()
                                 .name("id")

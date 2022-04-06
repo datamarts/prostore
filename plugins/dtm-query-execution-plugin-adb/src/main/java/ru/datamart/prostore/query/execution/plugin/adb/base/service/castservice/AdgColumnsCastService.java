@@ -15,12 +15,14 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.base.service.castservice;
 
-import ru.datamart.prostore.common.model.ddl.ColumnType;
 import org.apache.calcite.sql.SqlDialect;
+import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import ru.datamart.prostore.common.model.ddl.ColumnType;
+import ru.datamart.prostore.query.calcite.core.node.SqlTreeNode;
 
 @Service("adgColumnsCastService")
 public class AdgColumnsCastService extends AbstractColumnsCastService {
@@ -40,6 +42,11 @@ public class AdgColumnsCastService extends AbstractColumnsCastService {
             default:
                 throw new IllegalArgumentException("Invalid type to surround");
         }
+    }
+
+    @Override
+    protected void nullify(SqlTreeNode columnNode) {
+        columnNode.getSqlNodeSetter().accept(SqlLiteral.createNull(columnNode.getNode().getParserPosition()));
     }
 
     @Override

@@ -27,6 +27,7 @@ import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.schema.SchemaPlus;
 import org.apache.calcite.schema.TranslatableTable;
 import ru.datamart.prostore.common.configuration.core.CoreConstants;
+import ru.datamart.prostore.common.model.ddl.ColumnType;
 import ru.datamart.prostore.common.model.ddl.Entity;
 import ru.datamart.prostore.query.calcite.core.util.CalciteUtil;
 
@@ -77,20 +78,25 @@ public abstract class DtmTable extends AbstractQueryableTable implements Transla
                         columnAccuracy = null;
                     }
                     break;
+                default:
+                    break;
             }
-
-            if (columnSize != null && columnAccuracy != null) {
-                builder.add(it.getName(), CalciteUtil.valueOf(it.getType()), columnSize, columnAccuracy)
-                        .nullable(nullable);
-            } else if (columnSize != null) {
-                builder.add(it.getName(), CalciteUtil.valueOf(it.getType()), columnSize)
-                        .nullable(nullable);
-            } else {
-                builder.add(it.getName(), CalciteUtil.valueOf(it.getType()))
-                        .nullable(nullable);
-            }
+            addToBuilder(builder, it.getName(), it.getType(), nullable, columnSize, columnAccuracy);
         });
         return builder.build();
+    }
+
+    private void addToBuilder(RelDataTypeFactory.Builder builder, String name, ColumnType type, boolean nullable, Integer size, Integer accuracy) {
+        if (size != null && accuracy != null) {
+            builder.add(name, CalciteUtil.valueOf(type), size, accuracy)
+                    .nullable(nullable);
+        } else if (size != null) {
+            builder.add(name, CalciteUtil.valueOf(type), size)
+                    .nullable(nullable);
+        } else {
+            builder.add(name, CalciteUtil.valueOf(type))
+                    .nullable(nullable);
+        }
     }
 
     @Override

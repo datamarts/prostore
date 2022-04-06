@@ -15,22 +15,22 @@
  */
 package ru.datamart.prostore.query.execution.core.delta.service;
 
-import ru.datamart.prostore.query.execution.core.base.configuration.properties.RollbackDeltaProperties;
-import ru.datamart.prostore.query.execution.core.base.repository.ServiceDbFacade;
-import ru.datamart.prostore.query.execution.core.delta.dto.DeltaWriteOp;
-import ru.datamart.prostore.query.execution.core.delta.repository.zookeeper.DeltaServiceDao;
-import ru.datamart.prostore.query.execution.core.delta.service.BreakMppwService;
-import ru.datamart.prostore.query.execution.core.edml.mppw.dto.WriteOperationStatus;
-import ru.datamart.prostore.query.execution.core.edml.mppw.service.impl.BreakMppwContext;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
+import lombok.val;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import ru.datamart.prostore.query.execution.core.base.configuration.properties.RollbackDeltaProperties;
+import ru.datamart.prostore.query.execution.core.base.repository.ServiceDbFacade;
+import ru.datamart.prostore.query.execution.core.delta.dto.DeltaWriteOp;
+import ru.datamart.prostore.query.execution.core.delta.repository.zookeeper.DeltaServiceDao;
+import ru.datamart.prostore.query.execution.core.edml.mppw.dto.WriteOperationStatus;
+import ru.datamart.prostore.query.execution.core.edml.mppw.service.impl.BreakMppwContext;
 
 import java.util.Arrays;
 
@@ -40,6 +40,7 @@ import static org.mockito.Mockito.when;
 public class BreakMppwServiceTest {
 
     private static final String DATAMART = "test_datamart";
+    private static final String WRONG_MPPW_TASK_COUNT = "Wrong BREAK_MPPW tasks number in the queue";
 
     private RollbackDeltaProperties rollbackDeltaProperties;
 
@@ -71,7 +72,7 @@ public class BreakMppwServiceTest {
 
         DeltaWriteOp op4 = new DeltaWriteOp();
         op4.setStatus(WriteOperationStatus.EXECUTING.getValue());
-        op4.setSysCn(2L);
+        op4.setSysCn(4L);
         op4.setTableNameExt(null); // llw
 
         when(serviceDbFacade.getDeltaServiceDao()).thenReturn(deltaServiceDao);
@@ -90,13 +91,36 @@ public class BreakMppwServiceTest {
     public void testBreakMppw(VertxTestContext context, Vertx vertx) throws InterruptedException {
         vertx.setTimer(100, handler -> {
             if (BreakMppwContext.getNumberOfTasksByDatamart(DATAMART) != 2) {
-                context.failNow("Wrong BREAK_MPPW tasks number in the queue");
+                context.failNow(WRONG_MPPW_TASK_COUNT);
             }
-            BreakMppwContext.removeTask(DATAMART, 1);
-            BreakMppwContext.removeTask(DATAMART, 2);
+            BreakMppwContext.removeTask(DATAMART, 1L);
+            BreakMppwContext.removeTask(DATAMART, 2L);
         });
 
         Future<Void> result = executor.breakMppw(DATAMART);
+
+        Thread.sleep(150);
+
+        result.onComplete(ar -> {
+            if (ar.succeeded()) {
+                context.completeNow();
+            } else {
+                context.failNow(ar.cause());
+            }
+        });
+    }
+
+    @Test
+    public void testBreakMppwWithSysCn(VertxTestContext context, Vertx vertx) throws InterruptedException {
+        vertx.setTimer(100, handler -> {
+            if (BreakMppwContext.getNumberOfTasksByDatamart(DATAMART) != 1) {
+                context.failNow(WRONG_MPPW_TASK_COUNT);
+            }
+            BreakMppwContext.removeTask(DATAMART, 1L);
+            BreakMppwContext.removeTask(DATAMART, 2L);
+        });
+
+        val result = executor.breakMppw(DATAMART, 2L);
 
         Thread.sleep(150);
 

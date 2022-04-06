@@ -21,6 +21,9 @@ public class AdpVersionQueriesFactory {
     public static final String VERSION_COLUMN = "version";
     private static final String ADP_NAME = "'adp instance'";
 
+    private AdpVersionQueriesFactory() {
+    }
+
     public static String createAdpVersionQuery() {
         return String.format("SELECT %s as %s, VERSION() as %s", ADP_NAME, COMPONENT_NAME_COLUMN, VERSION_COLUMN);
     }

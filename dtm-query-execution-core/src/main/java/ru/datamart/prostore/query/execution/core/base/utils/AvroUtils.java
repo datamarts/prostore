@@ -30,6 +30,9 @@ public class AvroUtils {
         SpecificData.get().addLogicalTypeConversion(new TimeConversions.DateConversion());
     }
 
+    private AvroUtils() {
+    }
+
     public static Schema.Field createSysOpField() {
         return new Schema.Field("sys_op", Schema.create(Schema.Type.INT), null, 0);
     }
@@ -80,15 +83,14 @@ public class AvroUtils {
     }
 
     private static Schema.Field genNullableField(EntityField column) {
-        Schema.Field field = new Schema.Field(column.getName(),
-            Schema.createUnion(Schema.create(Schema.Type.NULL), metadataColumnTypeToAvroSchema(column.getType())),
-            null, Schema.Field.NULL_DEFAULT_VALUE);
-        return field;
+        return new Schema.Field(column.getName(),
+                Schema.createUnion(Schema.create(Schema.Type.NULL), metadataColumnTypeToAvroSchema(column.getType())),
+                null, Schema.Field.NULL_DEFAULT_VALUE);
     }
 
     private static Schema.Field genNonNullableField(EntityField column) {
         return new Schema.Field(column.getName(),
-            metadataColumnTypeToAvroSchema(column.getType()),
-            null);
+                metadataColumnTypeToAvroSchema(column.getType()),
+                null);
     }
 }

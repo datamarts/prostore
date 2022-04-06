@@ -98,6 +98,13 @@ public class InsertSelectExecutor extends AbstractUpdateExecutor<InsertSelectReq
     }
 
     @Override
+    protected Future<Void> executeWriteableExternal(DmlRequestContext context, Entity entity) {
+        return buildRequest(context, null, entity)
+                .compose(request -> runOperation(context, request))
+                .mapEmpty();
+    }
+
+    @Override
     protected Future<InsertSelectRequest> buildRequest(DmlRequestContext context, Long sysCn, Entity entity) {
         return Future.future(promise -> {
             val sqlInsert = (SqlInsert) context.getSqlNode();

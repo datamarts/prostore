@@ -15,21 +15,23 @@
  */
 package ru.datamart.prostore.query.execution.core.dml.service.view;
 
+import io.vertx.core.CompositeFuture;
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.calcite.sql.*;
+import org.apache.calcite.sql.parser.SqlParserPos;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Service;
 import ru.datamart.prostore.common.model.ddl.Entity;
+import ru.datamart.prostore.common.model.ddl.EntityType;
 import ru.datamart.prostore.query.calcite.core.extension.snapshot.SqlDeltaSnapshot;
 import ru.datamart.prostore.query.calcite.core.node.SqlKindKey;
 import ru.datamart.prostore.query.calcite.core.node.SqlSelectTree;
 import ru.datamart.prostore.query.calcite.core.node.SqlTreeNode;
 import ru.datamart.prostore.query.calcite.core.util.SqlNodeUtil;
 import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.EntityDao;
-import io.vertx.core.CompositeFuture;
-import io.vertx.core.Future;
-import io.vertx.core.Promise;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.calcite.sql.*;
-import org.apache.calcite.sql.parser.SqlParserPos;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -53,9 +55,9 @@ public class ViewReplacerService {
     public Future<SqlNode> replace(SqlNode sql, String datamart) {
         return Future.future((Promise<SqlNode> promise) -> {
             log.debug("before replacing:\n{}", sql);
-            SqlNode rootSqlNode = SqlNodeUtil.copy(sql);
+            val rootSqlNode = SqlNodeUtil.copy(sql);
 
-            ViewReplaceContext replaceContext = ViewReplaceContext.builder()
+            val replaceContext = ViewReplaceContext.builder()
                     .viewReplacerService(this)
                     .viewQueryNode(rootSqlNode)
                     .datamart(datamart)
@@ -69,19 +71,19 @@ public class ViewReplacerService {
     }
 
     protected Future<Void> replace(ViewReplaceContext parentContext) {
-        SqlSelectTree allNodes = new SqlSelectTree(parentContext.getViewQueryNode());
-        List<SqlTreeNode> allTableAndSnapshots = allNodes.findAllTableAndSnapshots();
+        val allNodes = new SqlSelectTree(parentContext.getViewQueryNode());
+        val allTableAndSnapshots = allNodes.findAllTableAndSnapshots();
 
         return CompositeFuture.join(allTableAndSnapshots
-                        .stream()
-                        .map(currentNode ->
-                                extractEntity(currentNode, parentContext.getDatamart())
-                                        .compose(entity -> processEntity(parentContext,
-                                                entity,
-                                                currentNode,
-                                                allNodes))
-                        )
-                        .collect(Collectors.toList()))
+                .stream()
+                .map(currentNode ->
+                        extractEntity(currentNode, parentContext.getDatamart())
+                                .compose(entity -> processEntity(parentContext,
+                                        entity,
+                                        currentNode,
+                                        allNodes))
+                )
+                .collect(Collectors.toList()))
                 .onSuccess(cf -> expandView(parentContext, allNodes))
                 .mapEmpty();
     }
@@ -97,8 +99,8 @@ public class ViewReplacerService {
                                        Entity entity,
                                        SqlTreeNode currentNode,
                                        SqlSelectTree allNodes) {
-        SqlSnapshot currSnapshot = getSqlSnapshot(parentContext.getCurrentNode(), parentContext.getSqlSnapshot());
-        ViewReplaceContext nodeContext = ViewReplaceContext.builder()
+        val currSnapshot = getSqlSnapshot(parentContext.getCurrentNode(), parentContext.getSqlSnapshot(), entity);
+        val nodeContext = ViewReplaceContext.builder()
                 .viewReplacerService(this)
                 .entity(entity)
                 .datamart(parentContext.getDatamart())
@@ -123,21 +125,21 @@ public class ViewReplacerService {
 
     private Future<Void> expandNode(ViewReplaceContext parentContext, ViewReplaceContext nodeContext) {
         if (nodeContext.getSqlSnapshot() != null) {
-            SqlDeltaSnapshot parentSnapshot = parentContext.getCurrentNode().getNode();
-            SqlSnapshot childSnapshot = parentSnapshot.copy(nodeContext.getCurrentNode().getNode());
+            val parentSnapshot = (SqlDeltaSnapshot) parentContext.getCurrentNode().getNode();
+            val childSnapshot = parentSnapshot.copy(nodeContext.getCurrentNode().getNode());
             nodeContext.getCurrentNode().getSqlNodeSetter().accept(childSnapshot);
         }
         return Future.succeededFuture();
     }
 
-    private SqlSnapshot getSqlSnapshot(SqlTreeNode parentNode, SqlSnapshot sqlSnapshot) {
-        if (parentNode == null) {
+    private SqlSnapshot getSqlSnapshot(SqlTreeNode parentNode, SqlSnapshot sqlSnapshot, Entity entity) {
+        if (parentNode == null || entity.getEntityType() == EntityType.READABLE_EXTERNAL_TABLE) {
             return null;
-        } else {
-            return sqlSnapshot == null ?
-                    (parentNode.getNode() instanceof SqlSnapshot ? parentNode.getNode() : null)
-                    : sqlSnapshot;
         }
+        if (sqlSnapshot == null) {
+            return parentNode.getNode() instanceof SqlSnapshot ? parentNode.getNode() : null;
+        }
+        return sqlSnapshot;
     }
 
     private void expandView(ViewReplaceContext context, SqlSelectTree nodes) {
@@ -152,7 +154,7 @@ public class ViewReplacerService {
     }
 
     private SqlBasicCall getAlias(SqlTreeNode parentNode, SqlSelectTree tree) {
-        String tableName = parentNode.tryGetTableName()
+        val tableName = parentNode.tryGetTableName()
                 .orElseThrow(() -> new RuntimeException("Can't get tableName"));
         return new SqlBasicCall(new SqlAsOperator(),
                 new SqlNode[]{tree.getRoot().getNode(),
@@ -161,15 +163,16 @@ public class ViewReplacerService {
     }
 
     private boolean isAliasExists(SqlSelectTree tree, SqlTreeNode node) {
-        return tree.getParentByChild(node)
-                .filter(parentNode -> {
-                    List<SqlKindKey> kindPath = parentNode.getKindPath();
-                    if (kindPath.isEmpty()) {
-                        return false;
-                    }
-                    return kindPath.get(kindPath.size() - 1).equals(AS_CHECK);
-                })
-                .isPresent();
+        val parentNode = tree.getParentByChild(node);
+        if (parentNode != null) {
+            List<SqlKindKey> kindPath = parentNode.getKindPath();
+            if (kindPath.isEmpty()) {
+                return false;
+            }
+            return kindPath.get(kindPath.size() - 1).equals(AS_CHECK);
+        }
+
+        return false;
     }
 
 }

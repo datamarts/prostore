@@ -15,6 +15,15 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adg.dml.service;
 
+import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.calcite.sql.SqlDialect;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.type.SqlTypeName;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Service;
 import ru.datamart.prostore.cache.service.CacheService;
 import ru.datamart.prostore.common.cache.QueryTemplateKey;
 import ru.datamart.prostore.common.cache.QueryTemplateValue;
@@ -32,14 +41,6 @@ import ru.datamart.prostore.query.execution.plugin.api.service.PluginSpecificLit
 import ru.datamart.prostore.query.execution.plugin.api.service.QueryResultCacheableLlrService;
 import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.EnrichQueryRequest;
 import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryEnrichmentService;
-import io.vertx.core.Future;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.calcite.sql.SqlDialect;
-import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.sql.type.SqlTypeName;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
@@ -61,7 +62,7 @@ public class AdgLlrService extends QueryResultCacheableLlrService {
                          @Qualifier("adgQueryTemplateExtractor") QueryTemplateExtractor templateExtractor,
                          @Qualifier("adgSqlDialect") SqlDialect sqlDialect,
                          @Qualifier("adgCalciteDMLQueryParserService") QueryParserService queryParserService,
-                         @Qualifier("adgTemplateParameterConverter") PluginSpecificLiteralConverter pluginSpecificLiteralConverter,
+                         @Qualifier("adgPluginSpecificLiteralConverter") PluginSpecificLiteralConverter pluginSpecificLiteralConverter,
                          @Qualifier("adgValidationService") LlrValidationService adgValidationService) {
         super(queryCacheService, templateExtractor, sqlDialect, queryParserService);
         this.queryEnrichmentService = adgQueryEnrichmentService;
@@ -89,12 +90,13 @@ public class AdgLlrService extends QueryResultCacheableLlrService {
 
     @Override
     protected Future<SqlNode> enrichQuery(LlrRequest request, QueryParserResponse parserResponse) {
-        return queryEnrichmentService.getEnrichedSqlNode(EnrichQueryRequest.builder()
-                .deltaInformations(request.getDeltaInformations())
+        val enrichRequest = EnrichQueryRequest.builder()
                 .envName(request.getEnvName())
-                .query(request.getWithoutViewsQuery())
-                .schema(request.getSchema())
-                .build(), parserResponse);
+                .deltaInformations(request.getDeltaInformations())
+                .calciteContext(parserResponse.getCalciteContext())
+                .relNode(parserResponse.getRelNode())
+                .build();
+        return queryEnrichmentService.getEnrichedSqlNode(enrichRequest);
     }
 
     @Override

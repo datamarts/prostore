@@ -19,6 +19,7 @@ import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.common.model.SqlProcessingType;
 import ru.datamart.prostore.common.post.PostSqlActionType;
 import ru.datamart.prostore.common.reader.QueryResult;
+import ru.datamart.prostore.query.calcite.core.extension.ddl.EraseChangeOperation;
 import ru.datamart.prostore.query.calcite.core.extension.ddl.SqlChanges;
 import ru.datamart.prostore.query.calcite.core.extension.ddl.truncate.SqlBaseTruncate;
 import ru.datamart.prostore.query.calcite.core.extension.eddl.DropDatabase;
@@ -81,11 +82,12 @@ public class DdlService implements DatamartExecutionService<DdlRequestContext> {
     }
 
     private String getDatamartName(DdlRequestContext context) {
-        if (context.getSqlCall() instanceof SqlChanges) {
+        SqlCall sqlCall = context.getSqlCall();
+        if (sqlCall instanceof SqlChanges || sqlCall instanceof EraseChangeOperation) {
             return null;
         }
 
-        String datamartName = parseQueryUtils.getDatamartName(context.getSqlCall().getOperandList());
+        String datamartName = parseQueryUtils.getDatamartName(sqlCall.getOperandList());
         checkEntityName(context.getRequest().getQueryRequest().getDatamartMnemonic(), datamartName, context.getSqlNode());
         return datamartName;
     }

@@ -15,12 +15,11 @@
  */
 package ru.datamart.prostore.jdbc.ext;
 
-import ru.datamart.prostore.common.model.ddl.ColumnType;
+import lombok.extern.slf4j.Slf4j;
 import ru.datamart.prostore.common.util.DateTimeUtils;
 import ru.datamart.prostore.jdbc.core.*;
 import ru.datamart.prostore.jdbc.util.DtmSqlException;
 import ru.datamart.prostore.jdbc.util.PreparedStatementParser;
-import lombok.extern.slf4j.Slf4j;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -43,8 +42,11 @@ import static java.sql.Types.*;
 
 @Slf4j
 public class DtmPreparedStatement extends DtmStatement implements PreparedStatement {
+    private static final String SQL_STRING_METHODS_ERROR = "Can't use query methods that take a query string on a prepared statement";
+
     protected final ParameterList parameters;
     private final String sql;
+    private List<ParameterList> batchParameters;
 
     public DtmPreparedStatement(BaseConnection c, int rsType, int rsConcurrency, String sql) throws SQLException {
         super(c, rsType, rsConcurrency);
@@ -73,8 +75,19 @@ public class DtmPreparedStatement extends DtmStatement implements PreparedStatem
     }
 
     @Override
+    public ResultSet executeQuery(String sql) throws SQLException {
+        throw new SQLException(SQL_STRING_METHODS_ERROR);
+    }
+
+    @Override
     public int executeUpdate() throws SQLException {
-        return super.executeUpdate(sql);
+        execute();
+        return getUpdateCount();
+    }
+
+    @Override
+    public int executeUpdate(String sql) throws SQLException {
+        throw new SQLException(SQL_STRING_METHODS_ERROR);
     }
 
     @Override
@@ -217,14 +230,55 @@ public class DtmPreparedStatement extends DtmStatement implements PreparedStatem
     }
 
     @Override
+    public boolean execute(String sql) throws SQLException {
+        throw new SQLException(SQL_STRING_METHODS_ERROR);
+    }
+
+    @Override
     public void addBatch() throws SQLException {
         checkClosed();
-        ArrayList<Query> batchStatements = this.batchStatements;
         if (batchStatements == null) {
-            this.batchStatements = batchStatements = new ArrayList<>();
+            batchStatements = new ArrayList<>();
+            batchParameters = new ArrayList<>();
         }
         List<Query> queries = connection.getQueryExecutor().createQuery(sql);
-        batchStatements.addAll(queries);
+        ParameterList copy = parameters.copy();
+        for (Query query : queries) {
+            batchStatements.add(query);
+            batchParameters.add(copy);
+        }
+        parameters.clear();
+    }
+
+    @Override
+    public void addBatch(String sql) throws SQLException {
+        throw new SQLException(SQL_STRING_METHODS_ERROR);
+    }
+
+    @Override
+    public int[] executeBatch() throws SQLException {
+        checkClosed();
+
+        if (batchStatements == null || batchStatements.isEmpty()) {
+            return new int[0];
+        }
+
+        List<QueryParameters> batchQueryParameters = batchParameters.stream()
+                .map(parameterList -> new QueryParameters(parameterList.getValues(), parameterList.getTypes()))
+                .collect(Collectors.toList());
+
+        DtmResultHandler resultHandler = new DtmResultHandler();
+        connection.getQueryExecutor().execute(batchStatements, batchQueryParameters, resultHandler);
+
+        return getBatchResults(resultHandler);
+    }
+
+    @Override
+    public void clearBatch() throws SQLException {
+        if (batchParameters != null) {
+            batchParameters.clear();
+        }
+        super.clearBatch();
     }
 
     @Override
@@ -313,11 +367,7 @@ public class DtmPreparedStatement extends DtmStatement implements PreparedStatem
 
     @Override
     public ParameterMetaData getParameterMetaData() throws SQLException {
-        return createParameterMetaData(connection, parameters.getTypes());
-    }
-
-    public ParameterMetaData createParameterMetaData(BaseConnection conn, ColumnType[] paramTypes) throws SQLException {
-        return new DtmParameterMetadata(conn, paramTypes);
+        return new DtmParameterMetadata(connection, parameters.getTypes());
     }
 
     @Override
@@ -366,7 +416,6 @@ public class DtmPreparedStatement extends DtmStatement implements PreparedStatem
             parameters.setNull(parameterIndex, targetSqlType);
         } else {
             switch (targetSqlType) {
-                //TODO implement bigDecimal setting
                 case BOOLEAN:
                     this.setBoolean(parameterIndex, (boolean) value);
                     break;

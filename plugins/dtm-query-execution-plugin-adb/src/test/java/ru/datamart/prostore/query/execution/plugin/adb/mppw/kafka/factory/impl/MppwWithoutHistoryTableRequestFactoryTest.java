@@ -15,9 +15,9 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.factory.impl;
 
+import org.junit.jupiter.api.Test;
 import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.dto.AdbKafkaMppwTransferRequest;
 import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.dto.TransferDataRequest;
-import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 
@@ -50,7 +50,7 @@ class MppwWithoutHistoryTableRequestFactoryTest {
                 .columnList(Arrays.asList("id1", "id2", "c", "sys_from", "sys_to", "sys_op"))
                 .datamart("datamart")
                 .tableName("tbl1")
-                .hotDelta(55)
+                .hotDelta(55L)
                 .keyColumnList(Arrays.asList("id1", "id2", "sys_from"))
                 .build());
         System.out.println(transferRequest);

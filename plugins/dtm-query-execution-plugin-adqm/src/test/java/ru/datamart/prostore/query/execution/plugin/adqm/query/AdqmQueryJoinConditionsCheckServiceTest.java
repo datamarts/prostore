@@ -34,11 +34,13 @@ import ru.datamart.prostore.common.dto.QueryParserRequest;
 import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.query.calcite.core.service.QueryParserService;
 import ru.datamart.prostore.query.execution.model.metadata.Datamart;
+import ru.datamart.prostore.query.execution.plugin.adqm.base.factory.AdqmHelperTableNamesFactory;
 import ru.datamart.prostore.query.execution.plugin.adqm.calcite.configuration.CalciteConfiguration;
 import ru.datamart.prostore.query.execution.plugin.adqm.calcite.factory.AdqmCalciteSchemaFactory;
 import ru.datamart.prostore.query.execution.plugin.adqm.calcite.factory.AdqmSchemaFactory;
 import ru.datamart.prostore.query.execution.plugin.adqm.calcite.service.AdqmCalciteContextProvider;
 import ru.datamart.prostore.query.execution.plugin.adqm.calcite.service.AdqmCalciteDMLQueryParserService;
+import ru.datamart.prostore.query.execution.plugin.adqm.enrichment.service.AdqmSchemaExtender;
 import ru.datamart.prostore.query.execution.plugin.adqm.query.dto.AdqmCheckJoinRequest;
 import ru.datamart.prostore.query.execution.plugin.adqm.query.service.AdqmQueryJoinConditionsCheckService;
 import ru.datamart.prostore.query.execution.plugin.adqm.query.service.extractor.SqlJoinConditionExtractor;
@@ -68,7 +70,8 @@ class AdqmQueryJoinConditionsCheckServiceTest {
 
     @BeforeEach
     void setUp(Vertx vertx) {
-        parserService = new AdqmCalciteDMLQueryParserService(calciteContextProvider, vertx);
+        val schemaExtender = new AdqmSchemaExtender(new AdqmHelperTableNamesFactory());
+        parserService = new AdqmCalciteDMLQueryParserService(calciteContextProvider, vertx, schemaExtender);
         conditionsCheckService = new AdqmQueryJoinConditionsCheckService(joinConditionExtractor);
     }
 
@@ -322,7 +325,7 @@ class AdqmQueryJoinConditionsCheckServiceTest {
         val datamarts = CoreSerialization.mapper()
                 .readValue(loadTextFromFile(), new TypeReference<List<Datamart>>() {
                 });
-        val parserRequest = new QueryParserRequest(sqlNode, datamarts);
+        val parserRequest = new QueryParserRequest(sqlNode, datamarts, "env");
         return parserService.parse(parserRequest)
                 .map(response -> conditionsCheckService.isJoinConditionsCorrect(new AdqmCheckJoinRequest(
                         response.getRelNode().rel, datamarts)));

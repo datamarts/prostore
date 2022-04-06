@@ -24,7 +24,7 @@ import org.apache.calcite.util.ImmutableNullableList;
 import java.util.List;
 
 @Getter
-public class SqlCreateTable extends SqlCreate implements SqlLogicalCall {
+public class SqlCreateTable extends SqlCreate implements SqlLogicalCall, SqlDistributedByGetter {
     private static final SqlOperator OPERATOR =
             new SqlSpecialOperator(OperationNames.CREATE_TABLE, SqlKind.CREATE_TABLE);
     private final SqlIdentifier name;

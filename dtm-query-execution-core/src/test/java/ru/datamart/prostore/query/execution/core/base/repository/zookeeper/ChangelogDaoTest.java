@@ -47,12 +47,13 @@ class ChangelogDaoTest {
     private static final String ENV = "test";
     private static final String ENTITY = "test_entity";
 
-    private static final String EXPECTED_CHANGE_QUERY  = "expected change query";
+    private static final String EXPECTED_CHANGE_QUERY = "expected change query";
 
-    private static final String EXPECTED_PREVIOUS_NOT_COMPLETED_ERROR_MSG  = "Previous change operation is not completed in datamart [dtm]";
-    private static final String EXPECTED_CHANGE_OPERATIONS_FORBIDDEN_ERROR_MSG  = "Change operations are forbidden";
+    private static final String EXPECTED_PREVIOUS_NOT_COMPLETED_ERROR_MSG = "Previous change operation is not completed in datamart [dtm]";
+    private static final String EXPECTED_CHANGE_OPERATIONS_FORBIDDEN_ERROR_MSG = "Change operations are forbidden";
     private static final String EXPECTED_COULD_NOT_CREATE_CHANGELOG_ERROR_MSG = "Changelog node already exist";
-    private static final String EXPECTED_ERROR_MSG  = "Unexpected exception during writeNewRecord";
+    private static final String EXPECTED_ERROR_MSG = "Unexpected exception during writeNewRecord";
+    private static final String ERROR_MSG = "error";
 
     private static final ZookeeperExecutor EXECUTOR = mock(ZookeeperExecutor.class);
     private static final Changelog CHANGELOG_ZERO = Changelog.builder()
@@ -307,6 +308,116 @@ class ChangelogDaoTest {
                     assertTrue(ar.failed());
                     assertEquals(DtmException.class, ar.cause().getClass());
                     assertEquals(EXPECTED_ERROR_MSG, ar.cause().getMessage());
+                }).completeNow());
+    }
+
+    @Test
+    void shouldSuccessEraseChangeOperationWhenChangelogEmpty(VertxTestContext testContext) {
+        val changelog = Changelog.builder()
+                .entityName(ENTITY)
+                .changeQuery(EXPECTED_CHANGE_QUERY)
+                .deltaNum(0L)
+                .build();
+        val operationNumber = 0L;
+
+        when(EXECUTOR.getData(anyString(), nullable(Watcher.class), any(Stat.class)))
+                .thenReturn(Future.succeededFuture(CoreSerialization.serialize(changelog)));
+
+        when(EXECUTOR.getChildren(anyString()))
+                .thenReturn(Future.succeededFuture(Collections.emptyList()));
+
+        when(EXECUTOR.multi(any()))
+                .thenReturn(Future.succeededFuture());
+        changelogDao.eraseChangeOperation(DATAMART, operationNumber)
+                .onComplete(ar -> testContext.verify(() -> {
+                    assertTrue(ar.succeeded());
+                    changelog.setOperationNumber(operationNumber);
+                    assertEquals(changelog, ar.result());
+                }).completeNow());
+    }
+
+    @Test
+    void shouldSuccessEraseChangeOperationWhenChangelogNotEmpty(VertxTestContext testContext) {
+        val changelog = Changelog.builder()
+                .entityName(ENTITY)
+                .changeQuery(EXPECTED_CHANGE_QUERY)
+                .deltaNum(0L)
+                .build();
+        val operationNumber = 2L;
+
+        when(EXECUTOR.getData(anyString(), nullable(Watcher.class), any(Stat.class)))
+                .thenReturn(Future.succeededFuture(CoreSerialization.serialize(changelog)));
+
+        when(EXECUTOR.getChildren(anyString()))
+                .thenReturn(Future.succeededFuture(Arrays.asList("000", "001")));
+
+        when(EXECUTOR.multi(any()))
+                .thenReturn(Future.succeededFuture());
+        changelogDao.eraseChangeOperation(DATAMART, operationNumber)
+                .onComplete(ar -> testContext.verify(() -> {
+                    assertTrue(ar.succeeded());
+                    changelog.setOperationNumber(operationNumber);
+                    assertEquals(changelog, ar.result());
+                }).completeNow());
+    }
+
+    @Test
+    void shouldFailEraseChangeOperationWhenNoActiveOperation(VertxTestContext testContext) {
+        when(EXECUTOR.getData(anyString(), nullable(Watcher.class), any(Stat.class)))
+                .thenReturn(Future.succeededFuture(null));
+
+        changelogDao.eraseChangeOperation(DATAMART, 2L)
+                .onComplete(ar -> testContext.verify(() -> {
+                    assertTrue(ar.failed());
+                    assertTrue(ar.cause() instanceof DtmException);
+                    assertEquals("Active operation does not exist", ar.cause().getMessage());
+                }).completeNow());
+    }
+
+    @Test
+    void shouldFailEraseChangeOperationWhenIncorrectOperationNumber(VertxTestContext testContext) {
+        val changelog = Changelog.builder()
+                .entityName(ENTITY)
+                .changeQuery(EXPECTED_CHANGE_QUERY)
+                .deltaNum(0L)
+                .build();
+        val operationNumber = 1L;
+
+        when(EXECUTOR.getData(anyString(), nullable(Watcher.class), any(Stat.class)))
+                .thenReturn(Future.succeededFuture(CoreSerialization.serialize(changelog)));
+
+        when(EXECUTOR.getChildren(anyString()))
+                .thenReturn(Future.succeededFuture(Arrays.asList("000", "001")));
+
+        changelogDao.eraseChangeOperation(DATAMART, operationNumber)
+                .onComplete(ar -> testContext.verify(() -> {
+                    assertTrue(ar.failed());
+                    assertTrue(ar.cause() instanceof DtmException);
+                    assertEquals("Not found active change operation with change_num = 1", ar.cause().getMessage());
+                }).completeNow());
+    }
+
+    @Test
+    void shouldFailEraseChangeOperationWhenExecuteMultiFailed(VertxTestContext testContext) {
+        val changelog = Changelog.builder()
+                .entityName(ENTITY)
+                .changeQuery(EXPECTED_CHANGE_QUERY)
+                .deltaNum(0L)
+                .build();
+        val operationNumber = 2L;
+
+        when(EXECUTOR.getData(anyString(), nullable(Watcher.class), any(Stat.class)))
+                .thenReturn(Future.succeededFuture(CoreSerialization.serialize(changelog)));
+
+        when(EXECUTOR.getChildren(anyString()))
+                .thenReturn(Future.succeededFuture(Arrays.asList("000", "001")));
+
+        when(EXECUTOR.multi(any()))
+                .thenReturn(Future.failedFuture(ERROR_MSG));
+        changelogDao.eraseChangeOperation(DATAMART, operationNumber)
+                .onComplete(ar -> testContext.verify(() -> {
+                    assertTrue(ar.failed());
+                    assertEquals(ERROR_MSG, ar.cause().getMessage());
                 }).completeNow());
     }
 }

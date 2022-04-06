@@ -42,6 +42,7 @@ import java.util.List;
 public abstract class AbstractDtmDataSourcePlugin implements DtmDataSourcePlugin {
 
     protected final DdlService<Void> ddlService;
+    protected final EddlService eddlService;
     protected final LlrService<QueryResult> llrService;
     protected final InsertValuesService insertValuesService;
     protected final InsertSelectService insertSelectService;
@@ -59,6 +60,7 @@ public abstract class AbstractDtmDataSourcePlugin implements DtmDataSourcePlugin
     protected final SynchronizeService synchronizeService;
 
     protected AbstractDtmDataSourcePlugin(DdlService<Void> ddlService,
+                                          EddlService eddlService,
                                           LlrService<QueryResult> llrService,
                                           InsertValuesService insertValuesService,
                                           InsertSelectService insertSelectService,
@@ -75,6 +77,7 @@ public abstract class AbstractDtmDataSourcePlugin implements DtmDataSourcePlugin
                                           PluginInitializationService initializationService,
                                           SynchronizeService synchronizeService) {
         this.ddlService = ddlService;
+        this.eddlService = eddlService;
         this.llrService = llrService;
         this.insertValuesService = insertValuesService;
         this.insertSelectService = insertSelectService;
@@ -95,6 +98,11 @@ public abstract class AbstractDtmDataSourcePlugin implements DtmDataSourcePlugin
     @Override
     public Future<Void> ddl(DdlRequest request) {
         return ddlService.execute(request);
+    }
+
+    @Override
+    public Future<Void> eddl(EddlRequest request) {
+        return eddlService.execute(request);
     }
 
     @Override

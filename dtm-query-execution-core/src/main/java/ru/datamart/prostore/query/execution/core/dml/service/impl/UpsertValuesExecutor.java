@@ -53,6 +53,12 @@ public class UpsertValuesExecutor extends AbstractUpdateExecutor<UpsertValuesReq
     }
 
     @Override
+    protected Future<Void> executeWriteableExternal(DmlRequestContext context, Entity entity) {
+        return buildRequest(context, null, entity)
+                .compose(request -> pluginService.upsert(entity.getDestination().iterator().next(), context.getMetrics(), request));
+    }
+
+    @Override
     protected Future<UpsertValuesRequest> buildRequest(DmlRequestContext context, Long sysCn, Entity entity) {
         val uuid = context.getRequest().getQueryRequest().getRequestId();
         val datamart = context.getRequest().getQueryRequest().getDatamartMnemonic();

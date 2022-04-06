@@ -34,7 +34,7 @@ public class AdgConnectorSqlFactory {
     private static final String DROP_EXTERNAL_TABLE_BY_NAME = "DROP EXTERNAL TABLE IF EXISTS %s";
     private static final String DROP_EXTERNAL_TABLE = "DROP EXTERNAL TABLE IF EXISTS %s.TARANTOOL_EXT_%s";
     private static final String CREATE_EXTERNAL_TABLE = "CREATE WRITABLE EXTERNAL TABLE %s.TARANTOOL_EXT_%s\n" +
-            "(%s) LOCATION ('pxf://%s?PROFILE=tarantool-upsert&TARANTOOL_SERVER=%s&USER=%s&PASSWORD=%s&TIMEOUT_CONNECT=%d&TIMEOUT_READ=%d&TIMEOUT_REQUEST=%d')\n" +
+            "(%s) LOCATION ('pxf://%s?PROFILE=tarantool-upsert&TARANTOOL_SERVER=%s&USER=%s&PASSWORD=%s&TIMEOUT_CONNECT=%d&TIMEOUT_READ=%d&TIMEOUT_REQUEST=%d&BUFFER_SIZE=%d')\n" +
             "FORMAT 'CUSTOM' (FORMATTER = 'pxfwritable_export')";
     private static final String INSERT_INTO_EXTERNAL_TABLE = "INSERT INTO %s.TARANTOOL_EXT_%s SELECT *, 0 FROM (%s) as __temp_tbl";
     private static final String INSERT_INTO_EXTERNAL_TABLE_ONLY_PK = "INSERT INTO %s.TARANTOOL_EXT_%s (%s) SELECT *, 1 FROM (%s) as __temp_tbl";
@@ -50,13 +50,21 @@ public class AdgConnectorSqlFactory {
         return String.format(EXT_TABLE_NAME_TEMPLATE, entity.getSchema(), entity.getName());
     }
 
+    public String createStandaloneExternalTable(Entity entity) {
+        val columns = getColumns(entity, false);
+        val sharedProperties = adgSharedService.getSharedProperties();
+        return String.format(CREATE_EXTERNAL_TABLE, entity.getSchema(), entity.getName(),
+                columns, entity.getExternalTableLocationPath(), sharedProperties.getServer(), sharedProperties.getUser(), sharedProperties.getPassword(),
+                sharedProperties.getConnectTimeout(), sharedProperties.getReadTimeout(), sharedProperties.getRequestTimeout(), sharedProperties.getBufferSize());
+    }
+
     public String createExternalTable(String env, String datamart, Entity entity) {
         val spaceName = getSpaceName(env, datamart, entity);
-        val columns = getColumns(entity);
+        val columns = getColumns(entity, true);
         val sharedProperties = adgSharedService.getSharedProperties();
         return String.format(CREATE_EXTERNAL_TABLE, datamart, entity.getName(),
                 columns, spaceName, sharedProperties.getServer(), sharedProperties.getUser(), sharedProperties.getPassword(),
-                sharedProperties.getConnectTimeout(), sharedProperties.getReadTimeout(), sharedProperties.getRequestTimeout());
+                sharedProperties.getConnectTimeout(), sharedProperties.getReadTimeout(), sharedProperties.getRequestTimeout(), sharedProperties.getBufferSize());
     }
 
     public String dropExternalTable(String extTableName) {
@@ -67,27 +75,27 @@ public class AdgConnectorSqlFactory {
         return String.format(DROP_EXTERNAL_TABLE, datamart, entity.getName());
     }
 
-    public String insertIntoExternalTable(String datamart, Entity matView, String query, boolean onlyNotNullableKeys) {
+    public String insertIntoExternalTable(String datamart, Entity entity, String query, boolean onlyNotNullableKeys) {
         if (!onlyNotNullableKeys) {
-            return String.format(INSERT_INTO_EXTERNAL_TABLE, datamart, matView.getName(), query);
+            return String.format(INSERT_INTO_EXTERNAL_TABLE, datamart, entity.getName(), query);
         }
 
-        val columns = matView.getFields().stream()
+        val columns = entity.getFields().stream()
                 .filter(field -> field.getPrimaryOrder() != null || !field.getNullable())
                 .sorted(Comparator.comparingInt(EntityField::getOrdinalPosition))
                 .map(EntityField::getName)
                 .collect(Collectors.joining(DELIMETER, "", ADDITIONAL_FIELD_TO_ONLY_PK));
 
-        return String.format(INSERT_INTO_EXTERNAL_TABLE_ONLY_PK, datamart, matView.getName(), columns, query);
+        return String.format(INSERT_INTO_EXTERNAL_TABLE_ONLY_PK, datamart, entity.getName(), columns, query);
     }
 
-    private String getSpaceName(String env, String datamart, Entity matView) {
-        return String.format("%s__%s__%s_staging", env, datamart, matView.getName());
+    private String getSpaceName(String env, String datamart, Entity entity) {
+        return String.format("%s__%s__%s_staging", env, datamart, entity.getName());
     }
 
-    private String getColumns(Entity matView) {
+    private String getColumns(Entity entity, boolean addSysOp) {
         val builder = new StringBuilder();
-        val fields = matView.getFields().stream()
+        val fields = entity.getFields().stream()
                 .sorted(Comparator.comparingInt(EntityField::getOrdinalPosition))
                 .collect(Collectors.toList());
         for (int i = 0; i < fields.size(); i++) {
@@ -97,9 +105,10 @@ public class AdgConnectorSqlFactory {
             }
             builder.append(field.getName()).append(' ').append(mapType(field.getType()));
         }
-
-        builder.append(",sys_op ").append(mapType(ColumnType.BIGINT));
-        builder.append(",bucket_id ").append(mapType(ColumnType.BIGINT));
+        if (addSysOp) {
+            builder.append(",sys_op ").append(mapType(ColumnType.BIGINT));
+            builder.append(",bucket_id ").append(mapType(ColumnType.BIGINT));
+        }
         return builder.toString();
     }
 

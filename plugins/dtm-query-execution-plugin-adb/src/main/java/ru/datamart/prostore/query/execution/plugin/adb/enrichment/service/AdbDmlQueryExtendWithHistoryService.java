@@ -15,26 +15,29 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.enrichment.service;
 
-import ru.datamart.prostore.common.delta.DeltaInformation;
-import ru.datamart.prostore.common.delta.DeltaType;
-import ru.datamart.prostore.query.execution.plugin.api.exception.DataSourceException;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.QueryGeneratorContext;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryExtendService;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.logical.LogicalFilter;
+import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexSubQuery;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.tools.RelBuilder;
+import ru.datamart.prostore.common.delta.DeltaInformation;
+import ru.datamart.prostore.common.delta.DeltaType;
+import ru.datamart.prostore.common.exception.DtmException;
+import ru.datamart.prostore.query.execution.plugin.adb.calcite.model.schema.AdbDtmTable;
+import ru.datamart.prostore.query.execution.plugin.api.exception.DataSourceException;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.QueryGeneratorContext;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryExtendService;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.stream.IntStream;
+import java.util.stream.Collectors;
 
 import static ru.datamart.prostore.query.execution.plugin.adb.base.factory.Constants.*;
 
@@ -43,10 +46,9 @@ public class AdbDmlQueryExtendWithHistoryService implements QueryExtendService {
 
     @Override
     public RelNode extendQuery(QueryGeneratorContext context) {
-        context.getRelBuilder().clear();
-        val relNode = iterateTree(context, context.getRelNode().rel);
-        context.getRelBuilder().clear();
-        return relNode;
+        val relBuilder = context.getRelBuilder();
+        relBuilder.clear();
+        return iterateTree(context, context.getRelNode().rel);
     }
 
     private RelNode iterateTree(QueryGeneratorContext context, RelNode node) {
@@ -106,14 +108,32 @@ public class AdbDmlQueryExtendWithHistoryService implements QueryExtendService {
         val mutableQualifiedName = new ArrayList<>(qualifiedName);
 
         val rexBuilder = relBuilder.getCluster().getRexBuilder();
-        val rexNodes = new ArrayList<RexNode>();
-        IntStream.range(0, tableScan.getTable().getRowType().getFieldList().size()).forEach(index ->
-                rexNodes.add(rexBuilder.makeInputRef(tableScan, index))
-        );
+        val rexNodes = getRexNodes(tableScan, rexBuilder);
         val name = new StringBuilder(mutableQualifiedName.get(mutableQualifiedName.size() - 1));
+
+        val entity = tableScan.getTable().unwrap(AdbDtmTable.class).getEntity();
+        switch (entity.getEntityType()) {
+            case WRITEABLE_EXTERNAL_TABLE:
+                throw new DtmException("Enriched query should not contain WRITABLE EXTERNAL tables");
+            case READABLE_EXTERNAL_TABLE:
+                if (deltaInfo.getType() != DeltaType.WITHOUT_SNAPSHOT) {
+                    throw new DtmException("FOR SYSTEM_TIME clause is not supported for external tables");
+                }
+                return relBuilder.scan(entity.getExternalTableLocationPath().split("\\.")).project(rexNodes).build();
+            default:
+                return createExtendedRelNode(deltaInfo, relBuilder, mutableQualifiedName, rexNodes, name);
+        }
+    }
+
+    private List<RexNode> getRexNodes(RelNode tableScan, RexBuilder rexBuilder) {
+        return tableScan.getTable().getRowType().getFieldList().stream()
+                .map(relDataTypeField -> rexBuilder.makeInputRef(tableScan, relDataTypeField.getIndex()))
+                .collect(Collectors.toList());
+    }
+
+    private RelNode createExtendedRelNode(DeltaInformation deltaInfo, RelBuilder relBuilder, List<String> mutableQualifiedName, List<RexNode> rexNodes, StringBuilder name) {
         RelNode topRelNode;
         RelNode bottomRelNode;
-
         initHistoryTableName(mutableQualifiedName, name);
         switch (deltaInfo.getType()) {
             case STARTED_IN:
@@ -139,11 +159,11 @@ public class AdbDmlQueryExtendWithHistoryService implements QueryExtendService {
         return relBuilder.push(topRelNode).push(bottomRelNode).union(true).build();
     }
 
-    private void initHistoryTableName(ArrayList<String> mutableQualifiedName, StringBuilder name) {
+    private void initHistoryTableName(List<String> mutableQualifiedName, StringBuilder name) {
         mutableQualifiedName.set(mutableQualifiedName.size() - 1, name + HISTORY_TABLE_SUFFIX);
     }
 
-    private void initActualTableName(ArrayList<String> mutableQualifiedName, StringBuilder name) {
+    private void initActualTableName(List<String> mutableQualifiedName, StringBuilder name) {
         mutableQualifiedName.set(mutableQualifiedName.size() - 1, name + ACTUAL_TABLE_SUFFIX);
     }
 
@@ -152,14 +172,14 @@ public class AdbDmlQueryExtendWithHistoryService implements QueryExtendService {
                                                 List<RexNode> rexNodes,
                                                 List<String> mutableQualifiedName) {
         return relBuilder.scan(mutableQualifiedName).filter(
-            relBuilder.call(SqlStdOperatorTable.AND,
-                relBuilder.call(SqlStdOperatorTable.GREATER_THAN_OR_EQUAL,
-                    relBuilder.field(SYS_FROM_ATTR),
-                    relBuilder.literal(deltaInfo.getSelectOnInterval().getSelectOnFrom())),
-                relBuilder.call(SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
-                    relBuilder.field(SYS_FROM_ATTR),
-                    relBuilder.literal(deltaInfo.getSelectOnInterval().getSelectOnTo()))
-            )
+                relBuilder.call(SqlStdOperatorTable.AND,
+                        relBuilder.call(SqlStdOperatorTable.GREATER_THAN_OR_EQUAL,
+                                relBuilder.field(SYS_FROM_ATTR),
+                                relBuilder.literal(deltaInfo.getSelectOnInterval().getSelectOnFrom())),
+                        relBuilder.call(SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
+                                relBuilder.field(SYS_FROM_ATTR),
+                                relBuilder.literal(deltaInfo.getSelectOnInterval().getSelectOnTo()))
+                )
         ).project(rexNodes).build();
     }
 
@@ -168,17 +188,17 @@ public class AdbDmlQueryExtendWithHistoryService implements QueryExtendService {
                                                  List<RexNode> rexNodes,
                                                  List<String> mutableQualifiedName) {
         return relBuilder.scan(mutableQualifiedName).filter(
-            relBuilder.call(SqlStdOperatorTable.AND,
-                relBuilder.call(SqlStdOperatorTable.GREATER_THAN_OR_EQUAL,
-                    relBuilder.field(SYS_TO_ATTR),
-                    relBuilder.literal(deltaInfo.getSelectOnInterval().getSelectOnFrom() - 1)),
-                relBuilder.call(SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
-                    relBuilder.field(SYS_TO_ATTR),
-                    relBuilder.literal(deltaInfo.getSelectOnInterval().getSelectOnTo() - 1)),
-                relBuilder.call(SqlStdOperatorTable.EQUALS,
-                    relBuilder.field(SYS_OP_ATTR),
-                    relBuilder.literal(1))
-            )
+                relBuilder.call(SqlStdOperatorTable.AND,
+                        relBuilder.call(SqlStdOperatorTable.GREATER_THAN_OR_EQUAL,
+                                relBuilder.field(SYS_TO_ATTR),
+                                relBuilder.literal(deltaInfo.getSelectOnInterval().getSelectOnFrom() - 1)),
+                        relBuilder.call(SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
+                                relBuilder.field(SYS_TO_ATTR),
+                                relBuilder.literal(deltaInfo.getSelectOnInterval().getSelectOnTo() - 1)),
+                        relBuilder.call(SqlStdOperatorTable.EQUALS,
+                                relBuilder.field(SYS_OP_ATTR),
+                                relBuilder.literal(1))
+                )
         ).project(rexNodes).build();
     }
 
@@ -187,14 +207,14 @@ public class AdbDmlQueryExtendWithHistoryService implements QueryExtendService {
                                              List<RexNode> rexNodes,
                                              List<String> mutableQualifiedName) {
         return relBuilder.scan(mutableQualifiedName).filter(
-            relBuilder.call(SqlStdOperatorTable.AND,
-                relBuilder.call(SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
-                    relBuilder.field(SYS_FROM_ATTR),
-                    relBuilder.literal(deltaInfo.getSelectOnNum())),
-                relBuilder.call(SqlStdOperatorTable.GREATER_THAN_OR_EQUAL,
-                    relBuilder.field(SYS_TO_ATTR),
-                    relBuilder.literal(deltaInfo.getSelectOnNum()))
-            )
+                relBuilder.call(SqlStdOperatorTable.AND,
+                        relBuilder.call(SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
+                                relBuilder.field(SYS_FROM_ATTR),
+                                relBuilder.literal(deltaInfo.getSelectOnNum())),
+                        relBuilder.call(SqlStdOperatorTable.GREATER_THAN_OR_EQUAL,
+                                relBuilder.field(SYS_TO_ATTR),
+                                relBuilder.literal(deltaInfo.getSelectOnNum()))
+                )
         ).project(rexNodes).build();
     }
 
@@ -203,9 +223,10 @@ public class AdbDmlQueryExtendWithHistoryService implements QueryExtendService {
                                                 List<RexNode> rexNodes,
                                                 List<String> mutableQualifiedName) {
         return relBuilder.scan(mutableQualifiedName).filter(
-            relBuilder.call(SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
-                relBuilder.field(SYS_FROM_ATTR),
-                relBuilder.literal(deltaInfo.getSelectOnNum()))).project(rexNodes).build();
+                relBuilder.call(SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
+                        relBuilder.field(SYS_FROM_ATTR),
+                        relBuilder.literal(deltaInfo.getSelectOnNum()))
+        ).project(rexNodes).build();
     }
 
 }

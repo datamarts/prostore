@@ -37,15 +37,15 @@ public class DtmRelToSqlConverter {
     }
 
     public SqlNode convert(RelNode relNode) {
-        val convertedNode = new NullNotCastableRelToSqlConverter(sqlDialect, allowStarInProject)
-                .visitChild(0, relNode)
-                .asStatement();
-
-        return convertedNode.accept(sqlDollarReplacementShuttle);
+        return convert(relNode, allowStarInProject);
     }
 
     public SqlNode convertWithoutStar(RelNode relNode) {
-        val convertedNode = new NullNotCastableRelToSqlConverter(sqlDialect, false)
+        return convert(relNode, false);
+    }
+
+    public SqlNode convert(RelNode relNode, boolean allowStar) {
+        val convertedNode = new NullNotCastableRelToSqlConverter(sqlDialect, allowStar)
                 .visitChild(0, relNode)
                 .asStatement();
 

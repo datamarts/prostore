@@ -15,9 +15,6 @@
  */
 package ru.datamart.prostore.status.monitor.kafka;
 
-import ru.datamart.prostore.common.status.kafka.StatusRequest;
-import ru.datamart.prostore.common.status.kafka.StatusResponse;
-import ru.datamart.prostore.status.monitor.config.AppProperties;
 import kafka.common.OffsetAndMetadata;
 import kafka.coordinator.group.BaseKey;
 import kafka.coordinator.group.GroupMetadataManager;
@@ -28,14 +25,19 @@ import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
 import org.springframework.stereotype.Component;
+import ru.datamart.prostore.common.status.kafka.StatusRequest;
+import ru.datamart.prostore.common.status.kafka.StatusResponse;
+import ru.datamart.prostore.status.monitor.config.AppProperties;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
-import java.util.*;
+import java.util.Collections;
+import java.util.Objects;
+import java.util.Properties;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -47,9 +49,9 @@ import java.util.stream.IntStream;
 public class KafkaMonitor {
     private static final String SYSTEM_TOPIC = "__consumer_offsets";
     private static final String CONSUMER_GROUP = "kafka.status.monitor";
+    private static final int POLL_DURATION_MILLIS = 100;
 
-    private final KafkaConsumer<byte[], byte[]> offsetProvider;
-    private final KafkaConsumer<byte[], byte[]> lastMessageTimeProvider;
+    private final KafkaConsumer<byte[], byte[]> offsetsConsumer;
     private final AppProperties appProperties;
     private final ExecutorService consumerService;
     private final Properties consumerProperties;
@@ -65,10 +67,7 @@ public class KafkaMonitor {
         consumerService = Executors.newFixedThreadPool(appProperties.getConsumersCount());
         IntStream.range(0, appProperties.getConsumersCount()).forEach(i -> consumerService.submit(this::startConsumer));
 
-        offsetProvider = new KafkaConsumer<>(consumerProperties);
-        offsetProvider.subscribe(Collections.singletonList(SYSTEM_TOPIC));
-
-        lastMessageTimeProvider = new KafkaConsumer<>(consumerProperties);
+        offsetsConsumer = new KafkaConsumer<>(consumerProperties);
     }
 
     @SneakyThrows
@@ -76,45 +75,40 @@ public class KafkaMonitor {
         return collectInfo(request);
     }
 
-    public List<StatusResponse> listAll() {
-        return null;
-    }
-
     private StatusResponse collectInfo(StatusRequest request) {
-        StatusResponse response = new StatusResponse();
-        response.setConsumerGroup(request.getConsumerGroup());
-        response.setTopic(request.getTopic());
+        val topic = request.getTopic();
+        val consumerGroup = request.getConsumerGroup();
 
-        // make a local copy of current kafka state
-        List<GroupTopicPartition> partitions = commitedOffsets.keySet().stream()
-            .filter(p -> p.topicPartition().topic().equals(request.getTopic()) &&
-                p.group().equals(request.getConsumerGroup()))
-            .collect(Collectors.toList());
+        val response = new StatusResponse();
+        response.setConsumerGroup(consumerGroup);
+        response.setTopic(topic);
 
-        response.setLastMessageTime(getLastMessageTime(request.getTopic()));
+        log.debug("Start fetching committed offsets [{}] [{}]", topic, consumerGroup);
+        commitedOffsets.keySet().stream()
+                .filter(p -> p.topicPartition().topic().equals(topic) && p.group().equals(consumerGroup))
+                .map(commitedOffsets::get)
+                .filter(Objects::nonNull)
+                .forEach(offsetAndMetadata -> {
+                    response.setConsumerOffset(offsetAndMetadata.offset() + response.getConsumerOffset());
+                    response.setLastCommitTime(Math.max(offsetAndMetadata.commitTimestamp(), response.getLastCommitTime()));
+                });
+        log.info("Finish fetching committed offsets [{}] [{}], received [{}]", topic, consumerGroup, response.getConsumerOffset());
 
-        log.debug("Fetching end offsets");
-        updateLatestOffsets(request.getTopic());
-        val endOffsets = uncommittedOffsets.entrySet().stream()
-            .filter(e -> e.getKey().topic().equals(request.getTopic()))
-            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-
-        endOffsets.forEach((tp, offset) -> response.setProducerOffset(response.getProducerOffset() + offset));
-        log.info(String.format("Finish fetching end offsets, received %d", endOffsets.entrySet().size()));
-
-        partitions.forEach(tp -> {
-            OffsetAndMetadata offset = commitedOffsets.get(tp);
-            response.setConsumerOffset(offset.offset() + response.getConsumerOffset());
-            response.setLastCommitTime(Math.max(offset.commitTimestamp(), response.getLastCommitTime()));
-        });
+        log.debug("Fetching end offsets for topic [{}]", topic);
+        val lastMessageTime = updateLatestOffsets(topic);
+        response.setLastMessageTime(lastMessageTime);
+        uncommittedOffsets.entrySet().stream()
+                .filter(e -> e.getKey().topic().equals(topic))
+                .forEach(topicPartitionLongEntry -> response.setProducerOffset(response.getProducerOffset() + topicPartitionLongEntry.getValue()));
+        log.info("Finish fetching end offsets [{}], received [{}]", topic, response.getProducerOffset());
 
         return response;
     }
 
     private Properties getConsumerProperties() {
-        Properties props = new Properties();
+        val props = new Properties();
         props.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, appProperties.getBrokersList());
-        props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, CONSUMER_GROUP + UUID.randomUUID().toString());
+        props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, CONSUMER_GROUP + UUID.randomUUID());
         props.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
         props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         props.setProperty(ConsumerConfig.EXCLUDE_INTERNAL_TOPICS_CONFIG, "false");
@@ -124,84 +118,74 @@ public class KafkaMonitor {
     }
 
     private void startConsumer() {
-        KafkaConsumer<byte[], byte[]> consumer = new KafkaConsumer<>(consumerProperties);
-        consumer.subscribe(Collections.singletonList(SYSTEM_TOPIC));
-
-        while (true) {
-            ConsumerRecords<byte[], byte[]> records = consumer.poll(Duration.ofMillis(100));
-            for (ConsumerRecord<byte[], byte[]> record : records) {
-                try {
-                    updateOffsets(record);
-                } catch (Exception e) {
-                    log.error("Error parse message", e);
+        try (KafkaConsumer<byte[], byte[]> consumer = new KafkaConsumer<>(consumerProperties)) {
+            consumer.subscribe(Collections.singletonList(SYSTEM_TOPIC));
+            while (!Thread.currentThread().isInterrupted()) {
+                val consumerRecords = consumer.poll(Duration.ofMillis(POLL_DURATION_MILLIS));
+                for (val consumerRecord : consumerRecords) {
+                    updateOffsets(consumerRecord);
                 }
             }
+        } catch (Exception e) {
+            log.error("Error updating offsets", e);
         }
     }
 
     @SneakyThrows
-    private void updateOffsets(ConsumerRecord<byte[], byte[]> record) {
-        byte[] key = record.key();
-        byte[] value = record.value();
-        if (key == null || value == null) {
+    private void updateOffsets(ConsumerRecord<byte[], byte[]> consumerRecord) {
+        val key = consumerRecord.key();
+        val value = consumerRecord.value();
+        if (key == null) {
             return;
         }
 
         BaseKey baseKey = GroupMetadataManager.readMessageKey(ByteBuffer.wrap(key));
         if (baseKey instanceof OffsetKey) {
-            OffsetKey offsetKey = (OffsetKey) baseKey;
-            String topic = offsetKey.key().topicPartition().topic();
-            String consumerGroup = offsetKey.key().group();
-            int partition = offsetKey.key().topicPartition().partition();
+            val offsetKey = (OffsetKey) baseKey;
+            val topic = offsetKey.key().topicPartition().topic();
+            val consumerGroup = offsetKey.key().group();
+            val partition = offsetKey.key().topicPartition().partition();
+            val groupTopicPartition = new GroupTopicPartition(consumerGroup, topic, partition);
 
-            OffsetAndMetadata offset = GroupMetadataManager.readOffsetMessageValue(ByteBuffer.wrap(value));
-            // Because all OffsetKey messages for specified group, topic and partition are placed into one partition,
-            // so only one Consumer thread will read and update them.
-            // We replay all messages from specified partition in chronological order, and we can perform simple update by key
-            commitedOffsets.put(new GroupTopicPartition(consumerGroup, topic, partition), offset);
-            log.debug(String.format("Received offset %d for topic %s, partition %d, group %s", offset.offset(),
-                topic,
-                partition,
-                consumerGroup));
-        }
-    }
-
-    private void updateLatestOffsets(String topicName) {
-        try {
-            synchronized (offsetProvider) {
-                List<TopicPartition> topicPartitions = offsetProvider.partitionsFor(topicName).stream()
-                    .map(partitionInfo -> new TopicPartition(topicName, partitionInfo.partition()))
-                    .collect(Collectors.toList());
-                Map<TopicPartition, Long> topicPartitionLongMap = offsetProvider.endOffsets(topicPartitions);
-                uncommittedOffsets.putAll(topicPartitionLongMap);
+            if (value != null) {
+                val offset = GroupMetadataManager.readOffsetMessageValue(ByteBuffer.wrap(value));
+                commitedOffsets.put(groupTopicPartition, offset);
+                log.debug("Received offset [{}] for topic [{}], partition [{}], group [{}]", offset.offset(), topic, partition, consumerGroup);
+            } else {
+                commitedOffsets.remove(groupTopicPartition);
+                log.debug("Removed offset for topic [{}], partition [{}], group [{}]", topic, partition, consumerGroup);
             }
-        } catch (Exception e) {
-            log.error("Error updating last offsets for subscribed topic of {} ", topicName, e);
         }
     }
 
-    private long getLastMessageTime(String topic) {
+    private long updateLatestOffsets(String topic) {
         long lastMessageTime = 0;
 
-        synchronized (lastMessageTimeProvider) {
-            List<TopicPartition> partitionsForRequestTopic = lastMessageTimeProvider.partitionsFor(topic).stream()
-                .map(partitionInfo -> new TopicPartition(partitionInfo.topic(), partitionInfo.partition()))
-                .collect(Collectors.toList());
-            lastMessageTimeProvider.assign(partitionsForRequestTopic);
-            lastMessageTimeProvider.seekToEnd(partitionsForRequestTopic);
+        synchronized (offsetsConsumer) {
+            val partitionsForRequestTopic = offsetsConsumer.partitionsFor(topic).stream()
+                    .map(partitionInfo -> new TopicPartition(partitionInfo.topic(), partitionInfo.partition()))
+                    .collect(Collectors.toList());
+            offsetsConsumer.assign(partitionsForRequestTopic);
+            offsetsConsumer.seekToEnd(partitionsForRequestTopic);
 
             partitionsForRequestTopic.forEach(tp -> {
-                long lastOffset = lastMessageTimeProvider.position(tp);
+                long lastOffset = offsetsConsumer.position(tp);
+
+                uncommittedOffsets.put(tp, lastOffset);
+
                 if (lastOffset > 0) {
-                    lastMessageTimeProvider.seek(tp, lastOffset - 1);
+                    offsetsConsumer.seek(tp, lastOffset - 1);
                 }
             });
 
-            ConsumerRecords<byte[], byte[]> records = lastMessageTimeProvider.poll(Duration.ofMillis(100));
-            for (ConsumerRecord<byte[], byte[]> record : records) {
-                lastMessageTime = Math.max(record.timestamp(), lastMessageTime);
+            val consumerRecords = offsetsConsumer.poll(Duration.ofMillis(POLL_DURATION_MILLIS));
+            for (val consumerRecord : consumerRecords) {
+                lastMessageTime = Math.max(consumerRecord.timestamp(), lastMessageTime);
             }
+
+            offsetsConsumer.assign(Collections.emptyList());
         }
+
         return lastMessageTime;
     }
 

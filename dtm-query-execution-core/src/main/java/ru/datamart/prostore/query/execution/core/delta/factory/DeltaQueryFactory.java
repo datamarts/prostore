@@ -81,6 +81,11 @@ public class DeltaQueryFactory {
                     .build();
         } else if (sqlNode instanceof GetWriteOperations) {
             return GetWriteOperationsDeltaQuery.builder().build();
+        } else if (sqlNode instanceof EraseWriteOperation) {
+            return EraseWriteOperationDeltaQuery.builder()
+                    .sysCn(((EraseWriteOperation) sqlNode).getWriteOperationNumber())
+                    .datamart(((EraseWriteOperation) sqlNode).getDatamart())
+                    .build();
         } else {
             throw new DtmException(String.format("Query [%s] is not a DELTA operator",
                     sqlNode.toSqlString(sqlDialect)));

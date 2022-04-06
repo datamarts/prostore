@@ -15,29 +15,28 @@
  */
 package ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto;
 
-import ru.datamart.prostore.common.delta.DeltaInformation;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import org.apache.calcite.rel.RelRoot;
 import org.apache.calcite.tools.RelBuilder;
+import ru.datamart.prostore.common.delta.DeltaInformation;
 
 import java.util.Iterator;
 
 @Data
-@Builder
 @AllArgsConstructor
 public class QueryGeneratorContext {
     private final Iterator<DeltaInformation> deltaIterator;
     private final RelBuilder relBuilder;
     private final RelRoot relNode;
-    private final boolean clearOptions;
-    private EnrichQueryRequest enrichQueryRequest;
+    private final String envName;
+    private final boolean isLocal;
 
-    public QueryGeneratorContext(Iterator<DeltaInformation> deltaIterator, RelBuilder relBuilder, RelRoot relNode, boolean clearOptions) {
+    public QueryGeneratorContext(Iterator<DeltaInformation> deltaIterator, RelBuilder relBuilder, RelRoot relNode, String envName) {
         this.deltaIterator = deltaIterator;
         this.relBuilder = relBuilder;
         this.relNode = relNode;
-        this.clearOptions = clearOptions;
+        this.envName = envName;
+        this.isLocal = false;
     }
 }

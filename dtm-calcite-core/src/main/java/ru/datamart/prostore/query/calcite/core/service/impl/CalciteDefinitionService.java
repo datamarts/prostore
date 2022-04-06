@@ -23,7 +23,7 @@ import org.apache.calcite.sql.parser.SqlParser;
 public abstract class CalciteDefinitionService implements DefinitionService<SqlNode> {
     private final SqlParser.Config config;
 
-    public CalciteDefinitionService(SqlParser.Config config) {
+    protected CalciteDefinitionService(SqlParser.Config config) {
         this.config = config;
     }
 

@@ -15,17 +15,23 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adg.base.utils;
 
+import java.util.Arrays;
+import java.util.List;
+
 public class ColumnFields {
 
-  public static final String ID = "id";
-  public static final String BUCKET_ID = "bucket_id";
-  public static final String ACTUAL_POSTFIX = "_actual";
-  public static final String STAGING_POSTFIX = "_staging";
-  public static final String HISTORY_POSTFIX = "_history";
-  public static final String SYS_OP_FIELD = "sys_op";
-  public static final String SYS_FROM_FIELD = "sys_from";
-  public static final String SYS_TO_FIELD = "sys_to";
+    public static final String ID = "id";
+    public static final String BUCKET_ID = "bucket_id";
+    public static final String ACTUAL_POSTFIX = "_actual";
+    public static final String STAGING_POSTFIX = "_staging";
+    public static final String HISTORY_POSTFIX = "_history";
+    public static final String SYS_OP_FIELD = "sys_op";
+    public static final String SYS_FROM_FIELD = "sys_from";
+    public static final String SYS_TO_FIELD = "sys_to";
+    public static final List<String> SYSTEM_FIELDS = Arrays.asList(
+            SYS_FROM_FIELD, SYS_TO_FIELD, SYS_OP_FIELD
+    );
 
-  private ColumnFields() {
-  }
+    private ColumnFields() {
+    }
 }

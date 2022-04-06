@@ -22,7 +22,7 @@ public abstract class AbstractMetricsEventFactory<IN> implements MetricsEventFac
 
     private final Class<IN> inClass;
 
-    public AbstractMetricsEventFactory(Class<IN> inClass) {
+    protected AbstractMetricsEventFactory(Class<IN> inClass) {
         this.inClass = inClass;
     }
 

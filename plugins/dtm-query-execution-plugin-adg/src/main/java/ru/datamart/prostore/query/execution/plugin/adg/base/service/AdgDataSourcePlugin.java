@@ -37,6 +37,7 @@ public class AdgDataSourcePlugin extends AbstractDtmDataSourcePlugin {
 
     public AdgDataSourcePlugin(
             DdlService<Void> ddlService,
+            EddlService eddlService,
             LlrService<QueryResult> llrService,
             InsertValuesService insertValuesService,
             InsertSelectService insertSelectService,
@@ -53,6 +54,7 @@ public class AdgDataSourcePlugin extends AbstractDtmDataSourcePlugin {
             PluginInitializationService initializationService,
             SynchronizeService synchronizeService) {
         super(ddlService,
+                eddlService,
                 llrService,
                 insertValuesService,
                 insertSelectService,

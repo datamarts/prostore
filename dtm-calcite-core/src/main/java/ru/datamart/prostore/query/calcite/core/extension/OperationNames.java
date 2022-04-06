@@ -38,6 +38,7 @@ public final class OperationNames {
     public static final String TRUNCATE_HISTORY = "TRUNCATE HISTORY";
     public static final String ALLOW_CHANGES = "ALLOW_CHANGES";
     public static final String DENY_CHANGES = "DENY_CHANGES";
+    public static final String ERASE_CHANGE_OPERATION = "ERASE_CHANGE_OPERATION";
 
     private OperationNames() {
     }

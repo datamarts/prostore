@@ -301,10 +301,8 @@ public class AdgCartridgeClient {
             val statusCode = response.statusCode();
             if (statusCode == 200) {
                 promise.complete();
-            } else if (statusCode == 500) {
-                promise.fail(unexpectedResponse(response));
             } else {
-                promise.fail(new DataSourceException(response.statusMessage()));
+                promise.fail(unexpectedResponse(response));
             }
         });
     }

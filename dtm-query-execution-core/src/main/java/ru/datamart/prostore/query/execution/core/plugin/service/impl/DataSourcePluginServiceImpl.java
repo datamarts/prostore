@@ -26,6 +26,7 @@ import org.springframework.plugin.core.config.EnablePluginRegistries;
 import org.springframework.stereotype.Service;
 import ru.datamart.prostore.common.metrics.RequestMetrics;
 import ru.datamart.prostore.common.model.SqlProcessingType;
+import ru.datamart.prostore.common.model.ddl.Entity;
 import ru.datamart.prostore.common.plugin.status.StatusQueryResult;
 import ru.datamart.prostore.common.reader.QueryResult;
 import ru.datamart.prostore.common.reader.SourceType;
@@ -76,7 +77,7 @@ public class DataSourcePluginServiceImpl implements DataSourcePluginService {
                 .flatMap(plugin -> plugin.getActiveCaches().stream())
                 .collect(Collectors.toSet());
         this.metricsService = metricsService;
-        log.info("Active Plugins: {}", sourceTypes.toString());
+        log.info("Active Plugins: {}", sourceTypes);
     }
 
     @Override
@@ -95,6 +96,14 @@ public class DataSourcePluginServiceImpl implements DataSourcePluginService {
                 SqlProcessingType.DDL,
                 metrics,
                 plugin -> plugin.ddl(request));
+    }
+
+    @Override
+    public Future<Void> eddl(SourceType sourceType, RequestMetrics metrics, EddlRequest request) {
+        return executeWithMetrics(sourceType,
+                SqlProcessingType.EDDL,
+                metrics,
+                plugin -> plugin.eddl(request));
     }
 
     @Override

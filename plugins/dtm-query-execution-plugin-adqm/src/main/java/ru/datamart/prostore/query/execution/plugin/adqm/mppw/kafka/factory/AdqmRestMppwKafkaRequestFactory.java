@@ -15,14 +15,17 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adqm.mppw.kafka.factory;
 
-import ru.datamart.prostore.query.execution.plugin.adqm.mppw.configuration.properties.AdqmMppwProperties;
-import ru.datamart.prostore.query.execution.plugin.adqm.mppw.kafka.dto.RestMppwKafkaLoadRequest;
-import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
-import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.UploadExternalEntityMetadata;
 import lombok.val;
 import org.apache.avro.Schema;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import ru.datamart.prostore.common.model.ddl.EntityType;
+import ru.datamart.prostore.query.execution.plugin.adqm.mppw.configuration.properties.AdqmMppwProperties;
+import ru.datamart.prostore.query.execution.plugin.adqm.mppw.kafka.dto.RestMppwKafkaLoadRequest;
+import ru.datamart.prostore.query.execution.plugin.adqm.mppw.kafka.dto.RestMppwKafkaLoadRequestV1;
+import ru.datamart.prostore.query.execution.plugin.adqm.mppw.kafka.dto.RestMppwKafkaLoadRequestV2;
+import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
+import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.UploadExternalEntityMetadata;
 
 @Component
 public class AdqmRestMppwKafkaRequestFactory {
@@ -37,13 +40,42 @@ public class AdqmRestMppwKafkaRequestFactory {
     public RestMppwKafkaLoadRequest create(MppwKafkaRequest mppwPluginRequest) {
         val uploadMeta = (UploadExternalEntityMetadata)
                 mppwPluginRequest.getUploadMetadata();
-        return RestMppwKafkaLoadRequest.builder()
+
+        val destinationEntity = mppwPluginRequest.getDestinationEntity();
+        val standaloneTableWrite = destinationEntity.getEntityType() == EntityType.WRITEABLE_EXTERNAL_TABLE;
+        String table;
+        String schema;
+        if (standaloneTableWrite) {
+            val schemaAndTableName = destinationEntity.getExternalTableLocationPath().split("\\.");
+            schema = schemaAndTableName[0];
+            table = schemaAndTableName[1];
+        } else {
+            schema = destinationEntity.getSchema();
+            table = destinationEntity.getName();
+        }
+
+        if (standaloneTableWrite) {
+            return RestMppwKafkaLoadRequestV2.builder()
+                    .requestId(mppwPluginRequest.getRequestId().toString())
+                    .datamart(schema)
+                    .tableName(table)
+                    .kafkaTopic(mppwPluginRequest.getTopic())
+                    .kafkaBrokers(mppwPluginRequest.getBrokers())
+                    .consumerGroup(adqmMppwProperties.getRestLoadConsumerGroup())
+                    .writeIntoDistributedTable(standaloneTableWrite)
+                    .format(uploadMeta.getFormat().getName())
+                    .schema(new Schema.Parser().parse(uploadMeta.getExternalSchema()))
+                    .messageProcessingLimit(uploadMeta.getUploadMessageLimit() == null ? 0 : uploadMeta.getUploadMessageLimit())
+                    .build();
+        }
+
+        return RestMppwKafkaLoadRequestV1.builder()
                 .requestId(mppwPluginRequest.getRequestId().toString())
-                .datamart(mppwPluginRequest.getDatamartMnemonic())
-                .tableName(mppwPluginRequest.getDestinationEntity().getName())
+                .datamart(schema)
+                .tableName(table)
                 .kafkaTopic(mppwPluginRequest.getTopic())
                 .kafkaBrokers(mppwPluginRequest.getBrokers())
-                .hotDelta(mppwPluginRequest.getSysCn())
+                .hotDelta(mppwPluginRequest.getSysCn() != null ? mppwPluginRequest.getSysCn() : -1L)
                 .consumerGroup(adqmMppwProperties.getRestLoadConsumerGroup())
                 .format(uploadMeta.getFormat().getName())
                 .schema(new Schema.Parser().parse(uploadMeta.getExternalSchema()))

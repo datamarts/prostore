@@ -15,6 +15,22 @@
  */
 package ru.datamart.prostore.query.execution.core.ddl.matview;
 
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
+import io.vertx.junit5.VertxExtension;
+import io.vertx.junit5.VertxTestContext;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.parser.SqlParseException;
+import org.apache.calcite.sql.parser.SqlParser;
+import org.apache.calcite.tools.FrameworkConfig;
+import org.apache.calcite.tools.Planner;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import ru.datamart.prostore.cache.service.CacheService;
 import ru.datamart.prostore.cache.service.EvictQueryTemplateCacheService;
 import ru.datamart.prostore.common.model.ddl.ColumnType;
@@ -29,49 +45,29 @@ import ru.datamart.prostore.query.calcite.core.configuration.CalciteCoreConfigur
 import ru.datamart.prostore.query.calcite.core.framework.DtmCalciteFramework;
 import ru.datamart.prostore.query.execution.core.base.dto.cache.EntityKey;
 import ru.datamart.prostore.query.execution.core.base.dto.cache.MaterializedViewCacheValue;
+import ru.datamart.prostore.query.execution.core.base.exception.entity.EntityNotExistsException;
 import ru.datamart.prostore.query.execution.core.base.repository.ServiceDbFacade;
 import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.*;
-import ru.datamart.prostore.query.execution.core.base.service.hsql.HSQLClient;
 import ru.datamart.prostore.query.execution.core.base.service.metadata.MetadataExecutor;
 import ru.datamart.prostore.query.execution.core.calcite.configuration.CalciteConfiguration;
 import ru.datamart.prostore.query.execution.core.ddl.dto.DdlRequestContext;
 import ru.datamart.prostore.query.execution.core.ddl.service.QueryResultDdlExecutor;
 import ru.datamart.prostore.query.execution.core.ddl.service.impl.matview.DropMaterializedViewExecutor;
+import ru.datamart.prostore.query.execution.core.ddl.service.impl.validate.RelatedViewChecker;
 import ru.datamart.prostore.query.execution.core.delta.dto.OkDelta;
 import ru.datamart.prostore.query.execution.core.delta.repository.zookeeper.DeltaServiceDao;
 import ru.datamart.prostore.query.execution.core.plugin.service.DataSourcePluginService;
 import ru.datamart.prostore.query.execution.core.utils.TestUtils;
-import io.vertx.core.Future;
-import io.vertx.core.Promise;
-import io.vertx.ext.sql.ResultSet;
-import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.sql.parser.SqlParseException;
-import org.apache.calcite.sql.parser.SqlParser;
-import org.apache.calcite.tools.FrameworkConfig;
-import org.apache.calcite.tools.Planner;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, VertxExtension.class})
 class DropMaterializedViewExecutorTest {
     private static final String SCHEMA = "shares";
 
@@ -106,7 +102,7 @@ class DropMaterializedViewExecutorTest {
     @Mock
     private EvictQueryTemplateCacheService evictQueryTemplateCacheService;
     @Mock
-    private HSQLClient hsqlClient;
+    private RelatedViewChecker relatedViewChecker;
 
     @Captor
     private ArgumentCaptor<DdlRequestContext> contextArgumentCaptor;
@@ -127,25 +123,23 @@ class DropMaterializedViewExecutorTest {
                 cacheService,
                 pluginService,
                 materializedViewCacheService,
-                hsqlClient,
-                evictQueryTemplateCacheService);
+                evictQueryTemplateCacheService,
+                relatedViewChecker);
         lenient().doNothing().when(evictQueryTemplateCacheService).evictByEntityName(anyString(), anyString());
     }
 
     @Test
-    void executeSuccess() throws SqlParseException {
+    void executeSuccess(VertxTestContext testContext) throws SqlParseException {
         // arrange
         prepareContext("drop materialized view accounts");
 
         Entity entity = context.getEntity();
 
-        Promise<QueryResult> promise = Promise.promise();
-
         when(pluginService.getSourceTypes()).thenReturn(Collections.singleton(SourceType.ADB));
         when(entityDao.getEntity(SCHEMA, entity.getName()))
                 .thenReturn(Future.succeededFuture(entity));
-        when(hsqlClient.getQueryResult(any()))
-                .thenReturn(Future.succeededFuture(new ResultSet().setResults(Collections.EMPTY_LIST)));
+        when(relatedViewChecker.checkRelatedViews(any(), any()))
+                .thenReturn(Future.succeededFuture());
         when(deltaServiceDao.getDeltaOk(SCHEMA)).thenReturn(Future.succeededFuture(deltaOk));
         when(changelogDao.writeNewRecord(anyString(), anyString(), anyString(), any())).thenReturn(Future.succeededFuture());
         when(metadataExecutor.execute(any()))
@@ -156,32 +150,31 @@ class DropMaterializedViewExecutorTest {
 
         // act
         dropMaterializedViewExecutor.execute(context, context.getEntity().getName())
-                .onComplete(promise);
-
-        // assert
-        assertTrue(promise.future().succeeded());
-        verify(evictQueryTemplateCacheService, times(1))
-                .evictByEntityName(entity.getSchema(), entity.getName());
-        verify(metadataExecutor).execute(contextArgumentCaptor.capture());
-        verify(materializedViewCacheService).get(any());
-        DdlRequestContext value = contextArgumentCaptor.getValue();
-        assertNull(value.getSourceType());
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    assertTrue(ar.succeeded());
+                    verify(evictQueryTemplateCacheService, times(1))
+                            .evictByEntityName(entity.getSchema(), entity.getName());
+                    verify(metadataExecutor).execute(contextArgumentCaptor.capture());
+                    verify(materializedViewCacheService).get(any());
+                    DdlRequestContext value = contextArgumentCaptor.getValue();
+                    assertNull(value.getSourceType());
+                })
+                .completeNow());
     }
 
     @Test
-    void executeSuccessLogicalOnly() throws SqlParseException {
+    void executeSuccessLogicalOnly(VertxTestContext testContext) throws SqlParseException {
         // arrange
         prepareContext("drop materialized view accounts logical_only");
 
         Entity entity = context.getEntity();
 
-        Promise<QueryResult> promise = Promise.promise();
-
         when(pluginService.getSourceTypes()).thenReturn(Collections.singleton(SourceType.ADB));
         when(entityDao.getEntity(SCHEMA, entity.getName()))
                 .thenReturn(Future.succeededFuture(entity));
-        when(hsqlClient.getQueryResult(any()))
-                .thenReturn(Future.succeededFuture(new ResultSet().setResults(Collections.EMPTY_LIST)));
+        when(relatedViewChecker.checkRelatedViews(any(), any()))
+                .thenReturn(Future.succeededFuture());
         when(deltaServiceDao.getDeltaOk(SCHEMA)).thenReturn(Future.succeededFuture(deltaOk));
         when(changelogDao.writeNewRecord(anyString(), anyString(), anyString(), any())).thenReturn(Future.succeededFuture());
         when(entityDao.setEntityState(any(), any(), anyString(), eq(SetEntityState.DELETE)))
@@ -190,28 +183,28 @@ class DropMaterializedViewExecutorTest {
 
         // act
         dropMaterializedViewExecutor.execute(context, context.getEntity().getName())
-                .onComplete(promise);
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    assertTrue(ar.succeeded());
+                    verify(evictQueryTemplateCacheService, times(1))
+                            .evictByEntityName(entity.getSchema(), entity.getName());
+                    verify(metadataExecutor, never()).execute(any());
+                    verify(materializedViewCacheService).get(any());
 
-        // assert
-        assertTrue(promise.future().succeeded());
-        verify(evictQueryTemplateCacheService, times(1))
-                .evictByEntityName(entity.getSchema(), entity.getName());
-        verify(metadataExecutor, never()).execute(any());
-        verify(materializedViewCacheService).get(any());
+                }).completeNow());
     }
 
     @Test
-    void executeCorrectlyExtractSourceType() throws SqlParseException {
+    void executeCorrectlyExtractSourceType(VertxTestContext testContext) throws SqlParseException {
         // arrange
         prepareContext("drop materialized view accounts datasource_type = 'ADB'");
         Entity entity = context.getEntity();
-        Promise<QueryResult> promise = Promise.promise();
 
         when(pluginService.getSourceTypes()).thenReturn(Collections.singleton(SourceType.ADB));
         when(entityDao.getEntity(SCHEMA, entity.getName()))
                 .thenReturn(Future.succeededFuture(entity));
-        when(hsqlClient.getQueryResult(any()))
-                .thenReturn(Future.succeededFuture(new ResultSet().setResults(Collections.EMPTY_LIST)));
+        when(relatedViewChecker.checkRelatedViews(any(), any()))
+                .thenReturn(Future.succeededFuture());
         when(deltaServiceDao.getDeltaOk(SCHEMA)).thenReturn(Future.succeededFuture(deltaOk));
         when(changelogDao.writeNewRecord(anyString(), anyString(), anyString(), any())).thenReturn(Future.succeededFuture());
         when(metadataExecutor.execute(any()))
@@ -222,14 +215,34 @@ class DropMaterializedViewExecutorTest {
 
         // act
         dropMaterializedViewExecutor.execute(context, context.getEntity().getName())
-                .onComplete(promise);
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    assertTrue(ar.succeeded());
+                    verify(metadataExecutor).execute(contextArgumentCaptor.capture());
+                    verify(materializedViewCacheService).get(any());
+                    DdlRequestContext value = contextArgumentCaptor.getValue();
+                    assertSame(SourceType.ADB, value.getSourceType());
+                }).completeNow());
+    }
 
-        // assert
-        assertTrue(promise.future().succeeded());
-        verify(metadataExecutor).execute(contextArgumentCaptor.capture());
-        verify(materializedViewCacheService).get(any());
-        DdlRequestContext value = contextArgumentCaptor.getValue();
-        assertSame(SourceType.ADB, value.getSourceType());
+    @Test
+    void executeWrongEntityTypeFail(VertxTestContext testContext) throws SqlParseException {
+        // arrange
+        prepareContext("drop materialized view accounts");
+
+        Entity entity = context.getEntity();
+        entity.setEntityType(EntityType.VIEW);
+
+        when(entityDao.getEntity(SCHEMA, entity.getName()))
+                .thenReturn(Future.succeededFuture(entity));
+
+        // act
+        dropMaterializedViewExecutor.execute(context, context.getEntity().getName())
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    assertTrue(ar.failed());
+                    assertTrue(ar.cause() instanceof EntityNotExistsException);
+                }).completeNow());
     }
 
     private void prepareContext(String s) throws SqlParseException {

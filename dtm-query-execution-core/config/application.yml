@@ -148,6 +148,7 @@ adg:
         timeout_connect: ${TARANTOOL_DB_SYNC_CONNECTION_TIMEOUT:5000}
         timeout_read: ${TARANTOOL_DB_SYNC_READ_TIMEOUT:5000}
         timeout_request: ${TARANTOOL_DB_SYNC_REQUEST_TIMEOUT:5000}
+        bufferSize: ${TARANTOOL_DB_SYNC_BUFFER_SIZE:5000}
     cartridge:
       url: ${TARANTOOL_CATRIDGE_URL:http://localhost:8086}
 
@@ -176,6 +177,7 @@ adqm:
     hosts: ${ADQM_HOSTS:localhost:8123}
     socketTimeout: ${ADQM_SOCKET_TIMEOUT:30000}
     dataTransferTimeout: ${ADQM_DATA_TRANSFER_TIMEOUT:10000}
+    bufferSize: ${ADQM_BUFFER_SIZE:10000}
 
   ddl:
     cluster: ${ADQM_CLUSTER:default_cluster}

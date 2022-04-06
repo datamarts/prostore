@@ -22,7 +22,7 @@ import ru.datamart.prostore.common.model.ddl.EntityFieldUtils;
 import ru.datamart.prostore.query.execution.plugin.adb.dml.dto.UpsertTransferRequest;
 import ru.datamart.prostore.query.execution.plugin.adb.query.service.DatabaseExecutor;
 
-import static ru.datamart.prostore.query.execution.plugin.adb.dml.factory.AdbUpsertSqlFactory.*;
+import static ru.datamart.prostore.query.execution.plugin.adb.dml.factory.AdbLogicalUpsertSqlFactory.*;
 
 @Component
 public class AdbUpsertDataTransferService {

@@ -32,14 +32,14 @@ public class DtmParameterMetadata implements ParameterMetaData {
     }
 
     @Override
-    public int getParameterCount() throws SQLException {
+    public int getParameterCount() {
         return paramTypes.length;
     }
 
     @Override
     public int isNullable(int param) throws SQLException {
         this.checkParamIndex(param);
-        return 2;
+        return ParameterMetaData.parameterNullableUnknown;
     }
 
     @Override
@@ -51,13 +51,13 @@ public class DtmParameterMetadata implements ParameterMetaData {
     @Override
     public int getPrecision(int param) throws SQLException {
         this.checkParamIndex(param);
-        return 0;
+        return ParameterMetaData.parameterModeUnknown;
     }
 
     @Override
     public int getScale(int param) throws SQLException {
         this.checkParamIndex(param);
-        return 0;
+        return ParameterMetaData.parameterModeUnknown;
     }
 
     @Override
@@ -81,7 +81,7 @@ public class DtmParameterMetadata implements ParameterMetaData {
     @Override
     public int getParameterMode(int param) throws SQLException {
         this.checkParamIndex(param);
-        return 1;
+        return ParameterMetaData.parameterModeIn;
     }
 
     private void checkParamIndex(int param) throws SQLException {

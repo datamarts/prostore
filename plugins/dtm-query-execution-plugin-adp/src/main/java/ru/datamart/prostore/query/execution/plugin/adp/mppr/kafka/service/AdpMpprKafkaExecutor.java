@@ -15,7 +15,14 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adp.mppr.kafka.service;
 
+import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.avro.Schema;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Service;
 import ru.datamart.prostore.common.dto.QueryParserRequest;
+import ru.datamart.prostore.common.dto.QueryParserResponse;
 import ru.datamart.prostore.common.model.ddl.ExternalTableLocationType;
 import ru.datamart.prostore.common.reader.QueryResult;
 import ru.datamart.prostore.query.calcite.core.service.QueryParserService;
@@ -27,12 +34,6 @@ import ru.datamart.prostore.query.execution.plugin.api.mppr.kafka.DownloadExtern
 import ru.datamart.prostore.query.execution.plugin.api.mppr.kafka.MpprKafkaRequest;
 import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.EnrichQueryRequest;
 import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryEnrichmentService;
-import io.vertx.core.Future;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.apache.avro.Schema;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service("adpMpprKafkaService")
@@ -54,8 +55,8 @@ public class AdpMpprKafkaExecutor implements AdpMpprExecutor {
         return Future.future(promise -> {
             log.info("[ADP] Trying to start MPPR, request: [{}]", request);
             val kafkaRequest = (MpprKafkaRequest) request;
-            queryParserService.parse(new QueryParserRequest(kafkaRequest.getDmlSubQuery(), kafkaRequest.getLogicalSchema()))
-                    .compose(parserResponse -> queryEnrichmentService.enrich(getEnrichmentRequest(kafkaRequest), parserResponse))
+            queryParserService.parse(new QueryParserRequest(kafkaRequest.getDmlSubQuery(), kafkaRequest.getLogicalSchema(), kafkaRequest.getEnvName()))
+                    .compose(parserResponse -> queryEnrichmentService.enrich(getEnrichmentRequest(kafkaRequest, parserResponse)))
                     .compose(enrichedQuery -> adpConnectorClient.runMppr(getConnectorMpprRequest(kafkaRequest, enrichedQuery)))
                     .onSuccess(v -> {
                         log.info("[ADP] Mppr completed successfully");
@@ -68,12 +69,12 @@ public class AdpMpprKafkaExecutor implements AdpMpprExecutor {
         });
     }
 
-    private EnrichQueryRequest getEnrichmentRequest(MpprKafkaRequest request) {
+    private EnrichQueryRequest getEnrichmentRequest(MpprKafkaRequest request, QueryParserResponse parserResponse) {
         return EnrichQueryRequest.builder()
-                .query(request.getDmlSubQuery())
-                .deltaInformations(request.getDeltaInformations())
                 .envName(request.getEnvName())
-                .schema(request.getLogicalSchema())
+                .deltaInformations(request.getDeltaInformations())
+                .relNode(parserResponse.getRelNode())
+                .calciteContext(parserResponse.getCalciteContext())
                 .build();
     }
 

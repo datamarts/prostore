@@ -15,23 +15,23 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.ddl.service;
 
+import io.vertx.core.Future;
+import org.apache.calcite.sql.SqlKind;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.stereotype.Service;
 import ru.datamart.prostore.query.execution.plugin.adb.base.service.AdbDtmDataSourcePlugin;
 import ru.datamart.prostore.query.execution.plugin.api.exception.DdlDatasourceException;
 import ru.datamart.prostore.query.execution.plugin.api.request.DdlRequest;
 import ru.datamart.prostore.query.execution.plugin.api.service.DdlExecutor;
 import ru.datamart.prostore.query.execution.plugin.api.service.DdlService;
-import io.vertx.core.Future;
-import org.apache.calcite.sql.SqlKind;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
+import java.util.EnumMap;
 import java.util.Map;
 
 @Service("adbDdlService")
 public class AdbDdlService implements DdlService<Void> {
 
-    private final Map<SqlKind, DdlExecutor<Void>> ddlExecutors = new HashMap<>();
+    private final Map<SqlKind, DdlExecutor<Void>> ddlExecutors = new EnumMap<>(SqlKind.class);
 
     @Override
     @CacheEvict(value = AdbDtmDataSourcePlugin.ADB_DATAMART_CACHE, key = "#request.getDatamartMnemonic()")

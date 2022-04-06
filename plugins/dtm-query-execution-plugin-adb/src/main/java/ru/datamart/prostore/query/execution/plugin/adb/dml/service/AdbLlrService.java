@@ -15,6 +15,14 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.dml.service;
 
+import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.calcite.sql.SqlDialect;
+import org.apache.calcite.sql.SqlNode;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Service;
 import ru.datamart.prostore.cache.service.CacheService;
 import ru.datamart.prostore.common.cache.QueryTemplateKey;
 import ru.datamart.prostore.common.cache.QueryTemplateValue;
@@ -31,13 +39,6 @@ import ru.datamart.prostore.query.execution.plugin.api.request.LlrRequest;
 import ru.datamart.prostore.query.execution.plugin.api.service.QueryResultCacheableLlrService;
 import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.EnrichQueryRequest;
 import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryEnrichmentService;
-import io.vertx.core.Future;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.calcite.sql.SqlDialect;
-import org.apache.calcite.sql.SqlNode;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
@@ -79,12 +80,12 @@ public class AdbLlrService extends QueryResultCacheableLlrService {
 
     @Override
     protected Future<SqlNode> enrichQuery(LlrRequest request, QueryParserResponse parserResponse) {
-        return queryEnrichmentService.getEnrichedSqlNode(EnrichQueryRequest.builder()
-                        .deltaInformations(request.getDeltaInformations())
-                        .envName(request.getEnvName())
-                        .query(request.getWithoutViewsQuery())
-                        .schema(request.getSchema())
-                        .build(),
-                parserResponse);
+        val enrichRequest = EnrichQueryRequest.builder()
+                .deltaInformations(request.getDeltaInformations())
+                .envName(request.getEnvName())
+                .calciteContext(parserResponse.getCalciteContext())
+                .relNode(parserResponse.getRelNode())
+                .build();
+        return queryEnrichmentService.getEnrichedSqlNode(enrichRequest);
     }
 }

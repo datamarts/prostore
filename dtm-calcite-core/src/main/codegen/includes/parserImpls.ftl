@@ -301,6 +301,7 @@ SqlCreate SqlCreateUploadExternalTable(Span s, boolean replace) :
     SqlNode location = null;
     SqlNode format = null;
     SqlNode messageLimit = null;
+    SqlNode options = null;
 }
 {
     <UPLOAD> <EXTERNAL> <TABLE> ifNotExists = IfNotExistsOpt() id = CompoundIdentifier()
@@ -308,10 +309,49 @@ SqlCreate SqlCreateUploadExternalTable(Span s, boolean replace) :
     <LOCATION> location = StringLiteral()
     <FORMAT> format = StringLiteral()
     [ <MESSAGE_LIMIT> messageLimit = NumericLiteral() ]
+    [ <OPTIONS> <LPAREN> options = StringLiteral() <RPAREN> ]
     {
         return new SqlCreateUploadExternalTable(s.end(this),
-            ifNotExists, id, tableElementList, location, format, messageLimit);
+            ifNotExists, id, tableElementList, location, format, messageLimit, options);
 }
+}
+SqlCreate SqlCreateWriteableExternalTable(Span s, boolean replace) :
+{
+    final boolean ifNotExists;
+    final SqlIdentifier id;
+    final SqlNodeList tableElementList;
+    final SqlNode location;
+    SqlNodeList distributedBy = null;
+    SqlNode options = null;
+}
+{
+    <WRITABLE> <EXTERNAL> <TABLE> ifNotExists = IfNotExistsOpt() id = CompoundIdentifier()
+    tableElementList = TableElementList()
+    [ <DISTRIBUTED> <BY> distributedBy = ParenthesizedSimpleIdentifierList() ]
+    <LOCATION> location = StringLiteral()
+    [ <OPTIONS> <LPAREN> options = StringLiteral() <RPAREN> ]
+    {
+    return new SqlCreateWriteableExternalTable(s.end(this), ifNotExists, id, tableElementList, distributedBy, location, options);
+    }
+}
+SqlCreate SqlCreateReadableExternalTable(Span s, boolean replace) :
+{
+    final boolean ifNotExists;
+    final SqlIdentifier id;
+    final SqlNodeList tableElementList;
+    final SqlNode location;
+    SqlNodeList distributedBy = null;
+    SqlNode options = null;
+}
+{
+    <READABLE> <EXTERNAL> <TABLE> ifNotExists = IfNotExistsOpt() id = CompoundIdentifier()
+    tableElementList = TableElementList()
+    [ <DISTRIBUTED> <BY> distributedBy = ParenthesizedSimpleIdentifierList() ]
+    <LOCATION> location = StringLiteral()
+    [ <OPTIONS> <LPAREN> options = StringLiteral() <RPAREN> ]
+    {
+        return new SqlCreateReadableExternalTable(s.end(this), ifNotExists, id, tableElementList, distributedBy, location, options);
+    }
 }
 SqlCreate SqlCreateDatabase(Span s, boolean replace) :
 {
@@ -444,6 +484,44 @@ SqlNode ResumeWriteOperation() :
     <RPAREN>
     {
         return new ResumeWriteOperation(parserPos, writeOperationNumber);
+    }
+}
+SqlNode EraseChangeOperation() :
+{
+    SqlParserPos parserPos;
+    SqlNode changeOperationNumber;
+    SqlIdentifier datamart = null;
+}
+{
+    <ERASE_CHANGE_OPERATION>
+    {
+        parserPos = getPos();
+    }
+    <LPAREN>
+        changeOperationNumber = NumericLiteral()
+        [ <COMMA> datamart = SimpleIdentifier() ]
+    <RPAREN>
+    {
+        return new EraseChangeOperation(parserPos, changeOperationNumber, datamart);
+    }
+}
+SqlNode EraseWriteOperation() :
+{
+    SqlParserPos parserPos;
+    SqlNode writeOperationNumber;
+    SqlIdentifier datamart = null;
+}
+{
+<ERASE_WRITE_OPERATION>
+    {
+        parserPos = getPos();
+    }
+    <LPAREN>
+        writeOperationNumber = NumericLiteral()
+        [<COMMA> datamart = SimpleIdentifier() ]
+    <RPAREN>
+    {
+    return new EraseWriteOperation(parserPos, writeOperationNumber, datamart);
     }
 }
 SqlNode SqlConfigShow() :
@@ -660,6 +738,32 @@ SqlDrop SqlDropDownloadExternalTable(Span s, boolean replace) :
     <DOWNLOAD> <EXTERNAL> <TABLE> ifExists = IfExistsOpt() id = CompoundIdentifier() {
         return new SqlDropDownloadExternalTable(s.end(this), ifExists, id);
 }
+}
+SqlDrop SqlDropWriteableExternalTable(Span s, boolean replace) :
+{
+    final boolean ifExists;
+    final SqlIdentifier id;
+    SqlNode options = null;
+}
+{
+    <WRITABLE> <EXTERNAL> <TABLE> ifExists = IfExistsOpt() id = CompoundIdentifier()
+    [ <OPTIONS> <LPAREN> options = StringLiteral() <RPAREN> ]
+    {
+        return new SqlDropWriteableExternalTable(s.end(this), ifExists, id, options);
+    }
+}
+SqlDrop SqlDropReadableExternalTable(Span s, boolean replace) :
+{
+    final boolean ifExists;
+    final SqlIdentifier id;
+    SqlNode options = null;
+}
+{
+    <READABLE> <EXTERNAL> <TABLE> ifExists = IfExistsOpt() id = CompoundIdentifier()
+    [ <OPTIONS> <LPAREN> options = StringLiteral() <RPAREN> ]
+    {
+        return new SqlDropReadableExternalTable(s.end(this), ifExists, id, options);
+    }
 }
 SqlDrop SqlDropView(Span s, boolean replace) :
 {

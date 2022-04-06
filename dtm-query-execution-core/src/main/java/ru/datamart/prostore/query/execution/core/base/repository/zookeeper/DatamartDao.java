@@ -63,10 +63,8 @@ public class DatamartDao implements ZookeeperDao<String> {
                 })
                 .compose(r -> executor.multi(getCreateDatamartOps(getTargetPath(name))))
                 .otherwise(error -> {
-                    if (error instanceof KeeperException.NodeExistsException) {
-                        if (isDatamartExists((KeeperException) error)) {
+                    if (error instanceof KeeperException.NodeExistsException && isDatamartExists((KeeperException) error)) {
                             throw new DatamartAlreadyExistsException(name);
-                        }
                     }
                     throw new DtmException(String.format("Can't create datamart [%s]",
                             name),

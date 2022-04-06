@@ -21,13 +21,13 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>dtm-common</artifactId>
-    <version>5.4.0</version>
+    <version>5.5.0</version>
     <name>DTM Common</name>
 
     <parent>
         <groupId>ru.datamart.prostore</groupId>
         <artifactId>parent</artifactId>
-        <version>5.4.0</version>
+        <version>5.5.0</version>
     </parent>
 
     <dependencies>

@@ -15,72 +15,62 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.enrichment.service;
 
-import ru.datamart.prostore.common.dto.QueryParserResponse;
-import ru.datamart.prostore.query.execution.model.metadata.Datamart;
-import ru.datamart.prostore.query.execution.plugin.adb.calcite.service.AdbCalciteContextProvider;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.EnrichQueryRequest;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryEnrichmentService;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryGenerator;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.SchemaExtender;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.calcite.sql.SqlDialect;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.util.Util;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
-import java.util.stream.Collectors;
+import ru.datamart.prostore.query.calcite.core.rel2sql.DtmRelToSqlConverter;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.EnrichQueryRequest;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.QueryGeneratorContext;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryEnrichmentService;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryExtendService;
 
 @Service("adbQueryEnrichmentService")
 @Slf4j
 public class AdbQueryEnrichmentService implements QueryEnrichmentService {
-    private final AdbCalciteContextProvider contextProvider;
-    private final SchemaExtender schemaExtender;
-    private final QueryGenerator adbQueryGenerator;
+
+    private final QueryExtendService queryExtendService;
+    private final SqlDialect sqlDialect;
+    private final DtmRelToSqlConverter relToSqlConverter;
 
     @Autowired
-    public AdbQueryEnrichmentService(
-            @Qualifier("adbQueryGenerator") QueryGenerator adbQueryGenerator,
-            AdbCalciteContextProvider contextProvider,
-            @Qualifier("adbSchemaExtender") SchemaExtender schemaExtender) {
-        this.adbQueryGenerator = adbQueryGenerator;
-        this.contextProvider = contextProvider;
-        this.schemaExtender = schemaExtender;
+    public AdbQueryEnrichmentService(@Qualifier("adbDmlExtendService") QueryExtendService queryExtendService,
+                                     @Qualifier("adbSqlDialect") SqlDialect sqlDialect,
+                                     @Qualifier("adbRelToSqlConverter") DtmRelToSqlConverter relToSqlConverter) {
+        this.queryExtendService = queryExtendService;
+        this.sqlDialect = sqlDialect;
+        this.relToSqlConverter = relToSqlConverter;
     }
 
     @Override
-    public Future<String> enrich(EnrichQueryRequest request, QueryParserResponse parserResponse) {
-        contextProvider.enrichContext(parserResponse.getCalciteContext(),
-                generatePhysicalSchemas(request.getSchema()));
-        return mutateQuery(parserResponse, request);
+    public Future<String> enrich(EnrichQueryRequest request) {
+        return getEnrichedSqlNode(request)
+                .map(sqlNodeResult -> Util.toLinux(sqlNodeResult.toSqlString(sqlDialect).getSql()).replaceAll("\r\n|\r|\n", " "))
+                .onSuccess(result -> log.debug("Request generated: {}", result));
     }
 
     @Override
-    public Future<SqlNode> getEnrichedSqlNode(EnrichQueryRequest request, QueryParserResponse response) {
-        contextProvider.enrichContext(response.getCalciteContext(),
-                generatePhysicalSchemas(request.getSchema()));
-        return adbQueryGenerator.getMutatedSqlNode(response.getRelNode(),
-                request.getDeltaInformations(),
-                response.getCalciteContext(),
-                null);
+    public Future<SqlNode> getEnrichedSqlNode(EnrichQueryRequest request) {
+        return Future.future(promise -> {
+            val generatorContext = getContext(request);
+            val extendedQuery = queryExtendService.extendQuery(generatorContext);
+            val sqlNodeResult = relToSqlConverter.convert(extendedQuery, request.isAllowStar());
+            promise.complete(sqlNodeResult);
+        });
     }
 
-    private Future<String> mutateQuery(QueryParserResponse response, EnrichQueryRequest request) {
-        return Future.future(promise -> adbQueryGenerator.mutateQuery(response.getRelNode(),
-                request.getDeltaInformations(),
-                response.getCalciteContext(),
-                null)
-                .onSuccess(result -> {
-                    log.trace("Request generated: {}", result);
-                    promise.complete(result);
-                })
-                .onFailure(promise::fail));
+    private QueryGeneratorContext getContext(EnrichQueryRequest enrichQueryRequest) {
+        return new QueryGeneratorContext(
+                enrichQueryRequest.getDeltaInformations().iterator(),
+                enrichQueryRequest.getCalciteContext().getRelBuilder(),
+                enrichQueryRequest.getRelNode(),
+                enrichQueryRequest.getEnvName()
+        );
     }
 
-    private List<Datamart> generatePhysicalSchemas(List<Datamart> logicalSchemas) {
-        return logicalSchemas.stream()
-                .map(logicalSchema -> schemaExtender.createPhysicalSchema(logicalSchema, ""))
-                .collect(Collectors.toList());
-    }
 }

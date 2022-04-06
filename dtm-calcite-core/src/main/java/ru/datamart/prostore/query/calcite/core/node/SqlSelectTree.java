@@ -1,6 +1,5 @@
 package ru.datamart.prostore.query.calcite.core.node;
 
-import ru.datamart.prostore.query.calcite.core.extension.dml.LimitableSqlOrderBy;
 import lombok.Data;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +8,7 @@ import lombok.var;
 import org.apache.calcite.sql.*;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.lang3.reflect.FieldUtils;
+import ru.datamart.prostore.query.calcite.core.extension.dml.LimitableSqlOrderBy;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -57,16 +57,16 @@ public class SqlSelectTree {
         return nodeMap.get(0);
     }
 
-    public Optional<SqlTreeNode> getParentByChild(SqlTreeNode child) {
+    public SqlTreeNode getParentByChild(SqlTreeNode child) {
         return getParentByChild(nodeMap, child);
     }
 
-    private Optional<SqlTreeNode> getParentByChild(Map<Integer, SqlTreeNode> nodeMap, SqlTreeNode child) {
+    private SqlTreeNode getParentByChild(Map<Integer, SqlTreeNode> nodeMap, SqlTreeNode child) {
         if (child == null) {
-            return Optional.empty();
+            return null;
         }
 
-        return Optional.ofNullable(nodeMap.get(child.getParentId()));
+        return nodeMap.get(child.getParentId());
     }
 
     public List<SqlTreeNode> findSnapshots() {
@@ -95,7 +95,7 @@ public class SqlSelectTree {
             return initialNodes;
         }
 
-        List<SqlTreeNode> result = new ArrayList<SqlTreeNode>(initialNodes.size());
+        List<SqlTreeNode> result = new ArrayList<>(initialNodes.size());
         for (SqlTreeNode node : initialNodes) {
             val kindPath = node.getKindPath();
             if (kindPath.size() < predicates.getNotMaybePredicates()) {
@@ -213,8 +213,8 @@ public class SqlSelectTree {
 
     private void addReflectNode(SqlTreeNode parentTree, SqlNode parentNode, String fieldName) {
         parentTree.createChild(getNextId(),
-                        readNode(parentNode, fieldName),
-                        new SqlNodeConsumer<>(parentNode, (parent, child) -> writeNode(parent, child, fieldName)))
+                readNode(parentNode, fieldName),
+                new SqlNodeConsumer<>(parentNode, (parent, child) -> writeNode(parent, child, fieldName)))
                 .ifPresent(this::addNodes);
     }
 
@@ -243,8 +243,8 @@ public class SqlSelectTree {
             int finalI = i;
             parentTree.resetChildPos();
             parentTree.createChild(getNextId(),
-                            itemNode,
-                            new SqlNodeConsumer<>(parentNode, (sqlCall, sqlNode) -> sqlCall.setOperand(finalI, sqlNode)))
+                    itemNode,
+                    new SqlNodeConsumer<>(parentNode, (sqlCall, sqlNode) -> sqlCall.setOperand(finalI, sqlNode)))
                     .ifPresent(this::addNodes);
         }
     }
@@ -267,34 +267,34 @@ public class SqlSelectTree {
             val itemNode = nodes.get(i);
             int finalI = i;
             parentTree.createChild(getNextId(),
-                            itemNode,
-                            new SqlNodeConsumer<>(parentNode, (sqlCall, sqlNode) -> sqlCall.setOperand(finalI, sqlNode)))
+                    itemNode,
+                    new SqlNodeConsumer<>(parentNode, (sqlCall, sqlNode) -> sqlCall.setOperand(finalI, sqlNode)))
                     .ifPresent(this::addNodes);
         }
     }
 
     private void flattenSqlSelect(SqlTreeNode parentTree, SqlSelect parentNode) {
         parentTree.createChild(getNextId(),
-                        parentNode.getSelectList(),
-                        new SqlNodeConsumer<>(parentNode, (sqlSelect, sqlNode) -> sqlSelect.setSelectList((SqlNodeList) sqlNode)))
+                parentNode.getSelectList(),
+                new SqlNodeConsumer<>(parentNode, (sqlSelect, sqlNode) -> sqlSelect.setSelectList((SqlNodeList) sqlNode)))
                 .ifPresent(this::addNodes);
         parentTree.resetChildPos();
         parentTree.createChild(getNextId(), parentNode.getWhere(), new SqlNodeConsumer<>(parentNode, SqlSelect::setWhere))
                 .ifPresent(this::addNodes);
         parentTree.resetChildPos();
         parentTree.createChild(getNextId(),
-                        parentNode.getFrom(),
-                        new SqlNodeConsumer<>(parentNode, SqlSelect::setFrom))
+                parentNode.getFrom(),
+                new SqlNodeConsumer<>(parentNode, SqlSelect::setFrom))
                 .ifPresent(this::addNodes);
         parentTree.resetChildPos();
         parentTree.createChild(getNextId(),
-                        parentNode.getFetch(),
-                        new SqlNodeConsumer<>(parentNode, SqlSelect::setFetch))
+                parentNode.getFetch(),
+                new SqlNodeConsumer<>(parentNode, SqlSelect::setFetch))
                 .ifPresent(this::addNodes);
         parentTree.resetChildPos();
         parentTree.createChild(getNextId(),
-                        parentNode.getOffset(),
-                        new SqlNodeConsumer<>(parentNode, SqlSelect::setOffset))
+                parentNode.getOffset(),
+                new SqlNodeConsumer<>(parentNode, SqlSelect::setOffset))
                 .ifPresent(this::addNodes);
     }
 
@@ -308,8 +308,8 @@ public class SqlSelectTree {
             val itemNode = nodes.get(i);
             int finalI = i;
             parentTree.createChild(getNextId(),
-                            itemNode,
-                            new SqlNodeConsumer<>(parentNode, (sqlNodes, sqlNode) -> sqlNodes.set(finalI, sqlNode)))
+                    itemNode,
+                    new SqlNodeConsumer<>(parentNode, (sqlNodes, sqlNode) -> sqlNodes.set(finalI, sqlNode)))
                     .ifPresent(this::addNodes);
         }
     }
@@ -329,7 +329,7 @@ public class SqlSelectTree {
                 0,
                 node,
                 null,
-                Arrays.asList(new SqlKindKey(node.getKind(), null))));
+                Collections.singletonList(new SqlKindKey(node.getKind(), null))));
     }
 
     private int getNextId() {
@@ -373,9 +373,9 @@ public class SqlSelectTree {
     private Pair<Integer, SqlTreeNode> getNodePairWithNewNodeSetter(Map<Integer, SqlTreeNode> sqlNodeMap,
                                                                     Map.Entry<Integer, SqlTreeNode> e) {
         SqlTreeNode origTreeNode = e.getValue();
-        val parentOpt = getParentByChild(sqlNodeMap, origTreeNode);
-        if (parentOpt.isPresent()) {
-            SqlNode parentNode = parentOpt.get().getNode();
+        val parent = getParentByChild(sqlNodeMap, origTreeNode);
+        if (parent != null) {
+            SqlNode parentNode = parent.getNode();
             val nwSqlNodeSetter = origTreeNode.getSqlNodeSetter().toBuilder()
                     .parentNode(parentNode)
                     .build();

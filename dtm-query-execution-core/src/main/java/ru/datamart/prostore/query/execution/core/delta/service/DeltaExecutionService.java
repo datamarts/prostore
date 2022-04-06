@@ -15,12 +15,14 @@
  */
 package ru.datamart.prostore.query.execution.core.delta.service;
 
+import lombok.val;
 import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.common.metrics.RequestMetrics;
 import ru.datamart.prostore.common.model.RequestStatus;
 import ru.datamart.prostore.common.model.SqlProcessingType;
 import ru.datamart.prostore.common.reader.QueryResult;
 import ru.datamart.prostore.common.reader.SourceType;
+import ru.datamart.prostore.query.calcite.core.extension.delta.EraseWriteOperation;
 import ru.datamart.prostore.query.execution.core.base.service.DatamartExecutionService;
 import ru.datamart.prostore.query.execution.core.delta.dto.operation.DeltaRequestContext;
 import ru.datamart.prostore.query.execution.core.delta.dto.query.DeltaAction;
@@ -63,17 +65,12 @@ public class DeltaExecutionService implements DatamartExecutionService<DeltaRequ
 
     @Override
     public Future<QueryResult> execute(DeltaRequestContext request) {
-        if (StringUtils.isEmpty(request.getRequest().getQueryRequest().getDatamartMnemonic())) {
-            String errMsg = "Datamart must be not empty!\n" +
-                    "For setting datamart you can use the following command: \"USE datamartName\"";
-            return Future.failedFuture(new DtmException(errMsg));
-        } else {
-            return extractDeltaAndExecute(request);
-        }
+        return extractDeltaAndExecute(request);
     }
 
     private Future<QueryResult> extractDeltaAndExecute(DeltaRequestContext context) {
         return Future.future(promise -> createDeltaQuery(context)
+                .map(deltaQuery -> checkDatamart(context, deltaQuery))
                 .compose(deltaQuery -> sendMetricsAndExecute(context, deltaQuery))
                 .onComplete(deltaExecHandler -> {
                     if (deltaExecHandler.succeeded()) {
@@ -87,13 +84,33 @@ public class DeltaExecutionService implements DatamartExecutionService<DeltaRequ
                 }));
     }
 
+    private DeltaQuery checkDatamart(DeltaRequestContext context, DeltaQuery deltaQuery) {
+        val datamartMnemonic = context.getRequest().getQueryRequest().getDatamartMnemonic();
+        val sqlNode = context.getSqlNode();
+        val errMsg = "Datamart must be not empty!\n" +
+                "For setting datamart you can use the following command: \"USE datamartName\"";
+        if (sqlNode instanceof EraseWriteOperation) {
+            val eraseWriteOperationNode = (EraseWriteOperation) sqlNode;
+            if (eraseWriteOperationNode.getDatamart() == null && StringUtils.isEmpty(datamartMnemonic)) {
+                throw new DtmException(errMsg);
+            }
+        } else if (StringUtils.isEmpty(datamartMnemonic)) {
+            throw new DtmException(errMsg);
+        }
+        return deltaQuery;
+    }
+
     private Future<DeltaQuery> createDeltaQuery(DeltaRequestContext context) {
         return Future.future(promise -> promise.complete(deltaQueryFactory.create(context)));
     }
 
     private Future<QueryResult> sendMetricsAndExecute(DeltaRequestContext context, DeltaQuery deltaQuery) {
-        deltaQuery.setDatamart(context.getRequest().getQueryRequest().getDatamartMnemonic());
-        deltaQuery.setRequest(context.getRequest().getQueryRequest());
+        val queryRequest = context.getRequest().getQueryRequest();
+        val datamartMnemonic = context.getSqlNode() instanceof EraseWriteOperation
+                ? ((EraseWriteOperation) context.getSqlNode()).getDatamart()
+                : queryRequest.getDatamartMnemonic();
+        deltaQuery.setDatamart(datamartMnemonic);
+        deltaQuery.setRequest(queryRequest);
         if (deltaQuery.getDeltaAction() != DeltaAction.ROLLBACK_DELTA) {
             return executeWithMetrics(context, deltaQuery);
         } else {

@@ -35,16 +35,15 @@ import ru.datamart.prostore.common.reader.QueryResult;
 import ru.datamart.prostore.query.calcite.core.extension.dml.DmlType;
 import ru.datamart.prostore.query.execution.core.base.dto.request.CoreRequestContext;
 import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.EntityDao;
-import ru.datamart.prostore.query.execution.core.base.service.delta.DeltaInformationExtractor;
 import ru.datamart.prostore.query.execution.core.dml.dto.DmlRequestContext;
-import ru.datamart.prostore.query.execution.core.query.factory.QueryRequestFactory;
-import ru.datamart.prostore.query.execution.core.query.factory.RequestContextFactory;
+import ru.datamart.prostore.query.execution.core.query.request.RequestContextPreparer;
+import ru.datamart.prostore.query.execution.core.query.request.specific.*;
 import ru.datamart.prostore.query.execution.core.query.service.QueryAnalyzer;
 import ru.datamart.prostore.query.execution.core.query.service.QueryDispatcher;
 import ru.datamart.prostore.query.execution.core.query.service.QuerySemicolonRemover;
-import ru.datamart.prostore.query.execution.core.query.utils.DatamartMnemonicExtractor;
-import ru.datamart.prostore.query.execution.core.query.utils.DefaultDatamartSetter;
 import ru.datamart.prostore.query.execution.core.utils.TestUtils;
+
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -64,15 +63,21 @@ class QueryAnalyzerTest {
 
     @BeforeEach
     void setUp(Vertx vertx) {
-        val requestContextFactory = new RequestContextFactory(TestUtils.getCoreConfiguration("test"), entityDao);
+        val appConfiguration = TestUtils.getCoreConfiguration("test");
+        val requestContextPreparer = new RequestContextPreparer(Arrays.asList(
+                new CheckRequestContextPreparer(appConfiguration),
+                new ConfigRequestContextPreparer(appConfiguration),
+                new DdlRequestContextPreparer(appConfiguration),
+                new DeltaRequestContextPreparer(appConfiguration),
+                new DmlEdmlRequestContextPreparer(appConfiguration, entityDao),
+                new EddlRequestContextPreparer(appConfiguration)
+        ));
+
         queryAnalyzer = new QueryAnalyzer(queryDispatcher,
                 TestUtils.DEFINITION_SERVICE,
-                requestContextFactory,
+                requestContextPreparer,
                 vertx,
-                new DatamartMnemonicExtractor(new DeltaInformationExtractor()),
-                new DefaultDatamartSetter(),
-                new QuerySemicolonRemover(),
-                new QueryRequestFactory());
+                new QuerySemicolonRemover());
 
         lenient().when(queryDispatcher.dispatch(contextArgumentCaptor.capture())).thenReturn(Future.succeededFuture(QueryResult.emptyResult()));
 
@@ -90,684 +95,216 @@ class QueryAnalyzerTest {
 
     @Test
     void shouldDispatchDml(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("select count(*) from (SelEct * from TEST_DATAMART.LOGICAL_TABLE where LST_NAM='test' " +
+        assertDmlType(testContext, "select count(*) from (SelEct * from TEST_DATAMART.LOGICAL_TABLE where LST_NAM='test' " +
                 "union all " +
                 "SelEct * from TEST_DATAMART.VIEW where LST_NAM='test1') " +
                 "group by ID " +
-                "order by 1 desc");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DML, context.getProcessingType());
-                    val dmlContext = (DmlRequestContext) context;
-                    assertSame(DmlType.LLR, dmlContext.getType());
-                }).completeNow());
+                "order by 1 desc", DmlType.LLR);
     }
 
     @Test
     void shouldCallEdmlWhenInsertIntoDownloadExternalTable(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("INSERT INTO TEST_DATAMART.DOWNLOADEXTERNALTABLE SELECT * FROM TEST_DATAMART.LOGICAL_TABLE");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.EDML, context.getProcessingType());
-                }).completeNow());
+        assertProcessingType(testContext, "INSERT INTO TEST_DATAMART.DOWNLOADEXTERNALTABLE SELECT * FROM TEST_DATAMART.LOGICAL_TABLE", SqlProcessingType.EDML);
     }
 
     @Test
     void shouldCallEdmlWhenInsertFromUploadExternalTable(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("INSERT INTO TEST_DATAMART.LOGICAL_TABLE SELECT * FROM TEST_DATAMART.uploadexternaltable");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.EDML, context.getProcessingType());
-                }).completeNow());
+        assertProcessingType(testContext, "INSERT INTO TEST_DATAMART.LOGICAL_TABLE SELECT * FROM TEST_DATAMART.uploadexternaltable", SqlProcessingType.EDML);
     }
 
     @Test
     void shouldCallEdmlWhenRollbackOperations(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("ROLLBACK CRASHED_WRITE_OPERATIONS");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.EDML, context.getProcessingType());
-                }).completeNow());
+        assertProcessingType(testContext, "ROLLBACK CRASHED_WRITE_OPERATIONS", SqlProcessingType.EDML);
     }
 
     @Test
     void shouldCallDmlWhenInsertIntoDownloadExternalTable(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("INSERT INTO TEST_DATAMART.DOWNLOADEXTERNALTABLE SELECT * FROM TEST_DATAMART.LOGICAL_TABLE");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.EDML, context.getProcessingType());
-                }).completeNow());
+        assertProcessingType(testContext, "INSERT INTO TEST_DATAMART.DOWNLOADEXTERNALTABLE SELECT * FROM TEST_DATAMART.LOGICAL_TABLE", SqlProcessingType.EDML);
     }
 
     @Test
     void shouldCallDmlWhenInsertFromTable(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("INSERT INTO TEST_DATAMART.LOGICAL_TABLE SELECT * FROM TEST_DATAMART.LOGICAL_TABLE");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DML, context.getProcessingType());
-                    val dmlContext = (DmlRequestContext) context;
-                    assertSame(DmlType.INSERT_SELECT, dmlContext.getType());
-                }).completeNow());
+        assertDmlType(testContext, "INSERT INTO TEST_DATAMART.LOGICAL_TABLE SELECT * FROM TEST_DATAMART.LOGICAL_TABLE", DmlType.INSERT_SELECT);
     }
 
     @Test
     void shouldCallDmlWhenInsertFromView(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("INSERT INTO TEST_DATAMART.LOGICAL_TABLE SELECT * FROM TEST_DATAMART.VIEW");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DML, context.getProcessingType());
-                    val dmlContext = (DmlRequestContext) context;
-                    assertSame(DmlType.INSERT_SELECT, dmlContext.getType());
-                }).completeNow());
+        assertDmlType(testContext, "INSERT INTO TEST_DATAMART.LOGICAL_TABLE SELECT * FROM TEST_DATAMART.VIEW", DmlType.INSERT_SELECT);
     }
 
     @Test
     void shouldCallDmlWhenInsertFromMaterializedView(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("INSERT INTO TEST_DATAMART.LOGICAL_TABLE SELECT * FROM TEST_DATAMART.MATERIALIZEDVIEW");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DML, context.getProcessingType());
-                    val dmlContext = (DmlRequestContext) context;
-                    assertSame(DmlType.INSERT_SELECT, dmlContext.getType());
-                }).completeNow());
+        assertDmlType(testContext, "INSERT INTO TEST_DATAMART.LOGICAL_TABLE SELECT * FROM TEST_DATAMART.MATERIALIZEDVIEW", DmlType.INSERT_SELECT);
     }
 
     @Test
     void shouldCallDmlWhenInsertValues(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("INSERT INTO TEST_DATAMART.LOGICAL_TABLE VALUES (1,1,1)");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DML, context.getProcessingType());
-                    val dmlContext = (DmlRequestContext) context;
-                    assertSame(DmlType.INSERT_VALUES, dmlContext.getType());
-                }).completeNow());
+        assertDmlType(testContext, "INSERT INTO TEST_DATAMART.LOGICAL_TABLE VALUES (1,1,1)", DmlType.INSERT_VALUES);
     }
 
     @Test
     void shouldCallDmlWhenUpsertFromTable(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("UPSERT INTO TEST_DATAMART.LOGICAL_TABLE SELECT * FROM TEST_DATAMART.LOGICAL_TABLE");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DML, context.getProcessingType());
-                    val dmlContext = (DmlRequestContext) context;
-                    assertSame(DmlType.UPSERT_SELECT, dmlContext.getType());
-                }).completeNow());
+        assertDmlType(testContext, "UPSERT INTO TEST_DATAMART.LOGICAL_TABLE SELECT * FROM TEST_DATAMART.LOGICAL_TABLE", DmlType.UPSERT_SELECT);
     }
 
     @Test
     void shouldCallDmlWhenUpsertFromView(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("UPSERT INTO TEST_DATAMART.LOGICAL_TABLE SELECT * FROM TEST_DATAMART.VIEW");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DML, context.getProcessingType());
-                    val dmlContext = (DmlRequestContext) context;
-                    assertSame(DmlType.UPSERT_SELECT, dmlContext.getType());
-                }).completeNow());
+        assertDmlType(testContext, "UPSERT INTO TEST_DATAMART.LOGICAL_TABLE SELECT * FROM TEST_DATAMART.VIEW", DmlType.UPSERT_SELECT);
     }
 
     @Test
     void shouldCallDmlWhenUpsertFromMaterializedView(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("UPSERT INTO TEST_DATAMART.LOGICAL_TABLE SELECT * FROM TEST_DATAMART.MATERIALIZEDVIEW");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DML, context.getProcessingType());
-                    val dmlContext = (DmlRequestContext) context;
-                    assertSame(DmlType.UPSERT_SELECT, dmlContext.getType());
-                }).completeNow());
+        assertDmlType(testContext, "UPSERT INTO TEST_DATAMART.LOGICAL_TABLE SELECT * FROM TEST_DATAMART.MATERIALIZEDVIEW", DmlType.UPSERT_SELECT);
     }
 
     @Test
     void shouldCallDmlWhenUpsertValues(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("UPSERT INTO TEST_DATAMART.LOGICAL_TABLE VALUES (1,1,1)");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DML, context.getProcessingType());
-                    val dmlContext = (DmlRequestContext) context;
-                    assertSame(DmlType.UPSERT_VALUES, dmlContext.getType());
-                }).completeNow());
+        assertDmlType(testContext, "UPSERT INTO TEST_DATAMART.LOGICAL_TABLE VALUES (1,1,1)", DmlType.UPSERT_VALUES);
     }
 
     @Test
     void shouldCallDmlWhenSelectWithDatasourceType(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("SELECT * FROM TEST_DATAMART.LOGICAL_TABLE DATASOURCE_TYPE='ADB'");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DML, context.getProcessingType());
-                    val dmlContext = (DmlRequestContext) context;
-                    assertSame(DmlType.LLR, dmlContext.getType());
-                }).completeNow());
+        assertDmlType(testContext, "SELECT * FROM TEST_DATAMART.LOGICAL_TABLE DATASOURCE_TYPE='ADB'", DmlType.LLR);
     }
 
     @Test
     void shouldCallDmlWhenSelectWithSystemTime(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("SELECT * FROM TEST_DATAMART.LOGICAL_TABLE for system_time" +
-                " as of '2011-01-02 00:00:00' where 1=1");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DML, context.getProcessingType());
-                    val dmlContext = (DmlRequestContext) context;
-                    assertSame(DmlType.LLR, dmlContext.getType());
-                }).completeNow());
+        assertDmlType(testContext, "SELECT * FROM TEST_DATAMART.LOGICAL_TABLE for system_time" +
+                " as of '2011-01-02 00:00:00' where 1=1", DmlType.LLR);
     }
 
     @Test
     void shouldCallEddlWhenDropDownloadExternal(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("DROP DOWNLOAD EXTERNAL TABLE TEST_DATAMART.DOWNLOADEXTERNALTABLE");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.EDDL, context.getProcessingType());
-                }).completeNow());
+        assertProcessingType(testContext, "DROP DOWNLOAD EXTERNAL TABLE TEST_DATAMART.DOWNLOADEXTERNALTABLE", SqlProcessingType.EDDL);
     }
 
     @Test
     void shouldCallDdlWhenDropTable(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("DROP TABLE TEST_DATAMART.LOGICAL_TABLE");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DDL, context.getProcessingType());
-                }).completeNow());
+        assertProcessingType(testContext, "DROP TABLE TEST_DATAMART.LOGICAL_TABLE", SqlProcessingType.DDL);
     }
 
     @Test
-    void shouldCallDeltaWhenGetDelta(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("GET_DELTA_BY_NUM(1)");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DELTA, context.getProcessingType());
-                }).completeNow());
-    }
-
-    @Test
-    void shouldCallDeltaWhenGetDeltaOk(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("GET_DELTA_OK()");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DELTA, context.getProcessingType());
-                }).completeNow());
-    }
-
-    @Test
-    void shouldCallDeltaWhenGetDeltaHot(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("GET_DELTA_HOT()");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DELTA, context.getProcessingType());
-                }).completeNow());
-    }
-
-    @Test
-    void shouldCallDeltaWhenGeDeltaByDate(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("GET_DELTA_BY_DATETIME('2018-01-01')");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DELTA, context.getProcessingType());
-                }).completeNow());
-    }
-
-    @Test
-    void shouldCallDeltaWhenBeginDelta(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("BEGIN DELTA");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DELTA, context.getProcessingType());
-                }).completeNow());
-    }
-
-    @Test
-    void shouldCallDeltaWhenCommitDelta(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("COMMIT DELTA");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DELTA, context.getProcessingType());
-                }).completeNow());
-    }
-
-    @Test
-    void shouldCallDeltaWhenRollbackDelta(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("ROLLBACK DELTA");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DELTA, context.getProcessingType());
-                }).completeNow());
-    }
-
-    @Test
-    void shouldCallCheckWhenCheckDatabaseWithDatamart(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("CHECK_DATABASE(datamart)");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.CHECK, context.getProcessingType());
-                }).completeNow());
-    }
-
-    @Test
-    void shouldCallCheckWhenCheckDatabase(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("CHECK_DATABASE()");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.CHECK, context.getProcessingType());
-                }).completeNow());
-    }
-
-    @Test
-    void shouldCallCheckWhenCheckDatabaseWithoutParens(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("CHECK_DATABASE");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.CHECK, context.getProcessingType());
-                }).completeNow());
-    }
-
-    @Test
-    void shouldCallCheckWhenCheckTable(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("CHECK_TABLE(tbl1)");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.CHECK, context.getProcessingType());
-                }).completeNow());
-    }
-
-    @Test
-    void shouldCallCheckWhenCheckData(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("CHECK_DATA(tbl1, 1)");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.CHECK, context.getProcessingType());
-                }).completeNow());
-    }
-
-    @Test
-    void shouldCallCheckWhenCheckSum(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("CHECK_SUM(1)");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.CHECK, context.getProcessingType());
-                }).completeNow());
-    }
-
-    @Test
-    void shouldCallCheckWhenCheckVersions(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("CHECK_VERSIONS()");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.CHECK, context.getProcessingType());
-                }).completeNow());
-    }
-
-    @Test
-    void shouldCallConfigWhenConfigStorageAdd(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("CONFIG_STORAGE_ADD('ADB') ");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.CONFIG, context.getProcessingType());
-                }).completeNow());
+    void shouldCallDdlWhenEraseChangeOperation(VertxTestContext testContext) {
+        assertProcessingType(testContext, "ERASE_CHANGE_OPERATION(0)", SqlProcessingType.DDL);
     }
 
     @Test
     void shouldCallDdlWhenAlterView(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("ALTER VIEW test.view_a AS SELECT * FROM test.test_data");
+        assertProcessingType(testContext, "ALTER VIEW test.view_a AS SELECT * FROM test.test_data", SqlProcessingType.DDL);
+    }
 
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
+    @Test
+    void shouldCallDdlWhenTruncate(VertxTestContext testContext) {
+        assertProcessingType(testContext, "TRUNCATE HISTORY test_datamart.logical_table FOR SYSTEM_TIME AS OF '2019-12-23 15:15:14'\n" +
+                "WHERE product_units < 10", SqlProcessingType.DDL);
+    }
 
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DDL, context.getProcessingType());
-                }).completeNow());
+    @Test
+    void shouldCallDeltaWhenGetDelta(VertxTestContext testContext) {
+        assertProcessingType(testContext, "GET_DELTA_BY_NUM(1)", SqlProcessingType.DELTA);
+    }
+
+    @Test
+    void shouldCallDeltaWhenGetDeltaOk(VertxTestContext testContext) {
+        assertProcessingType(testContext, "GET_DELTA_OK()", SqlProcessingType.DELTA);
+    }
+
+    @Test
+    void shouldCallDeltaWhenGetDeltaHot(VertxTestContext testContext) {
+        assertProcessingType(testContext, "GET_DELTA_HOT()", SqlProcessingType.DELTA);
+    }
+
+    @Test
+    void shouldCallDeltaWhenGeDeltaByDate(VertxTestContext testContext) {
+        assertProcessingType(testContext, "GET_DELTA_BY_DATETIME('2018-01-01')", SqlProcessingType.DELTA);
+    }
+
+    @Test
+    void shouldCallDeltaWhenBeginDelta(VertxTestContext testContext) {
+        assertProcessingType(testContext, "BEGIN DELTA", SqlProcessingType.DELTA);
+    }
+
+    @Test
+    void shouldCallDeltaWhenCommitDelta(VertxTestContext testContext) {
+        assertProcessingType(testContext, "COMMIT DELTA", SqlProcessingType.DELTA);
+    }
+
+    @Test
+    void shouldCallDeltaWhenRollbackDelta(VertxTestContext testContext) {
+
+        assertProcessingType(testContext, "ROLLBACK DELTA", SqlProcessingType.DELTA);
+    }
+
+    @Test
+    void shouldCallCheckWhenCheckDatabaseWithDatamart(VertxTestContext testContext) {
+        assertProcessingType(testContext, "CHECK_DATABASE(datamart)", SqlProcessingType.CHECK);
+    }
+
+    @Test
+    void shouldCallCheckWhenCheckDatabase(VertxTestContext testContext) {
+        assertProcessingType(testContext, "CHECK_DATABASE()", SqlProcessingType.CHECK);
+    }
+
+    @Test
+    void shouldCallCheckWhenCheckDatabaseWithoutParens(VertxTestContext testContext) {
+        assertProcessingType(testContext, "CHECK_DATABASE", SqlProcessingType.CHECK);
+    }
+
+    @Test
+    void shouldCallCheckWhenCheckTable(VertxTestContext testContext) {
+        assertProcessingType(testContext, "CHECK_TABLE(tbl1)", SqlProcessingType.CHECK);
+    }
+
+    @Test
+    void shouldCallCheckWhenCheckData(VertxTestContext testContext) {
+        assertProcessingType(testContext, "CHECK_DATA(tbl1, 1)", SqlProcessingType.CHECK);
+    }
+
+    @Test
+    void shouldCallCheckWhenCheckSum(VertxTestContext testContext) {
+        assertProcessingType(testContext, "CHECK_SUM(1)", SqlProcessingType.CHECK);
+    }
+
+    @Test
+    void shouldCallCheckWhenCheckVersions(VertxTestContext testContext) {
+        assertProcessingType(testContext, "CHECK_VERSIONS()", SqlProcessingType.CHECK);
+    }
+
+    @Test
+    void shouldCallConfigWhenConfigStorageAdd(VertxTestContext testContext) {
+        assertProcessingType(testContext, "CONFIG_STORAGE_ADD('ADB') ", SqlProcessingType.CONFIG);
     }
 
     @Test
     void shouldCallDmlWhenUse(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("USE datamart");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DML, context.getProcessingType());
-                    val dmlContext = (DmlRequestContext) context;
-                    assertSame(DmlType.USE, dmlContext.getType());
-                }).completeNow());
+        assertDmlType(testContext, "USE datamart", DmlType.USE);
     }
 
     @Test
     void shouldCallDmlWhenDeleteFromTable(VertxTestContext testContext) {
-        // arrange
+        assertDmlType(testContext, "DELETE FROM test_datamart.logical_table WHERE 1=1", DmlType.DELETE);
+    }
+
+    private void assertProcessingType(VertxTestContext testContext, String sql, SqlProcessingType processingType) {
         InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("DELETE FROM test_datamart.logical_table WHERE 1=1");
+        queryRequest.setSql(sql);
+
+        // act
+        queryAnalyzer.analyzeAndExecute(queryRequest)
+                .onComplete(ar -> testContext.verify(() -> {
+                    // assert
+                    if (ar.failed()) {
+                        fail(ar.cause());
+                    }
+
+                    val context = contextArgumentCaptor.getValue();
+                    assertSame(processingType, context.getProcessingType());
+                }).completeNow());
+    }
+
+    private void assertDmlType(VertxTestContext testContext, String sql, DmlType dmlType) {
+        InputQueryRequest queryRequest = new InputQueryRequest();
+        queryRequest.setSql(sql);
 
         // act
         queryAnalyzer.analyzeAndExecute(queryRequest)
@@ -780,27 +317,7 @@ class QueryAnalyzerTest {
                     val context = contextArgumentCaptor.getValue();
                     assertSame(SqlProcessingType.DML, context.getProcessingType());
                     val dmlContext = (DmlRequestContext) context;
-                    assertSame(DmlType.DELETE, dmlContext.getType());
-                }).completeNow());
-    }
-
-    @Test
-    void shouldCallEdmlWhenTruncate(VertxTestContext testContext) {
-        // arrange
-        InputQueryRequest queryRequest = new InputQueryRequest();
-        queryRequest.setSql("TRUNCATE HISTORY test_datamart.logical_table FOR SYSTEM_TIME AS OF '2019-12-23 15:15:14'\n" +
-                "WHERE product_units < 10");
-
-        // act
-        queryAnalyzer.analyzeAndExecute(queryRequest)
-                .onComplete(ar -> testContext.verify(() -> {
-                    // assert
-                    if (ar.failed()) {
-                        fail(ar.cause());
-                    }
-
-                    val context = contextArgumentCaptor.getValue();
-                    assertSame(SqlProcessingType.DDL, context.getProcessingType());
+                    assertSame(dmlType, dmlContext.getType());
                 }).completeNow());
     }
 }

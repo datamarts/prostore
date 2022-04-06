@@ -59,7 +59,7 @@ class WriteDeltaHotSuccessExecutorTest {
     private final WriteDeltaHotSuccessExecutor successExecutor = new WriteDeltaHotSuccessExecutor(executor, ENV);
 
     @Test
-    public void shouldSuccessWhenOkDeltaIsNull(VertxTestContext testContext) {
+    void shouldSuccessWhenOkDeltaIsNull(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH), nullable(Watcher.class), any(Stat.class)))
                 .thenReturn(Future.succeededFuture(CoreSerialization.serialize(getDeltaWithNullOkDelta())));
         when(executor.multi(any())).thenReturn(Future.succeededFuture());
@@ -71,7 +71,7 @@ class WriteDeltaHotSuccessExecutorTest {
     }
 
     @Test
-    public void shouldFailWhenGetDataReturnNullBytes(VertxTestContext testContext) {
+    void shouldFailWhenGetDataReturnNullBytes(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH), nullable(Watcher.class), any(Stat.class)))
                 .thenReturn(Future.succeededFuture(null));
         when(executor.multi(any())).thenReturn(Future.succeededFuture());
@@ -87,7 +87,7 @@ class WriteDeltaHotSuccessExecutorTest {
     }
 
     @Test
-    public void shouldFailWhenNotEmptyException(VertxTestContext testContext) {
+    void shouldFailWhenNotEmptyException(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH), nullable(Watcher.class), any(Stat.class)))
                 .thenReturn(Future.failedFuture(new KeeperException.NotEmptyException()));
 
@@ -103,7 +103,7 @@ class WriteDeltaHotSuccessExecutorTest {
 
 
     @Test
-    public void shouldFailWhenBadVersion(VertxTestContext testContext) {
+    void shouldFailWhenBadVersion(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH), nullable(Watcher.class), any(Stat.class)))
                 .thenReturn(Future.failedFuture(new KeeperException.BadVersionException()));
 
@@ -118,7 +118,7 @@ class WriteDeltaHotSuccessExecutorTest {
     }
 
     @Test
-    public void shouldFailWhenOtherKeeperException(VertxTestContext testContext) {
+    void shouldFailWhenOtherKeeperException(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH), nullable(Watcher.class), any(Stat.class)))
                 .thenReturn(Future.failedFuture(new KeeperException.DataInconsistencyException()));
 
@@ -133,7 +133,7 @@ class WriteDeltaHotSuccessExecutorTest {
     }
 
     @Test
-    public void shouldFailWhenUnexpectedException(VertxTestContext testContext) {
+    void shouldFailWhenUnexpectedException(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH), nullable(Watcher.class), any(Stat.class)))
                 .thenReturn(Future.failedFuture(new RuntimeException()));
 
@@ -148,7 +148,7 @@ class WriteDeltaHotSuccessExecutorTest {
     }
 
     @Test
-    public void shouldFailWhenDeltaHotDateBeforeOrEqualDeltaDate(VertxTestContext testContext) {
+    void shouldFailWhenDeltaHotDateBeforeOrEqualDeltaDate(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH), nullable(Watcher.class), any(Stat.class)))
                 .thenReturn(Future.succeededFuture(CoreSerialization.serialize(getFullDeltaWithEqualDeltaDate())));
 
@@ -163,7 +163,7 @@ class WriteDeltaHotSuccessExecutorTest {
     }
 
     @Test
-    public void shouldSuccessWithFullDelta(VertxTestContext testContext) {
+    void shouldSuccessWithFullDelta(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH), nullable(Watcher.class), any(Stat.class)))
                 .thenReturn(Future.succeededFuture(CoreSerialization.serialize(getFullDeltaWithCorrectTime())));
         when(executor.createEmptyPersistentPath(any())).thenReturn(Future.succeededFuture(""));
@@ -177,7 +177,7 @@ class WriteDeltaHotSuccessExecutorTest {
     }
 
     @Test
-    public void shouldSuccessWhenNodeExists(VertxTestContext testContext) {
+    void shouldSuccessWhenNodeExists(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH), nullable(Watcher.class), any(Stat.class)))
                 .thenReturn(Future.succeededFuture(CoreSerialization.serialize(getFullDeltaWithCorrectTime())));
         when(executor.createEmptyPersistentPath(any())).thenReturn(Future.failedFuture(new KeeperException.NodeExistsException()));
@@ -191,7 +191,7 @@ class WriteDeltaHotSuccessExecutorTest {
     }
 
     @Test
-    public void shouldFailWhenExceptionInDeltaDatePathCreation(VertxTestContext testContext) {
+    void shouldFailWhenExceptionInDeltaDatePathCreation(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH), nullable(Watcher.class), any(Stat.class)))
                 .thenReturn(Future.succeededFuture(CoreSerialization.serialize(getFullDeltaWithCorrectTime())));
 
@@ -208,7 +208,7 @@ class WriteDeltaHotSuccessExecutorTest {
     }
 
     @Test
-    public void shouldFailWhenExceptionInDeltaDateTimePathCreation(VertxTestContext testContext) {
+    void shouldFailWhenExceptionInDeltaDateTimePathCreation(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH), nullable(Watcher.class), any(Stat.class)))
                 .thenReturn(Future.succeededFuture(CoreSerialization.serialize(getFullDeltaWithCorrectTime())));
 
@@ -226,7 +226,7 @@ class WriteDeltaHotSuccessExecutorTest {
     }
 
     @Test
-    public void shouldFailWhenExceptionInDeltaDateNumPathCreation(VertxTestContext testContext) {
+    void shouldFailWhenExceptionInDeltaDateNumPathCreation(VertxTestContext testContext) {
         when(executor.getData(eq(DELTA_PATH), nullable(Watcher.class), any(Stat.class)))
                 .thenReturn(Future.succeededFuture(CoreSerialization.serialize(getFullDeltaWithCorrectTime())));
 

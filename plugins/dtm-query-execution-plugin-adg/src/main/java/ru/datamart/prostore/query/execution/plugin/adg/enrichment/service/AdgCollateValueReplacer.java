@@ -15,13 +15,13 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adg.enrichment.service;
 
+import lombok.val;
+import org.apache.calcite.sql.*;
+import org.springframework.stereotype.Service;
 import ru.datamart.prostore.query.calcite.core.node.SqlPredicatePart;
 import ru.datamart.prostore.query.calcite.core.node.SqlPredicates;
 import ru.datamart.prostore.query.calcite.core.node.SqlSelectTree;
 import ru.datamart.prostore.query.calcite.core.node.SqlTreeNode;
-import lombok.val;
-import org.apache.calcite.sql.*;
-import org.springframework.stereotype.Service;
 
 @Service
 public class AdgCollateValueReplacer {
@@ -41,7 +41,7 @@ public class AdgCollateValueReplacer {
     private void replaceValue(SqlTreeNode sqlTreeNode, SqlSelectTree selectTree) {
         val node = sqlTreeNode.getNode();
         if (node instanceof SqlCharStringLiteral) {
-            val parent = selectTree.getParentByChild(sqlTreeNode).orElse(null);
+            val parent = selectTree.getParentByChild(sqlTreeNode);
             if (parent != null && isCollate(parent.getNode())) {
                 val secondParentOperand = selectTree.getChildNodesMap().get(parent.getId()).get(1);
                 if (secondParentOperand.equals(sqlTreeNode)) {

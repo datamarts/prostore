@@ -15,6 +15,10 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adg.base.service.client;
 
+import io.vertx.core.Future;
+import lombok.val;
+import org.springframework.context.annotation.Primary;
+import org.springframework.stereotype.Service;
 import ru.datamart.prostore.query.execution.plugin.adg.base.configuration.properties.TarantoolDatabaseProperties;
 import ru.datamart.prostore.query.execution.plugin.adg.base.configuration.properties.TarantoolDatabaseSyncProperties;
 import ru.datamart.prostore.query.execution.plugin.adg.base.factory.AdgHelperTableNamesFactory;
@@ -25,10 +29,6 @@ import ru.datamart.prostore.query.execution.plugin.api.service.shared.adg.AdgSha
 import ru.datamart.prostore.query.execution.plugin.api.shared.adg.AdgSharedPrepareStagingRequest;
 import ru.datamart.prostore.query.execution.plugin.api.shared.adg.AdgSharedProperties;
 import ru.datamart.prostore.query.execution.plugin.api.shared.adg.AdgSharedTransferDataRequest;
-import io.vertx.core.Future;
-import lombok.val;
-import org.springframework.context.annotation.Primary;
-import org.springframework.stereotype.Service;
 
 @Primary
 @Service
@@ -70,6 +70,7 @@ public class AdgSharedServiceImpl implements AdgSharedService {
     public AdgSharedProperties getSharedProperties() {
         val server = databaseProperties.getHost() + ":" + databaseProperties.getPort();
         return new AdgSharedProperties(server, databaseProperties.getUser(), databaseProperties.getPassword(),
-                syncProperties.getTimeoutConnect(), syncProperties.getTimeoutRead(), syncProperties.getTimeoutRequest());
+                syncProperties.getTimeoutConnect(), syncProperties.getTimeoutRead(), syncProperties.getTimeoutRequest(),
+                syncProperties.getBufferSize());
     }
 }

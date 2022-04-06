@@ -42,16 +42,16 @@ public class AdqmQueryTemplateExtractor extends AbstractQueryTemplateExtractor {
 
     @Override
     public SqlNode enrichTemplate(SqlNode templateNode, List<SqlNode> params) {
-        SqlNode sqlNode = SqlNodeUtil.copy(templateNode);
-        SqlSelectTree selectTree = new SqlSelectTree(sqlNode);
+        val sqlNode = SqlNodeUtil.copy(templateNode);
+        val selectTree = new SqlSelectTree(sqlNode);
 
-        List<SqlTreeNode> dynamicNodes = selectTree.findNodes(DYNAMIC_PARAM_PREDICATE, true);
+        val dynamicNodes = selectTree.findNodes(DYNAMIC_PARAM_PREDICATE, true);
         // parameters encounter twice
-        if (dynamicNodes.size() != params.size() * 2) {
+        if (dynamicNodes.size() > params.size() && dynamicNodes.size() != params.size() * 2) {
             throw new DtmException("The number of passed parameters and parameters in the template does not match");
         }
 
-        Iterator<SqlNode> paramIterator = params.subList(0, params.size()).iterator();
+        Iterator<SqlNode> paramIterator = params.iterator();
         for (final SqlTreeNode dynamicNode : dynamicNodes) {
             SqlNode param;
             if (!paramIterator.hasNext()) {

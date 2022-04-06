@@ -15,12 +15,6 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.base.service.castservice;
 
-import ru.datamart.prostore.common.exception.DtmException;
-import ru.datamart.prostore.common.model.ddl.ColumnType;
-import ru.datamart.prostore.query.calcite.core.node.SqlPredicatePart;
-import ru.datamart.prostore.query.calcite.core.node.SqlPredicates;
-import ru.datamart.prostore.query.calcite.core.node.SqlSelectTree;
-import ru.datamart.prostore.query.calcite.core.util.SqlNodeTemplates;
 import io.vertx.core.Future;
 import lombok.val;
 import lombok.var;
@@ -32,6 +26,13 @@ import org.apache.calcite.sql.*;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
+import ru.datamart.prostore.common.exception.DtmException;
+import ru.datamart.prostore.common.model.ddl.ColumnType;
+import ru.datamart.prostore.query.calcite.core.node.SqlPredicatePart;
+import ru.datamart.prostore.query.calcite.core.node.SqlPredicates;
+import ru.datamart.prostore.query.calcite.core.node.SqlSelectTree;
+import ru.datamart.prostore.query.calcite.core.node.SqlTreeNode;
+import ru.datamart.prostore.query.calcite.core.util.SqlNodeTemplates;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -60,39 +61,58 @@ public abstract class AbstractColumnsCastService implements ColumnsCastService {
     @Override
     public Future<SqlNode> apply(SqlNode sqlNode, RelNode relNode, List<ColumnType> expectedTypes) {
         return Future.future(promise -> {
-            val sqlNodeTree = new SqlSelectTree(sqlNode);
-            val columnsNode = sqlNodeTree.findNodes(COLUMN_SELECT, true);
-            if (columnsNode.size() != 1) {
-                throw new DtmException(format("Expected one node contain columns: %s", sqlNode.toSqlString(sqlDialect).toString()));
-            }
-
-            val columnsNodes = sqlNodeTree.findNodesByParent(columnsNode.get(0));
-            val columnsTypes = relNode
-                    .getRowType()
-                    .getFieldList()
-                    .stream()
-                    .map(RelDataTypeField::getType)
-                    .map(RelDataType::getSqlTypeName)
-                    .collect(Collectors.toList());
-
-            for (int i = 0; i < columnsNodes.size(); i++) {
-                val columnSqlType = columnsTypes.get(i);
-                val columnLogicalType = expectedTypes.get(i);
-
-                if (!isCastType(columnLogicalType)) {
-                    continue;
-                }
-
-                var columnNode = columnsNodes.get(i);
-                if (columnNode.getNode().getKind() == SqlKind.AS) {
-                    columnNode = sqlNodeTree.findNodesByParent(columnNode).get(0);
-                }
-
-                columnNode.getSqlNodeSetter().accept(surroundWith(columnLogicalType, columnSqlType, columnNode.getNode()));
-            }
-
+            cast(sqlNode, relNode, expectedTypes);
             promise.complete(sqlNode);
         });
+    }
+
+    @Override
+    public Future<SqlNode> apply(SqlNode sqlNode, RelNode relNode, List<ColumnType> expectedTypes, int nullableColumnIdx) {
+        return Future.future(promise -> {
+            val columnsNodes = cast(sqlNode, relNode, expectedTypes);
+
+            if (nullableColumnIdx < columnsNodes.size()) {
+                nullify(columnsNodes.get(nullableColumnIdx));
+            }
+            promise.complete(sqlNode);
+        });
+    }
+
+    private List<SqlTreeNode> cast(SqlNode sqlNode, RelNode relNode, List<ColumnType> expectedTypes) {
+        val sqlNodeTree = new SqlSelectTree(sqlNode);
+        val columnsNode = sqlNodeTree.findNodes(COLUMN_SELECT, true);
+        if (columnsNode.size() != 1) {
+            throw new DtmException(format("Expected one node contain columns: %s", sqlNode.toSqlString(sqlDialect).toString()));
+        }
+
+        val columnsNodes = sqlNodeTree.findNodesByParent(columnsNode.get(0));
+        val columnsTypes = relNode
+                .getRowType()
+                .getFieldList()
+                .stream()
+                .map(RelDataTypeField::getType)
+                .map(RelDataType::getSqlTypeName)
+                .collect(Collectors.toList());
+
+        for (int i = 0; i < columnsNodes.size(); i++) {
+            val columnSqlType = columnsTypes.get(i);
+            val columnLogicalType = expectedTypes.get(i);
+
+            if (!isCastType(columnLogicalType)) {
+                continue;
+            }
+
+            var columnNode = columnsNodes.get(i);
+            if (columnNode.getNode().getKind() == SqlKind.AS) {
+                columnNode = sqlNodeTree.findNodesByParent(columnNode).get(0);
+            }
+
+            columnNode.getSqlNodeSetter().accept(surroundWith(columnLogicalType, columnSqlType, columnNode.getNode()));
+        }
+        return columnsNodes;
+    }
+
+    protected void nullify(SqlTreeNode sqlTreeNode) {
     }
 
     protected abstract SqlNode surroundWith(ColumnType logicalType, SqlTypeName sqlType, SqlNode node);

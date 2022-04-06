@@ -15,37 +15,36 @@
  */
 package ru.datamart.prostore.query.execution.core.delta.service;
 
+import io.vertx.core.AsyncResult;
+import io.vertx.core.Future;
+import io.vertx.core.Handler;
+import lombok.val;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.parser.SqlParserPos;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import ru.datamart.prostore.common.metrics.RequestMetrics;
 import ru.datamart.prostore.common.reader.QueryRequest;
 import ru.datamart.prostore.common.reader.QueryResult;
 import ru.datamart.prostore.common.request.DatamartRequest;
+import ru.datamart.prostore.query.calcite.core.extension.delta.EraseWriteOperation;
+import ru.datamart.prostore.query.calcite.core.extension.delta.SqlDeltaCall;
+import ru.datamart.prostore.query.calcite.core.extension.eddl.SqlNodeUtils;
+import ru.datamart.prostore.query.calcite.core.util.SqlNodeTemplates;
+import ru.datamart.prostore.query.calcite.core.util.SqlNodeUtil;
 import ru.datamart.prostore.query.execution.core.delta.dto.operation.DeltaRequestContext;
-import ru.datamart.prostore.query.execution.core.delta.dto.query.BeginDeltaQuery;
-import ru.datamart.prostore.query.execution.core.delta.dto.query.CommitDeltaQuery;
-import ru.datamart.prostore.query.execution.core.delta.dto.query.DeltaQuery;
-import ru.datamart.prostore.query.execution.core.delta.dto.query.GetDeltaByDateTimeQuery;
-import ru.datamart.prostore.query.execution.core.delta.dto.query.GetDeltaByNumQuery;
-import ru.datamart.prostore.query.execution.core.delta.dto.query.GetDeltaHotQuery;
-import ru.datamart.prostore.query.execution.core.delta.dto.query.GetDeltaOkQuery;
-import ru.datamart.prostore.query.execution.core.delta.dto.query.RollbackDeltaQuery;
+import ru.datamart.prostore.query.execution.core.delta.dto.query.*;
 import ru.datamart.prostore.query.execution.core.delta.factory.DeltaQueryFactory;
 import ru.datamart.prostore.query.execution.core.metrics.service.MetricsService;
-import io.vertx.core.AsyncResult;
-import io.vertx.core.Future;
-import io.vertx.core.Handler;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 class DeltaExecutionServiceTest {
     private final MetricsService metricsService = mock(MetricsService.class);
@@ -58,7 +57,11 @@ class DeltaExecutionServiceTest {
     private final DeltaService getDeltaByNumExecutor = mock(GetDeltaByNumService.class);
     private final DeltaService getDeltaByHotExecutor = mock(GetDeltaHotService.class);
     private final DeltaService getDeltaByOkExecutor = mock(GetDeltaOkService.class);
+    private final DeltaService eraseWriteOperationService = mock(EraseWriteOperationService.class);
     private final String envName = "test";
+    private static final String CONTEXT_DTM = "CONTEXT_DTM";
+    private static final String SQL_QUERY_DTM = "SQL_DTM";
+
 
     @BeforeEach
     void setUp() {
@@ -69,7 +72,8 @@ class DeltaExecutionServiceTest {
                 getDeltaByDateTimeExecutor,
                 getDeltaByNumExecutor,
                 getDeltaByHotExecutor,
-                getDeltaByOkExecutor
+                getDeltaByOkExecutor,
+                eraseWriteOperationService
         );
         executors.forEach(this::setUpExecutor);
         when(metricsService.sendMetrics(any(), any(), any())).thenReturn(Future.succeededFuture());
@@ -118,7 +122,7 @@ class DeltaExecutionServiceTest {
 
     @Test
     void checkRollbackDelta() {
-        DeltaQuery deltaQuery = new RollbackDeltaQuery(new QueryRequest(), null, null, null,  "test", null);
+        DeltaQuery deltaQuery = new RollbackDeltaQuery(new QueryRequest(), null, null, null, "test", null);
         executeTest(getContext("test"), deltaQuery, ar -> {
             assertTrue(ar.succeeded());
             verify(rollbackDeltaService, times(1)).execute(any());
@@ -162,10 +166,99 @@ class DeltaExecutionServiceTest {
         });
     }
 
+    @Test
+    void checkEraseWriteOperation() {
+        //arrange
+        val deltaQuery = new EraseWriteOperationDeltaQuery(new QueryRequest(), null, null, null, null);
+
+        //act
+        executeTest(getContext("test"), deltaQuery, ar -> {
+
+            //assert
+            assertTrue(ar.succeeded());
+            verify(eraseWriteOperationService, times(1)).execute(any());
+        });
+    }
+
+    @Test
+    void shouldSuccessWhenEraseWriteOperationWithDifferentDatamarts() {
+        //arrange
+        val deltaQuery = new EraseWriteOperationDeltaQuery(new QueryRequest(), null, null, null, null);
+        val context = getEraseWriteOperationContext(CONTEXT_DTM, SQL_QUERY_DTM);
+
+        //act
+        executeTest(context, deltaQuery, ar -> {
+
+            //assert
+            assertTrue(ar.succeeded());
+            verify(eraseWriteOperationService, times(1)).execute(any());
+        });
+    }
+
+    @Test
+    void shouldSuccessWhenEraseWriteOperationNullDtmAndContextDtm() {
+        //arrange
+        val deltaQuery = new EraseWriteOperationDeltaQuery(new QueryRequest(), null, null, null, null);
+        val context = getEraseWriteOperationContext(CONTEXT_DTM, null);
+
+        //act
+        executeTest(context, deltaQuery, ar -> {
+
+            //assert
+            assertTrue(ar.succeeded());
+            verify(eraseWriteOperationService, times(1)).execute(any());
+        });
+    }
+
+    @Test
+    void shouldSuccessWhenEraseWriteOperationDtmAndEmptyContextDtm() {
+        //arrange
+        val deltaQuery = new EraseWriteOperationDeltaQuery(new QueryRequest(), null, null, null, null);
+        val context = getEraseWriteOperationContext("", SQL_QUERY_DTM);
+
+        //act
+        executeTest(context, deltaQuery, ar -> {
+
+            //assert
+            assertTrue(ar.succeeded());
+            verify(eraseWriteOperationService, times(1)).execute(any());
+        });
+    }
+
+    @Test
+    void shouldFailWhenEraseWriteOperationNullDtmAndEmptyContextDtm() {
+        //arrange
+        val deltaQuery = new EraseWriteOperationDeltaQuery(new QueryRequest(), null, null, null, null);
+        val context = getEraseWriteOperationContext("", null);
+
+        //act
+        executeTest(context, deltaQuery, ar -> {
+
+            //assert
+            assertTrue(ar.failed());
+            assertEquals("Datamart must be not empty!\n" +
+                    "For setting datamart you can use the following command: \"USE datamartName\"", ar.cause().getMessage());
+            verify(eraseWriteOperationService, times(0)).execute(any());
+        });
+    }
+
     void executeTest(DeltaRequestContext context, DeltaQuery deltaQuery, Consumer<AsyncResult<QueryResult>> validate) {
         when(deltaQueryFactory.create(any())).thenReturn(deltaQuery);
         deltaExecutionService.execute(context)
                 .onComplete(validate::accept);
+    }
+
+    private DeltaRequestContext getEraseWriteOperationContext(String contextDtm, String queryDtm){
+        val request = new QueryRequest();
+        request.setDatamartMnemonic(contextDtm);
+        val datamartRequest = new DatamartRequest(request);
+
+        val pos = new SqlParserPos(0, 0);
+        val sqlQueryDtm = queryDtm == null ? null : SqlNodeTemplates.identifier(queryDtm);
+        val sysCn = SqlNodeTemplates.longLiteral(5L);
+        val eraseWriteOperationNode = new EraseWriteOperation(pos, sysCn, sqlQueryDtm);
+
+        return new DeltaRequestContext(new RequestMetrics(), datamartRequest, envName, eraseWriteOperationNode);
     }
 
     private DeltaRequestContext getContext(String datamart) {

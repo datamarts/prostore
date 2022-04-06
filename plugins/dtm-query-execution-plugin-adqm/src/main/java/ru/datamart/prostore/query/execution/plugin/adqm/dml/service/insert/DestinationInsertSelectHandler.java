@@ -23,4 +23,6 @@ public interface DestinationInsertSelectHandler {
     Future<Void> handle(InsertSelectRequest request);
 
     SourceType getDestinations();
+
+    boolean isLogical();
 }

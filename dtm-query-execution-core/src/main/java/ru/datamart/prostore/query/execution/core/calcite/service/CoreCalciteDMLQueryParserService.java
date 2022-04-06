@@ -15,12 +15,13 @@
  */
 package ru.datamart.prostore.query.execution.core.calcite.service;
 
-import ru.datamart.prostore.query.calcite.core.provider.CalciteContextProvider;
-import ru.datamart.prostore.query.calcite.core.service.impl.CalciteDMLQueryParserService;
 import io.vertx.core.Vertx;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import ru.datamart.prostore.query.calcite.core.provider.CalciteContextProvider;
+import ru.datamart.prostore.query.calcite.core.service.SchemaExtender;
+import ru.datamart.prostore.query.calcite.core.service.impl.CalciteDMLQueryParserService;
 
 @Service("coreCalciteDMLQueryParserService")
 public class CoreCalciteDMLQueryParserService extends CalciteDMLQueryParserService {
@@ -29,6 +30,6 @@ public class CoreCalciteDMLQueryParserService extends CalciteDMLQueryParserServi
     public CoreCalciteDMLQueryParserService(
             @Qualifier("coreCalciteContextProvider") CalciteContextProvider contextProvider,
             @Qualifier("coreVertx") Vertx vertx) {
-        super(contextProvider, vertx);
+        super(contextProvider, vertx, SchemaExtender.EMPTY);
     }
 }

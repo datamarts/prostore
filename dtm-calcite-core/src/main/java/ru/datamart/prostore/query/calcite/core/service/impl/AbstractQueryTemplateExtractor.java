@@ -131,7 +131,7 @@ public abstract class AbstractQueryTemplateExtractor implements QueryTemplateExt
 
     private Stream<SqlNode> replace(SqlTreeNode sqlTreeNode, SqlSelectTree selectTree) {
         val childSqlNode = sqlTreeNode.getNode();
-        val parentTreeNode = selectTree.getParentByChild(sqlTreeNode).orElse(null);
+        val parentTreeNode = selectTree.getParentByChild(sqlTreeNode);
 
         if (isValid(parentTreeNode, childSqlNode, selectTree)) {
             sqlTreeNode.getSqlNodeSetter().accept(DYNAMIC_PARAM);
@@ -156,20 +156,18 @@ public abstract class AbstractQueryTemplateExtractor implements QueryTemplateExt
         }
 
         if (parentSqlNode instanceof SqlNodeList) {
-            return selectTree.getParentByChild(parentTreeNode)
-                    .map(SqlTreeNode::getNode)
-                    .filter(o -> {
-                        // order by can't be dynamic parameter
-                        if (o instanceof SqlOrderBy) {
-                            if (parentSqlNode == ((SqlOrderBy) o).orderList) {
-                                return false;
-                            }
-                        }
+            val parentByChild = selectTree.getParentByChild(parentTreeNode);
+            if (parentByChild != null) {
+                val node = parentByChild.getNode();
+                // order by can't be dynamic parameter
+                if (node instanceof SqlOrderBy && parentSqlNode == ((SqlOrderBy) node).orderList) {
+                    return false;
+                }
+                val kind = node.getKind();
+                return ALLOWED_PARENT_KINDS.contains(kind);
+            }
 
-                        val kind = ((SqlNode) o).getKind();
-                        return ALLOWED_PARENT_KINDS.contains(kind);
-                    })
-                    .isPresent();
+            return false;
         }
 
         if (parentSqlNode instanceof SqlBasicCall) {
@@ -197,7 +195,7 @@ public abstract class AbstractQueryTemplateExtractor implements QueryTemplateExt
 
     private Stream<SqlNode> replaceWithExclude(SqlTreeNode sqlTreeNode, SqlSelectTree selectTree, List<String> excludeList) {
         val sqlNode = sqlTreeNode.getNode();
-        val parentTreeNode = selectTree.getParentByChild(sqlTreeNode).orElse(null);
+        val parentTreeNode = selectTree.getParentByChild(sqlTreeNode);
 
         if (isValid(parentTreeNode, sqlNode, selectTree)) {
             val parentSqlNode = parentTreeNode.getNode();
@@ -231,7 +229,7 @@ public abstract class AbstractQueryTemplateExtractor implements QueryTemplateExt
 
         if (operand instanceof SqlBasicCall) {
             return ((SqlBasicCall) operand).getOperandList().stream()
-                    .filter(sqlNode -> sqlNode instanceof SqlIdentifier)
+                    .filter(SqlIdentifier.class::isInstance)
                     .allMatch(sqlNode -> isNotExcludedIdentifier((SqlIdentifier) sqlNode, excludeList));
         }
 

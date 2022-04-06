@@ -15,11 +15,6 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.base.factory.adg;
 
-import ru.datamart.prostore.common.model.ddl.ColumnType;
-import ru.datamart.prostore.common.model.ddl.Entity;
-import ru.datamart.prostore.common.model.ddl.EntityField;
-import ru.datamart.prostore.query.execution.plugin.api.service.shared.adg.AdgSharedService;
-import ru.datamart.prostore.query.execution.plugin.api.shared.adg.AdgSharedProperties;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,6 +22,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import ru.datamart.prostore.common.model.ddl.ColumnType;
+import ru.datamart.prostore.common.model.ddl.Entity;
+import ru.datamart.prostore.common.model.ddl.EntityField;
+import ru.datamart.prostore.query.execution.plugin.api.service.shared.adg.AdgSharedService;
+import ru.datamart.prostore.query.execution.plugin.api.shared.adg.AdgSharedProperties;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -46,6 +46,7 @@ class AdgConnectorSqlFactoryTest {
     public static final long CONNECT_TIMEOUT = 1234L;
     public static final long READ_TIMEOUT = 2345L;
     public static final long REQUEST_TIMEOUT = 3456L;
+    public static final int BUFFER_SIZE = 4567;
     public static final String QUERY = "query";
     @Mock
     private AdgSharedService adgSharedService;
@@ -55,7 +56,7 @@ class AdgConnectorSqlFactoryTest {
 
     @BeforeEach
     void setUp() {
-        lenient().when(adgSharedService.getSharedProperties()).thenReturn(new AdgSharedProperties(TARANTOOL_SERVER, USER, PASSWORD, CONNECT_TIMEOUT, READ_TIMEOUT, REQUEST_TIMEOUT));
+        lenient().when(adgSharedService.getSharedProperties()).thenReturn(new AdgSharedProperties(TARANTOOL_SERVER, USER, PASSWORD, CONNECT_TIMEOUT, READ_TIMEOUT, REQUEST_TIMEOUT, BUFFER_SIZE));
     }
 
     @Test
@@ -68,7 +69,7 @@ class AdgConnectorSqlFactoryTest {
 
         // assert
         Assertions.assertThat(sql).isEqualToNormalizingNewlines("CREATE WRITABLE EXTERNAL TABLE datamart.TARANTOOL_EXT_entity_name\n" +
-                "(col_varchar varchar,col_char varchar,col_bigint int8,col_int int8,col_int32 int4,col_double float8,col_float float4,col_date int8,col_time int8,col_timestamp int8,col_boolean bool,col_uuid varchar,col_link varchar,sys_op int8,bucket_id int8) LOCATION ('pxf://env__datamart__entity_name_staging?PROFILE=tarantool-upsert&TARANTOOL_SERVER=tarantool_server&USER=user&PASSWORD=password&TIMEOUT_CONNECT=1234&TIMEOUT_READ=2345&TIMEOUT_REQUEST=3456')\n" +
+                "(col_varchar varchar,col_char varchar,col_bigint int8,col_int int8,col_int32 int4,col_double float8,col_float float4,col_date int8,col_time int8,col_timestamp int8,col_boolean bool,col_uuid varchar,col_link varchar,sys_op int8,bucket_id int8) LOCATION ('pxf://env__datamart__entity_name_staging?PROFILE=tarantool-upsert&TARANTOOL_SERVER=tarantool_server&USER=user&PASSWORD=password&TIMEOUT_CONNECT=1234&TIMEOUT_READ=2345&TIMEOUT_REQUEST=3456&BUFFER_SIZE=4567')\n" +
                 "FORMAT 'CUSTOM' (FORMATTER = 'pxfwritable_export')");
     }
 

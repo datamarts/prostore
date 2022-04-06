@@ -15,6 +15,14 @@
  */
 package ru.datamart.prostore.query.execution.core.dml.service.impl;
 
+import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.calcite.sql.SqlDialect;
+import org.apache.calcite.sql.SqlNode;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Component;
 import ru.datamart.prostore.async.AsyncUtils;
 import ru.datamart.prostore.cache.service.CacheService;
 import ru.datamart.prostore.common.cache.QueryTemplateKey;
@@ -40,14 +48,6 @@ import ru.datamart.prostore.query.execution.core.dml.service.view.ViewReplacerSe
 import ru.datamart.prostore.query.execution.core.metrics.service.MetricsService;
 import ru.datamart.prostore.query.execution.core.plugin.service.DataSourcePluginService;
 import ru.datamart.prostore.query.execution.plugin.api.request.LlrRequest;
-import io.vertx.core.Future;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.apache.calcite.sql.SqlDialect;
-import org.apache.calcite.sql.SqlNode;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Component;
 
 @Component
 @Slf4j
@@ -183,18 +183,18 @@ public class LlrDmlExecutor implements DmlExecutor {
         return createLlrRequestContext(deltaResponse, withoutViewsQuery, originalQuery, context)
                 .compose(llrContext -> AsyncUtils.measureMs(initQuerySourceType(llrContext),
                         duration -> log.debug("Initialized query type for query [{}] in [{}]ms",
-                                llrContext.getSourceRequest().getQueryRequest().getSql(), duration)))
-                .compose(llrRequestContext -> {
-                    if (!estimate) {
-                        return dataSourcePluginService.llr(llrRequestContext.getExecutionPlugin(),
-                                llrRequestContext.getDmlRequestContext().getMetrics(),
-                                createLlrRequest(llrRequestContext));
-                    } else {
-                        return dataSourcePluginService.llrEstimate(llrRequestContext.getExecutionPlugin(),
-                                llrRequestContext.getDmlRequestContext().getMetrics(),
-                                createLlrRequest(llrRequestContext));
-                    }
-                });
+                                llrContext.getSourceRequest().getQueryRequest().getSql(), duration))
+                        .compose(ignored -> {
+                            if (!estimate) {
+                                return dataSourcePluginService.llr(llrContext.getExecutionPlugin(),
+                                        llrContext.getDmlRequestContext().getMetrics(),
+                                        createLlrRequest(llrContext));
+                            } else {
+                                return dataSourcePluginService.llrEstimate(llrContext.getExecutionPlugin(),
+                                        llrContext.getDmlRequestContext().getMetrics(),
+                                        createLlrRequest(llrContext));
+                            }
+                        }));
     }
 
     private Future<LlrRequestContext> createLlrRequestContext(DeltaQueryPreprocessorResponse deltaResponse,

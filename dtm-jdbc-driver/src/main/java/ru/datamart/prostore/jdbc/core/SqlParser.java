@@ -23,6 +23,9 @@ import java.util.List;
 
 public class SqlParser {
 
+    private SqlParser() {
+    }
+
     public static List<Query> parseSql(String query) throws SQLException {
         int inParen = 0;
         char[] aChars = query.toCharArray();

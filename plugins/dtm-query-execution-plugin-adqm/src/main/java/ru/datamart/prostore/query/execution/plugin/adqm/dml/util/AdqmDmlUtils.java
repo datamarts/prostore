@@ -20,6 +20,7 @@ import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.common.model.ddl.ColumnType;
 import ru.datamart.prostore.common.model.ddl.Entity;
 import ru.datamart.prostore.common.model.ddl.EntityField;
+import ru.datamart.prostore.common.model.ddl.EntityType;
 import ru.datamart.prostore.common.reader.QueryParameters;
 import lombok.val;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -28,12 +29,12 @@ import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlNumericLiteral;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.util.TimestampString;
+import ru.datamart.prostore.query.execution.model.metadata.Datamart;
+import ru.datamart.prostore.query.execution.plugin.api.dml.LlwUtils;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
 
 import static ru.datamart.prostore.query.calcite.core.util.SqlNodeTemplates.identifier;
 import static ru.datamart.prostore.query.calcite.core.util.SqlNodeTemplates.longLiteral;
@@ -65,13 +66,11 @@ public final class AdqmDmlUtils {
     }
 
     public static SqlNodeList getInsertedColumnsList(List<EntityField> insertedColumns) {
-        val columnList = new SqlNodeList(SqlParserPos.ZERO);
-        for (EntityField insertedColumn : insertedColumns) {
-            columnList.add(identifier(insertedColumn.getName()));
-        }
+        val columnList = LlwUtils.convertEntityFieldsToSqlNodeList(insertedColumns);
         fillSystemColumns(columnList);
         return columnList;
     }
+
 
     public static SqlNodeList getSelectListForClose(Entity entity, long sysCn, SqlLiteral sysOpLiteral) {
         val selectList = new SqlNodeList(SqlParserPos.ZERO);
@@ -102,9 +101,17 @@ public final class AdqmDmlUtils {
         }
     }
 
-    public static QueryParameters extendParameters(QueryParameters queryParameters) {
+    public static QueryParameters extendParameters(List<Datamart> datamarts, QueryParameters queryParameters) {
         if (queryParameters == null) {
             return null;
+        }
+
+        val notExtendableQuery = datamarts.stream()
+                .flatMap(datamart -> datamart.getEntities().stream())
+                .allMatch(entity -> entity.getEntityType() == EntityType.READABLE_EXTERNAL_TABLE);
+
+        if (notExtendableQuery) {
+            return queryParameters;
         }
 
         val queryParamValues = queryParameters.getValues();

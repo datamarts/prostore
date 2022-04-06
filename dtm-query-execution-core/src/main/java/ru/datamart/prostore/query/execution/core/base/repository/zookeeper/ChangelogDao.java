@@ -69,7 +69,7 @@ public class ChangelogDao {
     public Future<List<Changelog>> getChanges(String datamart) {
         val changelogPath = String.format("%s/%s/changelog", envPath, datamart);
         return executor.getChildren(changelogPath)
-                .compose(children -> getChanges(changelogPath, children, datamart))
+                .compose(children -> getChanges(changelogPath, children))
                 .compose(changelogs -> executor.getData(changelogPath)
                         .map(bytes -> {
                             if (bytes == null) {
@@ -93,14 +93,45 @@ public class ChangelogDao {
 
     }
 
-    private Future<List<Changelog>> getChanges(String changelogPath, List<String> changelogChildren, String datamart) {
+    public Future<Changelog> eraseChangeOperation(String datamart, Long operationNumber) {
+        val datamartPath = String.format("%s/%s", envPath, datamart);
+        val changelogPath = String.format("%s/changelog", datamartPath);
+        val changelogStat = new Stat();
+        return executor.getData(changelogPath, null, changelogStat)
+                .map(bytes -> {
+                    if (bytes == null) {
+                        throw new DtmException("Active operation does not exist");
+                    }
+
+                    return CoreSerialization.deserialize(bytes, Changelog.class);
+                })
+                .compose(activeOpChangelog -> executor.getChildren(changelogPath)
+                        .map(children -> {
+                            if (operationNumber != children.size()) {
+                                throw new DtmException(String.format("Not found active change operation with change_num = %s", operationNumber));
+                            }
+
+                            activeOpChangelog.setOperationNumber(operationNumber);
+                            return activeOpChangelog;
+                        }))
+                .compose(activeOpChangelog -> executor.multi(clearOps(datamartPath, changelogPath, changelogStat))
+                        .map(ignore -> activeOpChangelog));
+    }
+
+    private List<Op> clearOps(String datamartPath, String changelogPath, Stat changelogStat) {
+        return Arrays.asList(Op.setData(changelogPath, null, changelogStat.getVersion()),
+                Op.delete(datamartPath + "/block", -1),
+                Op.delete(datamartPath + "/immutable", -1));
+    }
+
+    private Future<List<Changelog>> getChanges(String changelogPath, List<String> changelogChildren) {
         List<Future> changes = new ArrayList<>();
-        changelogChildren.forEach(child -> changes.add(getChangelog(changelogPath, child, datamart)));
+        changelogChildren.forEach(child -> changes.add(getChangelog(changelogPath, child)));
         return CompositeFuture.join(changes)
                 .map(CompositeFuture::list);
     }
 
-    private Future<Changelog> getChangelog(String changelogPath, String childPath, String datamart) {
+    private Future<Changelog> getChangelog(String changelogPath, String childPath) {
         return executor.getData(changelogPath + "/" + childPath)
                 .map(bytes -> CoreSerialization.deserialize(bytes, Changelog.class))
                 .map(changelog -> {
@@ -146,10 +177,10 @@ public class ChangelogDao {
         val denyChanges = new DenyChanges(null, null);
 
         return executor.multi(Arrays.asList(
-                        Op.setData(changelogPath, serialize(changelog), changelogStat.getVersion()),
-                        Op.create(datamartPath + "/block", null, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
-                        Op.create(datamartPath + "/immutable", serialize(denyChanges), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT)
-                ))
+                Op.setData(changelogPath, serialize(changelog), changelogStat.getVersion()),
+                Op.create(datamartPath + "/block", null, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
+                Op.create(datamartPath + "/immutable", serialize(denyChanges), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT)
+        ))
                 .otherwise(e -> {
                     if (e instanceof KeeperException.NodeExistsException) {
                         throw new DtmException(CHANGE_OPERATIONS_ARE_FORBIDDEN, e);

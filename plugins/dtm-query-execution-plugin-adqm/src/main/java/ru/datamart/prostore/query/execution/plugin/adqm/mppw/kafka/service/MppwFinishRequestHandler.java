@@ -15,6 +15,11 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adqm.mppw.kafka.service;
 
+import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 import ru.datamart.prostore.common.model.ddl.EntityFieldUtils;
 import ru.datamart.prostore.query.execution.plugin.adqm.base.utils.AdqmDdlUtil;
 import ru.datamart.prostore.query.execution.plugin.adqm.ddl.configuration.properties.DdlProperties;
@@ -25,11 +30,6 @@ import ru.datamart.prostore.query.execution.plugin.adqm.query.service.DatabaseEx
 import ru.datamart.prostore.query.execution.plugin.adqm.status.dto.StatusReportDto;
 import ru.datamart.prostore.query.execution.plugin.adqm.status.service.StatusReporter;
 import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
-import io.vertx.core.Future;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
 
@@ -63,40 +63,46 @@ public class MppwFinishRequestHandler extends AbstractMppwRequestHandler {
             return Future.failedFuture(err.get());
         }
 
+        if (request.getSysCn() == null) {
+            return stopLoading(request)
+                    .compose(v -> flushTable(request.getDestinationEntity().getExternalTableLocationPath()))
+                    .<String>mapEmpty()
+                    .onSuccess(v -> reportFinish(request.getTopic()))
+                    .onFailure(t -> reportError(request.getTopic()));
+        }
+
         val fullName = AdqmDdlUtil.getQualifiedTableName(request);
         val sysCn = request.getSysCn();
         val columnNames = String.join(", ", EntityFieldUtils.getFieldNames(request.getDestinationEntity()));
         val primaryKeys = String.join(", ", EntityFieldUtils.getPkFieldNames(request.getDestinationEntity()));
 
-        return sequenceAll(Arrays.asList(  // 1. drop shard tables
-                fullName + EXT_SHARD_POSTFIX,
-                fullName + ACTUAL_LOADER_SHARD_POSTFIX,
-                fullName + BUFFER_LOADER_SHARD_POSTFIX
-        ), this::dropTable)
-                .compose(v -> sequenceAll(Arrays.asList( // 2. flush distributed tables
-                        fullName + BUFFER_POSTFIX,
-                        fullName + ACTUAL_POSTFIX), this::flushTable))
-                .compose(v -> closeDeletedVersions(fullName, columnNames, primaryKeys, sysCn))  // 3. close deleted versions
-                .compose(v -> closeByTableActual(fullName, columnNames, primaryKeys, sysCn))  // 4. close version by table actual
-                .compose(v -> flushTable(fullName + ACTUAL_POSTFIX))  // 5. flush actual table
-                .compose(v -> sequenceAll(Arrays.asList(  // 6. drop buffer tables
-                        fullName + BUFFER_POSTFIX,
-                        fullName + BUFFER_SHARD_POSTFIX), this::dropTable))
-                .compose(v -> optimizeTable(fullName + ACTUAL_SHARD_POSTFIX))// 7. merge shards
-                .compose(v -> {
-                    final RestMppwKafkaStopRequest mppwKafkaStopRequest = new RestMppwKafkaStopRequest(
-                            request.getRequestId().toString(),
-                            request.getTopic());
-                    log.debug("ADQM: Send mppw kafka stopping rest request {}", mppwKafkaStopRequest);
-                    return restLoadClient.stopLoading(mppwKafkaStopRequest);
-                })
-                .compose(v -> {
-                    reportFinish(request.getTopic());
-                    return Future.succeededFuture();
-                }, f -> {
-                    reportError(request.getTopic());
-                    return Future.failedFuture(f);
-                });
+        return stopLoading(request)
+                .compose(ignored -> sequenceAll(Arrays.asList(  // 1. drop shard tables
+                        fullName + EXT_SHARD_POSTFIX,
+                        fullName + ACTUAL_LOADER_SHARD_POSTFIX,
+                        fullName + BUFFER_LOADER_SHARD_POSTFIX
+                ), this::dropTable)
+                        .compose(v -> sequenceAll(Arrays.asList( // 2. flush distributed tables
+                                fullName + BUFFER_POSTFIX,
+                                fullName + ACTUAL_POSTFIX), this::flushTable))
+                        .compose(v -> closeDeletedVersions(fullName, columnNames, primaryKeys, sysCn))  // 3. close deleted versions
+                        .compose(v -> closeByTableActual(fullName, columnNames, primaryKeys, sysCn))  // 4. close version by table actual
+                        .compose(v -> flushTable(fullName + ACTUAL_POSTFIX))  // 5. flush actual table
+                        .compose(v -> sequenceAll(Arrays.asList(  // 6. drop buffer tables
+                                fullName + BUFFER_POSTFIX,
+                                fullName + BUFFER_SHARD_POSTFIX), this::dropTable))
+                        .compose(v -> optimizeTable(fullName + ACTUAL_SHARD_POSTFIX))// 7. merge shards
+                        .<String>mapEmpty()
+                        .onSuccess(v -> reportFinish(request.getTopic()))
+                        .onFailure(t -> reportError(request.getTopic())));
+    }
+
+    private Future<Void> stopLoading(MppwKafkaRequest request) {
+        val mppwKafkaStopRequest = new RestMppwKafkaStopRequest(
+                request.getRequestId().toString(),
+                request.getTopic());
+        log.debug("[ADQM] Send mppw kafka stopping rest request {}", mppwKafkaStopRequest);
+        return restLoadClient.stopLoading(mppwKafkaStopRequest);
     }
 
     private Future<Void> flushTable(String table) {

@@ -15,31 +15,32 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.mppr.kafka.factory;
 
+import lombok.val;
+import org.springframework.stereotype.Service;
 import ru.datamart.prostore.common.dto.KafkaBrokerInfo;
 import ru.datamart.prostore.query.execution.plugin.adb.base.utils.AdbTypeUtil;
 import ru.datamart.prostore.query.execution.plugin.api.mppr.kafka.DownloadExternalEntityMetadata;
 import ru.datamart.prostore.query.execution.plugin.api.mppr.kafka.MpprKafkaRequest;
-import lombok.val;
-import org.springframework.stereotype.Service;
 
 import java.util.stream.Collectors;
 
-@Service("kafkaMpprSqlFactoryImpl")
+@Service
 public class KafkaMpprSqlFactory {
 
     private static final String DELIMITER = ", ";
     private static final String WRITABLE_EXTERNAL_TABLE_PREF = "PXF_EXT_";
-    private static final String CREAT_WRITABLE_EXT_TABLE_SQL = "CREATE WRITABLE EXTERNAL TABLE %s.%s ( %s )\n" +
+    private static final String CREAT_WRITABLE_EXT_TABLE_SQL = "CREATE WRITABLE EXTERNAL TABLE %s.%s (%s)\n" +
             "    LOCATION ('pxf://%s?PROFILE=kafka&BOOTSTRAP_SERVERS=%s&BATCH_SIZE=%d')\n" +
             "    FORMAT 'CUSTOM' (FORMATTER='pxfwritable_export')";
     public static final String INSERT_INTO_WRITABLE_EXT_TABLE_SQL = "INSERT INTO %s.%s %s";
     public static final String DROP_WRITABLE_EXT_TABLE_SQL = "DROP EXTERNAL TABLE IF EXISTS %s.%s";
 
     public String createWritableExtTableSqlQuery(MpprKafkaRequest request) {
-        val schema =request.getDatamartMnemonic();
+        val schema = request.getDatamartMnemonic();
         val table = getTableName(request.getRequestId().toString());
         val columns = request.getDestinationEntity().getFields().stream()
-                .map(field -> field.getName() + " " + AdbTypeUtil.adbTypeFromDtmType(field)).collect(Collectors.toList());
+                .map(field -> field.getName() + " " + AdbTypeUtil.adbTypeFromDtmType(field))
+                .collect(Collectors.toList());
         val topic = request.getTopic();
         val brokers = request.getBrokers().stream()
                 .map(KafkaBrokerInfo::getAddress)

@@ -25,10 +25,6 @@ import lombok.EqualsAndHashCode;
 @Data
 public class DropUploadExternalTableQuery extends EddlQuery {
 
-    public DropUploadExternalTableQuery() {
-        super(EddlAction.DROP_UPLOAD_EXTERNAL_TABLE);
-    }
-
     public DropUploadExternalTableQuery(String schemaName, String tableName) {
         super(EddlAction.DROP_UPLOAD_EXTERNAL_TABLE, schemaName, tableName);
     }

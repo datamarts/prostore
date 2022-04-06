@@ -19,9 +19,10 @@ import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
 import lombok.val;
 import org.springframework.stereotype.Service;
-import ru.datamart.prostore.common.exception.DtmException;
+import ru.datamart.prostore.common.model.ddl.EntityType;
 import ru.datamart.prostore.common.reader.SourceType;
-import ru.datamart.prostore.query.execution.plugin.adb.dml.service.insert.DestinationInsertSelectHandler;
+import ru.datamart.prostore.query.execution.plugin.adb.dml.service.insert.select.DestinationInsertSelectHandler;
+import ru.datamart.prostore.query.execution.plugin.api.exception.FeatureNotImplementedException;
 import ru.datamart.prostore.query.execution.plugin.api.request.InsertSelectRequest;
 import ru.datamart.prostore.query.execution.plugin.api.service.InsertSelectService;
 
@@ -32,20 +33,28 @@ import java.util.stream.Collectors;
 
 @Service("adbInsertSelectService")
 public class AdbInsertSelectService implements InsertSelectService {
-    private final Map<SourceType, DestinationInsertSelectHandler> handlers;
+    private final Map<SourceType, DestinationInsertSelectHandler> logicalHandlers;
+    private final Map<SourceType, DestinationInsertSelectHandler> standaloneHandlers;
 
     public AdbInsertSelectService(List<DestinationInsertSelectHandler> handlers) {
-        this.handlers = handlers.stream()
+        this.logicalHandlers = handlers.stream()
+                .filter(DestinationInsertSelectHandler::isLogical)
+                .collect(Collectors.toMap(DestinationInsertSelectHandler::getDestination, handler -> handler));
+        this.standaloneHandlers = handlers.stream()
+                .filter(handler -> !handler.isLogical())
                 .collect(Collectors.toMap(DestinationInsertSelectHandler::getDestination, handler -> handler));
     }
 
     @Override
     public Future<Void> execute(InsertSelectRequest request) {
         List<Future> futures = new ArrayList<>();
+        val targetHandlers = request.getEntity().getEntityType() == EntityType.WRITEABLE_EXTERNAL_TABLE
+                ? standaloneHandlers
+                : logicalHandlers;
         for (SourceType sourceType : request.getEntity().getDestination()) {
-            val handler = handlers.get(sourceType);
+            val handler = targetHandlers.get(sourceType);
             if (handler == null) {
-                futures.add(Future.failedFuture(new DtmException(String.format("Insert select from [ADB] to [%s] is not implemented", sourceType))));
+                futures.add(Future.failedFuture(new FeatureNotImplementedException(String.format("insert select from [ADB] to [%s]", sourceType))));
                 break;
             }
 

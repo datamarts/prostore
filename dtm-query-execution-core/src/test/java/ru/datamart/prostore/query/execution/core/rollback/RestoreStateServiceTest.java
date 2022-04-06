@@ -38,7 +38,7 @@ import ru.datamart.prostore.query.execution.core.delta.repository.zookeeper.Delt
 import ru.datamart.prostore.query.execution.core.delta.repository.zookeeper.impl.DeltaServiceDaoImpl;
 import ru.datamart.prostore.query.execution.core.edml.dto.EraseWriteOpResult;
 import ru.datamart.prostore.query.execution.core.edml.mppw.service.UploadFailedExecutor;
-import ru.datamart.prostore.query.execution.core.edml.mppw.service.impl.UploadExternalTableExecutor;
+import ru.datamart.prostore.query.execution.core.edml.mppw.service.impl.UploadLogicalExternalTableExecutor;
 import ru.datamart.prostore.query.execution.core.rollback.service.RestoreStateService;
 
 import java.util.Arrays;
@@ -57,7 +57,7 @@ class RestoreStateServiceTest {
     private final DatamartDao datamartDao = mock(DatamartDao.class);
     private final DeltaServiceDao deltaServiceDao = mock(DeltaServiceDaoImpl.class);
     private final UploadFailedExecutor uploadFailedExecutor = mock(UploadFailedExecutor.class);
-    private final UploadExternalTableExecutor uploadExternalTableExecutor = mock(UploadExternalTableExecutor.class);
+    private final UploadLogicalExternalTableExecutor uploadLogicalExternalTableExecutor = mock(UploadLogicalExternalTableExecutor.class);
     private final RestorationProperties restorationProperties = mock(RestorationProperties.class);
     private CalciteConfiguration config = new CalciteConfiguration();
     private CalciteCoreConfiguration calciteCoreConfiguration = new CalciteCoreConfiguration();
@@ -75,7 +75,7 @@ class RestoreStateServiceTest {
 
         restoreStateService = new RestoreStateService(serviceDbFacade,
                 uploadFailedExecutor,
-                uploadExternalTableExecutor,
+                uploadLogicalExternalTableExecutor,
                 definitionService,
                 envName,
                 restorationProperties);
@@ -151,7 +151,7 @@ class RestoreStateServiceTest {
             return Future.succeededFuture(Entity.builder().name(tableName).schema(datamart).build());
         }).when(entityDao).getEntity(any(), any());
 
-        when(uploadExternalTableExecutor.execute(any())).thenReturn(Future.succeededFuture(QueryResult.emptyResult()));
+        when(uploadLogicalExternalTableExecutor.execute(any())).thenReturn(Future.succeededFuture(QueryResult.emptyResult()));
 
         when(uploadFailedExecutor.execute(any())).thenReturn(Future.succeededFuture());
 
@@ -159,7 +159,7 @@ class RestoreStateServiceTest {
                 .onComplete(promise);
 
         assertTrue(promise.future().succeeded());
-        verify(uploadExternalTableExecutor, times(3)).execute(any());
+        verify(uploadLogicalExternalTableExecutor, times(3)).execute(any());
         verify(entityDao, times(2)).getEntity("test1", "t1");
         verify(entityDao).getEntity("test1", "t2");
         verify(entityDao, times(2)).getEntity("test2", "d1");
@@ -216,7 +216,7 @@ class RestoreStateServiceTest {
             return Future.succeededFuture(Entity.builder().name(tableName).schema(datamart).build());
         }).when(entityDao).getEntity(any(), any());
 
-        when(uploadExternalTableExecutor.execute(any())).thenReturn(Future.succeededFuture(QueryResult.emptyResult()));
+        when(uploadLogicalExternalTableExecutor.execute(any())).thenReturn(Future.succeededFuture(QueryResult.emptyResult()));
 
         when(uploadFailedExecutor.execute(any())).thenReturn(Future.succeededFuture());
 
@@ -224,7 +224,7 @@ class RestoreStateServiceTest {
                 .onComplete(promise);
 
         assertTrue(promise.future().succeeded());
-        verify(uploadExternalTableExecutor).execute(any());
+        verify(uploadLogicalExternalTableExecutor).execute(any());
         verify(entityDao, never()).getEntity("test1", "llw_table_1");
         verify(entityDao, never()).getEntity("test2", "llw_table_2");
         verify(entityDao, never()).getEntity("test3", "llw_table_3");
@@ -268,7 +268,7 @@ class RestoreStateServiceTest {
             return Future.succeededFuture(Entity.builder().name(tableName).schema(datamart).build());
         }).when(entityDao).getEntity(any(), any());
 
-        when(uploadExternalTableExecutor.execute(any())).thenReturn(Future.failedFuture(new DtmException("")));
+        when(uploadLogicalExternalTableExecutor.execute(any())).thenReturn(Future.failedFuture(new DtmException("")));
 
         when(uploadFailedExecutor.execute(any())).thenReturn(Future.succeededFuture());
 
@@ -316,7 +316,7 @@ class RestoreStateServiceTest {
             return Future.succeededFuture(Entity.builder().name(tableName).schema(datamart).build());
         }).when(entityDao).getEntity(any(), any());
 
-        when(uploadExternalTableExecutor.execute(any())).thenReturn(Future.succeededFuture(QueryResult.emptyResult()));
+        when(uploadLogicalExternalTableExecutor.execute(any())).thenReturn(Future.succeededFuture(QueryResult.emptyResult()));
 
         when(uploadFailedExecutor.execute(any())).thenReturn(Future.failedFuture(new DtmException("")));
 
@@ -518,7 +518,7 @@ class RestoreStateServiceTest {
             return Future.succeededFuture(Entity.builder().name(tableName).schema(schema).build());
         }).when(entityDao).getEntity(any(), any());
 
-        when(uploadExternalTableExecutor.execute(any())).thenReturn(Future.succeededFuture());
+        when(uploadLogicalExternalTableExecutor.execute(any())).thenReturn(Future.succeededFuture());
 
         restoreStateService.restoreUpload(datamart)
                 .onComplete(promise);
@@ -539,7 +539,7 @@ class RestoreStateServiceTest {
             return Future.succeededFuture(Entity.builder().name(tableName).schema(schema).build());
         }).when(entityDao).getEntity(any(), any());
 
-        when(uploadExternalTableExecutor.execute(any())).thenReturn(Future.succeededFuture());
+        when(uploadLogicalExternalTableExecutor.execute(any())).thenReturn(Future.succeededFuture());
 
         restoreStateService.restoreUpload(datamart)
                 .onComplete(promise);
@@ -582,7 +582,7 @@ class RestoreStateServiceTest {
             return Future.succeededFuture(Entity.builder().name(tableName).schema(schema).build());
         }).when(entityDao).getEntity(any(), any());
 
-        when(uploadExternalTableExecutor.execute(any())).thenReturn(Future.failedFuture(new DtmException("")));
+        when(uploadLogicalExternalTableExecutor.execute(any())).thenReturn(Future.failedFuture(new DtmException("")));
 
         restoreStateService.restoreUpload(datamart)
                 .onComplete(promise);
@@ -656,7 +656,7 @@ class RestoreStateServiceTest {
             return Future.succeededFuture(Entity.builder().name(tableName).schema(schema).build());
         }).when(entityDao).getEntity(any(), any());
 
-        when(uploadExternalTableExecutor.execute(any())).thenReturn(Future.succeededFuture());
+        when(uploadLogicalExternalTableExecutor.execute(any())).thenReturn(Future.succeededFuture());
 
         restoreStateService.restoreUpload(datamart, 1L)
                 .onComplete(promise);

@@ -15,8 +15,9 @@
  */
 package ru.datamart.prostore.query.execution.core.edml.dto;
 
-public enum  EdmlAction {
+public enum EdmlAction {
     DOWNLOAD,
-    UPLOAD,
+    UPLOAD_LOGICAL,
+    UPLOAD_STANDALONE,
     ROLLBACK
 }

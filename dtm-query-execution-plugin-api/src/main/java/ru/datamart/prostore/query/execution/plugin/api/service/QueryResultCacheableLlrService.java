@@ -15,6 +15,12 @@
  */
 package ru.datamart.prostore.query.execution.plugin.api.service;
 
+import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.calcite.sql.SqlDialect;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.type.SqlTypeName;
 import ru.datamart.prostore.async.AsyncUtils;
 import ru.datamart.prostore.cache.service.CacheService;
 import ru.datamart.prostore.common.cache.QueryTemplateKey;
@@ -30,12 +36,6 @@ import ru.datamart.prostore.query.execution.model.metadata.ColumnMetadata;
 import ru.datamart.prostore.query.execution.plugin.api.dml.LlrEstimateUtils;
 import ru.datamart.prostore.query.execution.plugin.api.dml.LlrPlanResult;
 import ru.datamart.prostore.query.execution.plugin.api.request.LlrRequest;
-import io.vertx.core.Future;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.apache.calcite.sql.SqlDialect;
-import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.sql.type.SqlTypeName;
 
 import java.util.List;
 import java.util.Map;
@@ -64,8 +64,8 @@ public abstract class QueryResultCacheableLlrService implements LlrService<Query
     @Override
     public Future<QueryResult> execute(LlrRequest request) {
         return AsyncUtils.measureMs(getQueryFromCacheOrInit(request),
-                duration -> log.debug("Got query from cache and enriched template for query [{}] in [{}]ms",
-                        request.getRequestId(), duration))
+                        duration -> log.debug("Got query from cache and enriched template for query [{}] in [{}]ms",
+                                request.getRequestId(), duration))
                 .compose(enrichedQuery -> executeRealOrEstimate(enrichedQuery, request));
     }
 
@@ -105,7 +105,7 @@ public abstract class QueryResultCacheableLlrService implements LlrService<Query
             if (llrRq.isCachable() && queryTemplateValue != null) {
                 promise.complete(getEnrichedSqlFromTemplate(llrRq, queryTemplateValue));
             } else {
-                queryParserService.parse(new QueryParserRequest(llrRq.getSourceQueryTemplateResult().getTemplateNode(), llrRq.getSchema()))
+                queryParserService.parse(new QueryParserRequest(llrRq.getSourceQueryTemplateResult().getTemplateNode(), llrRq.getSchema(), llrRq.getEnvName()))
                         .map(parserResponse -> {
                             validateQuery(parserResponse);
                             return parserResponse;

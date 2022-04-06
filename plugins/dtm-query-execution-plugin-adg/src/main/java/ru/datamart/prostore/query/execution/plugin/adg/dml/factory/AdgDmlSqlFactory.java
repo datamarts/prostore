@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 public class AdgDmlSqlFactory {
 
     private static final String INSERT_INTO_TEMPLATE = "INSERT INTO \"%s__%s__%s_staging\" (%s,\"sys_op\") %s";
+    private static final String INSERT_INTO_STANDALONE = "INSERT INTO \"%s\" (%s) %s";
 
     private AdgDmlSqlFactory() {
     }
@@ -39,10 +40,19 @@ public class AdgDmlSqlFactory {
     }
 
     public static String createInsertSelectSql(String datamart, String env, String entityName, List<EntityField> columns, String enrichedSelect) {
-        val concatColumns = columns.stream()
+        val concatColumns = getColumns(columns);
+        return String.format(INSERT_INTO_TEMPLATE, env, datamart, entityName, concatColumns, enrichedSelect);
+    }
+
+    public static String createStandaloneInsertSelectSql(String entityPath, List<EntityField> columns, String enrichedSelect) {
+        val concatColumns = getColumns(columns);
+        return String.format(INSERT_INTO_STANDALONE, entityPath, concatColumns, enrichedSelect);
+    }
+
+    private static String getColumns(List<EntityField> columns) {
+        return columns.stream()
                 .map(EntityField::getName)
                 .map(s -> String.format("\"%s\"", s))
                 .collect(Collectors.joining(","));
-        return String.format(INSERT_INTO_TEMPLATE, env, datamart, entityName, concatColumns, enrichedSelect);
     }
 }

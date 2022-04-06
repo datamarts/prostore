@@ -15,16 +15,16 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adqm.mppw.kafka.service.load;
 
+import lombok.NonNull;
+import org.apache.avro.Schema;
 import ru.datamart.prostore.query.execution.plugin.adqm.base.utils.AdqmDdlUtil;
 import ru.datamart.prostore.query.execution.plugin.adqm.ddl.configuration.properties.DdlProperties;
 import ru.datamart.prostore.query.execution.plugin.adqm.mppw.configuration.properties.AdqmMppwProperties;
-import lombok.NonNull;
-import org.apache.avro.Schema;
 
 import java.util.stream.Collectors;
 
-import static ru.datamart.prostore.query.execution.plugin.adqm.base.utils.Constants.EXT_SHARD_POSTFIX;
 import static java.lang.String.format;
+import static ru.datamart.prostore.query.execution.plugin.adqm.base.utils.Constants.EXT_SHARD_POSTFIX;
 
 public class KafkaExtTableCreator implements ExtTableCreator {
     private static final String KAFKA_ENGINE_TEMPLATE = "ENGINE = Kafka()\n" +
@@ -49,7 +49,7 @@ public class KafkaExtTableCreator implements ExtTableCreator {
 
     @Override
     public String generate(@NonNull String topic, @NonNull String table, @NonNull Schema schema, @NonNull String sortingKey) {
-        String kafkaSettings = genKafkaEngine(topic, table);
+        String kafkaSettings = genKafkaEngine(topic);
 
         String columns = schema.getFields().stream()
                 .map(AdqmDdlUtil::avroFieldToString)
@@ -57,16 +57,11 @@ public class KafkaExtTableCreator implements ExtTableCreator {
         return format(EXT_SHARD_TEMPLATE, table + EXT_SHARD_POSTFIX, ddlProperties.getCluster(), columns, kafkaSettings);
     }
 
-    private String genKafkaEngine(@NonNull String topic, @NonNull String tableName) {
+    private String genKafkaEngine(@NonNull String topic) {
         String brokers = adqmMppwProperties.getKafkaBrokers();
-        String consumerGroup = getConsumerGroupName(tableName);
-        // FIXME Support other formats (Text, CSV, Json?)
+        String consumerGroup = adqmMppwProperties.getConsumerGroup();
         String format = "Avro";
         return format(KAFKA_ENGINE_TEMPLATE, brokers, topic, consumerGroup, format);
     }
 
-    @NonNull
-    private String getConsumerGroupName(@NonNull String tableName) {
-        return adqmMppwProperties.getConsumerGroup() + tableName;
-    }
 }

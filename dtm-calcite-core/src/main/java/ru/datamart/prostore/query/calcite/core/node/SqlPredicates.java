@@ -18,15 +18,15 @@ public class SqlPredicates {
         this.predicates = new ArrayList<>(predicates);
         this.notMaybePredicates = (int) predicates.stream().filter(sqlPredicate -> sqlPredicate.getType() != SqlPredicateType.MAYBE).count();
 
-        val initialKinds = new HashSet<SqlKind>();
+        val predicateSqlKinds = new HashSet<SqlKind>();
         for (int i = predicates.size() - 1; i >= 0; i--) {
             val predicate = predicates.get(i);
-            initialKinds.addAll(predicate.getKinds());
+            predicateSqlKinds.addAll(predicate.getKinds());
             if (predicate.getType() == SqlPredicateType.ANY_OF) {
                 break;
             }
         }
-        this.initialKinds = new ArrayList<>(initialKinds);
+        this.initialKinds = new ArrayList<>(predicateSqlKinds);
     }
 
     public static Builder builder() {

@@ -15,23 +15,6 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adp.mppw.kafka.service.impl;
 
-import ru.datamart.prostore.common.dto.KafkaBrokerInfo;
-import ru.datamart.prostore.common.exception.DtmException;
-import ru.datamart.prostore.common.model.ddl.ColumnType;
-import ru.datamart.prostore.common.model.ddl.Entity;
-import ru.datamart.prostore.common.model.ddl.EntityField;
-import ru.datamart.prostore.common.model.ddl.ExternalTableFormat;
-import ru.datamart.prostore.common.reader.QueryResult;
-import ru.datamart.prostore.query.execution.plugin.adp.base.properties.AdpMppwProperties;
-import ru.datamart.prostore.query.execution.plugin.adp.connector.service.AdpConnectorClient;
-import ru.datamart.prostore.query.execution.plugin.adp.db.service.DatabaseExecutor;
-import ru.datamart.prostore.query.execution.plugin.adp.connector.dto.AdpConnectorMppwStartRequest;
-import ru.datamart.prostore.query.execution.plugin.adp.connector.dto.AdpConnectorMppwStopRequest;
-import ru.datamart.prostore.query.execution.plugin.adp.mppw.factory.AdpTransferDataSqlFactory;
-import ru.datamart.prostore.query.execution.plugin.adp.mppw.transfer.AdpTransferDataService;
-import ru.datamart.prostore.query.execution.plugin.api.exception.MppwDatasourceException;
-import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
-import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.UploadExternalEntityMetadata;
 import io.vertx.core.Future;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
@@ -46,6 +29,19 @@ import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import ru.datamart.prostore.common.dto.KafkaBrokerInfo;
+import ru.datamart.prostore.common.exception.DtmException;
+import ru.datamart.prostore.common.model.ddl.*;
+import ru.datamart.prostore.query.execution.plugin.adp.base.properties.AdpMppwProperties;
+import ru.datamart.prostore.query.execution.plugin.adp.connector.dto.AdpConnectorMppwStartRequest;
+import ru.datamart.prostore.query.execution.plugin.adp.connector.dto.AdpConnectorMppwStopRequest;
+import ru.datamart.prostore.query.execution.plugin.adp.connector.service.AdpConnectorClient;
+import ru.datamart.prostore.query.execution.plugin.adp.db.service.DatabaseExecutor;
+import ru.datamart.prostore.query.execution.plugin.adp.mppw.factory.AdpTransferDataSqlFactory;
+import ru.datamart.prostore.query.execution.plugin.adp.mppw.transfer.AdpTransferDataService;
+import ru.datamart.prostore.query.execution.plugin.api.exception.MppwDatasourceException;
+import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
+import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.UploadExternalEntityMetadata;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -109,7 +105,7 @@ class AdpMppwKafkaTest {
     void shouldSuccessfullyStartLoad(VertxTestContext vertxTestContext) {
         // arrange
         val requestId = UUID.randomUUID();
-        val request = getRequest(requestId,true, createEntity(), ExternalTableFormat.AVRO, SCHEMA, Collections.singletonList(ID_PK_FIELD));
+        val request = getRequest(requestId, true, createEntity(), ExternalTableFormat.AVRO, SCHEMA, Collections.singletonList(ID_PK_FIELD));
 
         // act
         Future<String> result = adpMppwKafkaExecutor.execute(request);
@@ -130,12 +126,43 @@ class AdpMppwKafkaTest {
                     assertEquals(ExternalTableFormat.AVRO.getName(), capture.getFormat());
                     assertEquals(SCHEMA, capture.getSchema().toString());
                 }).completeNow()));
-}
+    }
+
+    @Test
+    void shouldSuccessfullyStartLoadWhenStandalone(VertxTestContext vertxTestContext) {
+        // arrange
+        val requestId = UUID.randomUUID();
+        val destEntity = Entity.builder()
+                .entityType(EntityType.WRITEABLE_EXTERNAL_TABLE)
+                .externalTableLocationPath("standalone.tbl")
+                .build();
+        val request = getRequest(requestId, true, createEntity(), ExternalTableFormat.AVRO, SCHEMA, Collections.singletonList(ID_PK_FIELD), destEntity);
+
+        // act
+        Future<String> result = adpMppwKafkaExecutor.execute(request);
+
+        // assert
+        result.onComplete(vertxTestContext.succeeding(ar ->
+                vertxTestContext.verify(() -> {
+                    assertEquals(CONSUMER_GROUP, ar);
+                    verify(adpConnectorClient).startMppw(startRequestCaptor.capture());
+                    val capture = startRequestCaptor.getValue();
+                    assertEquals(requestId.toString(), capture.getRequestId());
+                    assertEquals("standalone", capture.getDatamart());
+                    assertEquals("tbl", capture.getTableName());
+                    assertEquals(1, capture.getKafkaBrokers().size());
+                    assertEquals(BROKER_HOST + ":" + BROKER_PORT, capture.getKafkaBrokers().get(0).getAddress());
+                    assertEquals(TOPIC, capture.getKafkaTopic());
+                    assertEquals(CONSUMER_GROUP, capture.getConsumerGroup());
+                    assertEquals(ExternalTableFormat.AVRO.getName(), capture.getFormat());
+                    assertEquals(SCHEMA, capture.getSchema().toString());
+                }).completeNow()));
+    }
 
     @Test
     void shouldFailStartWhenConnectorFailed(VertxTestContext vertxTestContext) {
         // arrange
-        val request = getRequest(UUID.randomUUID(),true, createEntity(), ExternalTableFormat.AVRO, SCHEMA, Collections.singletonList(ID_PK_FIELD));
+        val request = getRequest(UUID.randomUUID(), true, createEntity(), ExternalTableFormat.AVRO, SCHEMA, Collections.singletonList(ID_PK_FIELD));
 
         reset(adpConnectorClient);
         when(adpConnectorClient.startMppw(Mockito.any())).thenReturn(Future.failedFuture(new RuntimeException("Exception")));
@@ -283,10 +310,15 @@ class AdpMppwKafkaTest {
     private MppwKafkaRequest getRequest(UUID requestId, boolean isLoadStart, Entity entity, ExternalTableFormat format, String schema, List<EntityField> primaryKeys) {
         val destEntity = Entity.builder()
                 .name(TABLE_NAME)
+                .schema(DATAMART)
                 .fields(primaryKeys)
                 .build();
+        return getRequest(requestId, isLoadStart, entity, format, schema, primaryKeys, destEntity);
+    }
+
+    private MppwKafkaRequest getRequest(UUID requestId, boolean isLoadStart, Entity sourceEntity, ExternalTableFormat format, String schema, List<EntityField> primaryKeys, Entity destEntity) {
         return new MppwKafkaRequest(requestId, ENV, DATAMART, isLoadStart,
-                entity, SYS_CN, destEntity, new UploadExternalEntityMetadata("name", "path",
+                sourceEntity, SYS_CN, destEntity, new UploadExternalEntityMetadata("name", "path",
                 format, schema, 1000),
                 Collections.singletonList(new KafkaBrokerInfo(BROKER_HOST, BROKER_PORT)), TOPIC);
     }
@@ -294,6 +326,7 @@ class AdpMppwKafkaTest {
     private Entity createEntity() {
         return Entity.builder()
                 .name("table_ext")
+                .schema(DATAMART)
                 .fields(Arrays.asList(
                         EntityField.builder()
                                 .name("id")

@@ -15,14 +15,14 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.base.factory.adqm;
 
+import lombok.val;
+import org.springframework.stereotype.Component;
 import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.common.model.ddl.ColumnType;
 import ru.datamart.prostore.common.model.ddl.Entity;
 import ru.datamart.prostore.common.model.ddl.EntityField;
 import ru.datamart.prostore.common.model.ddl.EntityFieldUtils;
 import ru.datamart.prostore.query.execution.plugin.api.service.shared.adqm.AdqmSharedService;
-import lombok.val;
-import org.springframework.stereotype.Component;
 
 import java.util.Comparator;
 import java.util.stream.Collectors;
@@ -42,7 +42,9 @@ public class AdqmConnectorSqlFactory {
             "%s" +
             "%s" +
             "&TIMEOUT_CONNECT=%d" +
-            "&TIMEOUT_REQUEST=%d')\n" +
+            "&TIMEOUT_REQUEST=%d" +
+            "&BUFFER_SIZE=%d" +
+            "')\n" +
             "FORMAT 'CUSTOM' (FORMATTER = 'pxfwritable_export')";
     private static final String INSERT_INTO_EXTERNAL_TABLE =
             "INSERT INTO %s.CLICKHOUSE_EXT_%s (%s, sys_op, sys_from, sys_to, sys_close_date, sign) " +
@@ -65,22 +67,32 @@ public class AdqmConnectorSqlFactory {
         return String.format(EXT_TABLE_PK_ONLY_NAME_TEMPLATE, entity.getSchema(), entity.getName());
     }
 
+    public String createStandaloneExternalTable(Entity entity) {
+        val tableName = entity.getExternalTableLocationPath();
+        val datamart = entity.getSchema();
+        return createTable(tableName, datamart, entity, getColumns(entity, false), "");
+    }
+
     public String createExternalTable(String env, String datamart, Entity entity) {
-        return createTable(env, datamart, entity, getColumns(entity), "", ACTUAL_POSTFIX);
+        return createTable(env, datamart, entity, getColumns(entity, true), "", ACTUAL_POSTFIX);
     }
 
     public String createExternalPkOnlyTable(String env, String datamart, Entity entity) {
         return createTable(env, datamart, entity, getPkColumns(entity), "_PK", BUFFER_POSTFIX);
     }
 
-    private String createTable(String env, String datamart, Entity entity, String columns, String pk, String tablePostfix) {
-        val tableName = getTableName(env, datamart, entity, tablePostfix);
+    private String createTable(String tableName, String datamart, Entity entity, String columns, String pk) {
         val sharedProperties = adqmSharedService.getSharedProperties();
         return String.format(CREATE_EXTERNAL_TABLE, datamart, pk, entity.getName(),
                 columns, tableName, sharedProperties.getHosts(),
                 sharedProperties.getUser().isEmpty() ? "" : String.format("&USER=%s", sharedProperties.getUser()),
                 sharedProperties.getPassword().isEmpty() ? "" : String.format("&PASSWORD=%s", sharedProperties.getPassword()),
-                sharedProperties.getSocketTimeout(), sharedProperties.getDataTransferTimeout());
+                sharedProperties.getSocketTimeout(), sharedProperties.getDataTransferTimeout(), sharedProperties.getBufferSize());
+    }
+
+    private String createTable(String env, String datamart, Entity entity, String columns, String pk, String tablePostfix) {
+        val tableName = getTableName(env, datamart, entity, tablePostfix);
+        return createTable(tableName, datamart, entity, columns, pk);
     }
 
     public String dropExternalTable(String extTableName) {
@@ -105,7 +117,7 @@ public class AdqmConnectorSqlFactory {
         return String.format("%s__%s.%s_%s", env, datamart, entity.getName(), tablePostfix);
     }
 
-    private String getColumns(Entity entity) {
+    private String getColumns(Entity entity, boolean addSystemColumns) {
         val builder = new StringBuilder();
         val fields = entity.getFields().stream()
                 .sorted(Comparator.comparingInt(EntityField::getOrdinalPosition))
@@ -113,11 +125,13 @@ public class AdqmConnectorSqlFactory {
                 .collect(Collectors.joining(","));
         builder.append(fields);
 
-        builder.append(",sys_from ").append(mapType(ColumnType.BIGINT));
-        builder.append(",sys_to ").append(mapType(ColumnType.BIGINT));
-        builder.append(",sys_op ").append(mapType(ColumnType.INT32));
-        builder.append(",sys_close_date ").append(mapType(ColumnType.BIGINT));
-        builder.append(",sign ").append(mapType(ColumnType.INT32));
+        if (addSystemColumns) {
+            builder.append(",sys_from ").append(mapType(ColumnType.BIGINT));
+            builder.append(",sys_to ").append(mapType(ColumnType.BIGINT));
+            builder.append(",sys_op ").append(mapType(ColumnType.INT32));
+            builder.append(",sys_close_date ").append(mapType(ColumnType.BIGINT));
+            builder.append(",sign ").append(mapType(ColumnType.INT32));
+        }
         return builder.toString();
     }
 

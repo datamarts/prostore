@@ -18,20 +18,20 @@ package ru.datamart.prostore.jdbc.core;
 import ru.datamart.prostore.common.model.ddl.ColumnType;
 
 import java.sql.Types;
-import java.util.HashMap;
+import java.util.EnumMap;
 import java.util.Map;
 
 import static ru.datamart.prostore.common.model.ddl.ColumnType.*;
 
 public class TypeInfoCache implements TypeInfo {
 
-    private final BaseConnection conn;
-    private final Map<ColumnType, String> dtmTypeToJavaClassMap;
-    private final Map<ColumnType, Integer> dtmTypeToSqlTypeMap;
-    private final Map<ColumnType, String> dtmTypeToAliasTypeMap;
+    private static final String JAVA_LANG_STRING = "java.lang.String";
+    private static final Map<ColumnType, String> dtmTypeToJavaClassMap = new EnumMap<>(ColumnType.class);
+    private static final Map<ColumnType, Integer> dtmTypeToSqlTypeMap = new EnumMap<>(ColumnType.class);
+    private static final Map<ColumnType, String> dtmTypeToAliasTypeMap = new EnumMap<>(ColumnType.class);
     private static final Object[][] types = new Object[][]{
-            {VARCHAR, Types.VARCHAR, "java.lang.String", "varchar"},
-            {CHAR, Types.CHAR, "java.lang.String", "char"},
+            {VARCHAR, Types.VARCHAR, JAVA_LANG_STRING, "varchar"},
+            {CHAR, Types.CHAR, JAVA_LANG_STRING, "char"},
             {BIGINT, Types.BIGINT, "java.lang.Long", "bigint"},
             {INT, Types.BIGINT, "java.lang.Long", "bigint"},
             {INT32, Types.INTEGER, "java.lang.Integer", "int32"},
@@ -42,30 +42,21 @@ public class TypeInfoCache implements TypeInfo {
             {TIMESTAMP, Types.TIMESTAMP, "java.sql.Timestamp", "timestamp"},
             {BOOLEAN, Types.BOOLEAN, "java.lang.Boolean", "boolean"},
             {BLOB, Types.BLOB, "java.lang.Object", "blob"},
-            {UUID, Types.OTHER, "java.lang.String", "uuid"},
-            {LINK, Types.VARCHAR, "java.lang.String", "link"},
+            {UUID, Types.OTHER, JAVA_LANG_STRING, "uuid"},
+            {LINK, Types.VARCHAR, JAVA_LANG_STRING, "link"},
             {ANY, Types.OTHER, "java.lang.Object", "any"}
     };
 
-    public TypeInfoCache(BaseConnection conn) {
-        this.conn = conn;
-        this.dtmTypeToSqlTypeMap = new HashMap((int) Math.round((double) types.length * 1.5D));
-        this.dtmTypeToAliasTypeMap = new HashMap((int) Math.round((double) types.length * 1.5D));
-        this.dtmTypeToJavaClassMap = new HashMap((int) Math.round((double) types.length * 1.5D));
+    static {
         for (Object[] type : types) {
             ColumnType dtmType = (ColumnType) type[0];
             Integer sqlType = (Integer) type[1];
             String javaClass = (String) type[2];
             String dtmTypeName = (String) type[3];
-            this.addCoreType(dtmType, sqlType, javaClass, dtmTypeName);
+            dtmTypeToAliasTypeMap.put(dtmType, dtmTypeName);
+            dtmTypeToJavaClassMap.put(dtmType, javaClass);
+            dtmTypeToSqlTypeMap.put(dtmType, sqlType);
         }
-
-    }
-
-    private void addCoreType(ColumnType dtmType, Integer sqlType, String javaClass, String dtmTypeName) {
-        this.dtmTypeToAliasTypeMap.put(dtmType, dtmTypeName);
-        this.dtmTypeToJavaClassMap.put(dtmType, javaClass);
-        this.dtmTypeToSqlTypeMap.put(dtmType, sqlType);
     }
 
     @Override

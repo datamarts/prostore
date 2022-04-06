@@ -32,6 +32,7 @@ public class SqlCoalesceFunction extends SqlFunction {
                 SqlFunctionCategory.SYSTEM);
     }
 
+    @Override
     public SqlNode rewriteCall(SqlValidator validator, SqlCall call) {
         //hint: reworked to disable calcite coalesce rewrite
         return call;

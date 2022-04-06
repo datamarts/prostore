@@ -15,6 +15,22 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.dml;
 
+import io.vertx.core.Future;
+import io.vertx.core.json.JsonArray;
+import io.vertx.junit5.VertxExtension;
+import io.vertx.junit5.VertxTestContext;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.calcite.avatica.util.Casing;
+import org.apache.calcite.sql.SqlDialect;
+import org.apache.calcite.sql.SqlNode;
+import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import ru.datamart.prostore.cache.service.CacheService;
 import ru.datamart.prostore.common.cache.QueryTemplateKey;
 import ru.datamart.prostore.common.cache.QueryTemplateValue;
@@ -33,26 +49,11 @@ import ru.datamart.prostore.query.execution.plugin.api.dml.LlrEstimateUtils;
 import ru.datamart.prostore.query.execution.plugin.api.request.LlrRequest;
 import ru.datamart.prostore.query.execution.plugin.api.service.LlrService;
 import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryEnrichmentService;
-import io.vertx.core.Future;
-import io.vertx.core.json.JsonArray;
-import io.vertx.junit5.VertxExtension;
-import io.vertx.junit5.VertxTestContext;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.calcite.avatica.util.Casing;
-import org.apache.calcite.sql.SqlDialect;
-import org.apache.calcite.sql.SqlNode;
-import org.assertj.core.api.Assertions;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.*;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -84,7 +85,7 @@ class AdbLlrServiceTest {
     void init() {
         when(queryTemplateResult.getTemplate()).thenReturn(template);
         SqlNode sqlNode = TestUtils.DEFINITION_SERVICE.processingQuery(template);
-        when(adbQueryEnrichmentService.getEnrichedSqlNode(any(), any()))
+        when(adbQueryEnrichmentService.getEnrichedSqlNode(any()))
                 .thenReturn(Future.succeededFuture(sqlNode));
         when(queryTemplateExtractor.extract(any(SqlNode.class))).thenReturn(queryTemplateResult);
         when(queryTemplateExtractor.enrichTemplate(any(), anyList())).thenReturn(sqlNode);

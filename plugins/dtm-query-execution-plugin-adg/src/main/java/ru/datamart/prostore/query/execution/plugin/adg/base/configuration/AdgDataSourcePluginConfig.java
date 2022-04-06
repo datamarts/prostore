@@ -34,6 +34,7 @@ public class AdgDataSourcePluginConfig {
     @Bean("adgDtmDataSourcePlugin")
     public AdgDataSourcePlugin adgDataSourcePlugin(
             @Qualifier("adgDdlService") DdlService<Void> ddlService,
+            @Qualifier("adgEddlService") EddlService eddlService,
             @Qualifier("adgLlrService") LlrService<QueryResult> llrService,
             @Qualifier("adgInsertValuesService") InsertValuesService insertValuesService,
             @Qualifier("adgInsertSelectService") InsertSelectService insertSelectService,
@@ -51,6 +52,7 @@ public class AdgDataSourcePluginConfig {
             @Qualifier("adgSynchronizeService") SynchronizeService synchronizeService) {
         return new AdgDataSourcePlugin(
                 ddlService,
+                eddlService,
                 llrService,
                 insertValuesService,
                 insertSelectService,

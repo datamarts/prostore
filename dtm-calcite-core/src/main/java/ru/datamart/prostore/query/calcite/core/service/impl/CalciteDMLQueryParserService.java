@@ -15,13 +15,6 @@
  */
 package ru.datamart.prostore.query.calcite.core.service.impl;
 
-import ru.datamart.prostore.common.dto.QueryParserRequest;
-import ru.datamart.prostore.common.dto.QueryParserResponse;
-import ru.datamart.prostore.common.exception.DtmException;
-import ru.datamart.prostore.query.calcite.core.dialect.LimitSqlDialect;
-import ru.datamart.prostore.query.calcite.core.provider.CalciteContextProvider;
-import ru.datamart.prostore.query.calcite.core.service.QueryParserService;
-import ru.datamart.prostore.query.execution.model.metadata.Datamart;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import lombok.extern.slf4j.Slf4j;
@@ -29,33 +22,42 @@ import lombok.val;
 import org.apache.calcite.sql.SqlDialect;
 import org.apache.calcite.sql.dialect.CalciteSqlDialect;
 import org.springframework.core.NestedExceptionUtils;
-
-import java.util.List;
+import ru.datamart.prostore.common.dto.QueryParserRequest;
+import ru.datamart.prostore.common.dto.QueryParserResponse;
+import ru.datamart.prostore.common.exception.DtmException;
+import ru.datamart.prostore.query.calcite.core.dialect.LimitSqlDialect;
+import ru.datamart.prostore.query.calcite.core.provider.CalciteContextProvider;
+import ru.datamart.prostore.query.calcite.core.service.QueryParserService;
+import ru.datamart.prostore.query.calcite.core.service.SchemaExtender;
 
 @Slf4j
-public abstract class CalciteDMLQueryParserService implements QueryParserService {
-    protected static final LimitSqlDialect SQL_DIALECT = new LimitSqlDialect(CalciteSqlDialect.DEFAULT_CONTEXT);
-    protected final CalciteContextProvider contextProvider;
-    protected final Vertx vertx;
+public class CalciteDMLQueryParserService implements QueryParserService {
+    private static final LimitSqlDialect SQL_DIALECT = new LimitSqlDialect(CalciteSqlDialect.DEFAULT_CONTEXT);
+    private final CalciteContextProvider contextProvider;
+    private final Vertx vertx;
+    private final SchemaExtender schemaExtender;
 
     public CalciteDMLQueryParserService(CalciteContextProvider contextProvider,
-                                        Vertx vertx) {
+                                        Vertx vertx,
+                                        SchemaExtender schemaExtender) {
         this.contextProvider = contextProvider;
         this.vertx = vertx;
+        this.schemaExtender = schemaExtender;
     }
 
     @Override
     public Future<QueryParserResponse> parse(QueryParserRequest request) {
         return Future.future(promise -> vertx.executeBlocking(it -> {
             try {
-                val context = contextProvider.context(extendSchemes(request.getSchema()));
+                val datamarts = schemaExtender.extendSchema(request.getSchema(), request.getEnv());
+                val context = contextProvider.context(datamarts);
                 val sql = request.getQuery().toSqlString(getSqlDialect()).getSql();
                 val parse = context.getPlanner().parse(sql);
                 val validatedQuery = context.getPlanner().validate(parse);
                 val relQuery = context.getPlanner().rel(validatedQuery);
                 it.complete(new QueryParserResponse(
                         context,
-                        request.getSchema(),
+                        datamarts,
                         relQuery,
                         validatedQuery
                 ));
@@ -74,9 +76,5 @@ public abstract class CalciteDMLQueryParserService implements QueryParserService
 
     protected SqlDialect getSqlDialect() {
         return SQL_DIALECT;
-    }
-
-    protected List<Datamart> extendSchemes(List<Datamart> datamarts) {
-        return datamarts;
     }
 }

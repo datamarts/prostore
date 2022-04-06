@@ -24,4 +24,5 @@ public class AdqmSharedProperties {
     private final String password;
     private final long socketTimeout;
     private final long dataTransferTimeout;
+    private final int bufferSize;
 }

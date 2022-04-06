@@ -15,70 +15,69 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adg.enrichment.service;
 
-import ru.datamart.prostore.common.dto.QueryParserResponse;
-import ru.datamart.prostore.query.execution.model.metadata.Datamart;
-import ru.datamart.prostore.query.execution.plugin.adg.calcite.service.AdgCalciteContextProvider;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.EnrichQueryRequest;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryEnrichmentService;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryGenerator;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.SchemaExtender;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.calcite.sql.SqlDialect;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.util.Util;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
-import java.util.stream.Collectors;
+import ru.datamart.prostore.query.calcite.core.rel2sql.DtmRelToSqlConverter;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.EnrichQueryRequest;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.QueryGeneratorContext;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryEnrichmentService;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryExtendService;
 
 @Service("adgQueryEnrichmentService")
 @Slf4j
 public class AdgQueryEnrichmentService implements QueryEnrichmentService {
-    private final AdgCalciteContextProvider contextProvider;
-    private final QueryGenerator adgQueryGenerator;
-    private final SchemaExtender schemaExtender;
+    private final QueryExtendService queryExtendService;
+    private final SqlDialect sqlDialect;
+    private final DtmRelToSqlConverter relToSqlConverter;
+    private final AdgCollateValueReplacer collateReplacer;
 
     @Autowired
-    public AdgQueryEnrichmentService(AdgCalciteContextProvider contextProvider,
-                                     @Qualifier("adgQueryGenerator") QueryGenerator adgQueryGenerator,
-                                     SchemaExtender adgSchemaExtender) {
-        this.contextProvider = contextProvider;
-        this.adgQueryGenerator = adgQueryGenerator;
-        this.schemaExtender = adgSchemaExtender;
+    public AdgQueryEnrichmentService(@Qualifier("adgDmlQueryExtendService") QueryExtendService queryExtendService,
+                                     @Qualifier("adgSqlDialect") SqlDialect sqlDialect,
+                                     @Qualifier("adgRelToSqlConverter") DtmRelToSqlConverter relToSqlConverter,
+                                     AdgCollateValueReplacer collateReplacer) {
+        this.queryExtendService = queryExtendService;
+        this.sqlDialect = sqlDialect;
+        this.relToSqlConverter = relToSqlConverter;
+        this.collateReplacer = collateReplacer;
     }
 
     @Override
-    public Future<String> enrich(EnrichQueryRequest request, QueryParserResponse parserResponse) {
+    public Future<String> enrich(EnrichQueryRequest request) {
+        return getEnrichedSqlNode(request)
+                .map(sqlNodeResult -> {
+                    val queryResult = Util.toLinux(sqlNodeResult.toSqlString(sqlDialect).getSql())
+                            .replaceAll("\r\n|\r|\n", " ");
+                    log.debug("sql = " + queryResult);
+                    return queryResult;
+                })
+                .onSuccess(enrichResult -> log.debug("Request generated: {}", enrichResult));
+    }
+
+    @Override
+    public Future<SqlNode> getEnrichedSqlNode(EnrichQueryRequest request) {
         return Future.future(promise -> {
-            contextProvider.enrichContext(parserResponse.getCalciteContext(),
-                    generatePhysicalSchema(request.getSchema(), request.getEnvName()));
-            // form a new sql query
-            adgQueryGenerator.mutateQuery(parserResponse.getRelNode(),
-                    request.getDeltaInformations(),
-                    parserResponse.getCalciteContext(),
-                    request)
-                    .onSuccess(enrichResult -> {
-                        log.debug("Request generated: {}", enrichResult);
-                        promise.complete(enrichResult);
-                    })
-                    .onFailure(promise::fail);
+            val generatorContext = getContext(request);
+            val extendedQuery = queryExtendService.extendQuery(generatorContext);
+            val sqlNodeResult = relToSqlConverter.convert(extendedQuery);
+            val nodeWithReplacedCollate = collateReplacer.replace(sqlNodeResult);
+            promise.complete(nodeWithReplacedCollate);
         });
     }
 
-    @Override
-    public Future<SqlNode> getEnrichedSqlNode(EnrichQueryRequest request, QueryParserResponse parserResponse) {
-        contextProvider.enrichContext(parserResponse.getCalciteContext(),
-                generatePhysicalSchema(request.getSchema(), request.getEnvName()));
-        return adgQueryGenerator.getMutatedSqlNode(parserResponse.getRelNode(),
-                request.getDeltaInformations(),
-                parserResponse.getCalciteContext(),
-                request);
+    private QueryGeneratorContext getContext(EnrichQueryRequest enrichQueryRequest) {
+        return new QueryGeneratorContext(
+                enrichQueryRequest.getDeltaInformations().iterator(),
+                enrichQueryRequest.getCalciteContext().getRelBuilder(),
+                enrichQueryRequest.getRelNode(),
+                enrichQueryRequest.getEnvName());
     }
 
-    private List<Datamart> generatePhysicalSchema(List<Datamart> logicalSchemas, String envName) {
-        return logicalSchemas.stream()
-                .map(ls -> schemaExtender.createPhysicalSchema(ls, envName))
-                .collect(Collectors.toList());
-    }
 }

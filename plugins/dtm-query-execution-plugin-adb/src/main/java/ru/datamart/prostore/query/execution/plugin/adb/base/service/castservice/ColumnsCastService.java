@@ -29,4 +29,6 @@ public interface ColumnsCastService {
     }
 
     Future<SqlNode> apply(SqlNode sqlNode, RelNode relNode, List<ColumnType> expectedTypes);
+
+    Future<SqlNode> apply(SqlNode sqlNode, RelNode relNode, List<ColumnType> expectedTypes, int nullableColumnIdx);
 }

@@ -15,17 +15,16 @@
  */
 package ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service;
 
-import ru.datamart.prostore.common.dto.QueryParserResponse;
-import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.EnrichQueryRequest;
 import io.vertx.core.Future;
 import org.apache.calcite.sql.SqlNode;
+import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.dto.EnrichQueryRequest;
 
 /**
  * Query enrichment service
  */
 public interface QueryEnrichmentService {
 
-    Future<String> enrich(EnrichQueryRequest request, QueryParserResponse parserResponse);
+    Future<String> enrich(EnrichQueryRequest request);
 
-    Future<SqlNode> getEnrichedSqlNode(EnrichQueryRequest request, QueryParserResponse parserResponse);
+    Future<SqlNode> getEnrichedSqlNode(EnrichQueryRequest request);
 }

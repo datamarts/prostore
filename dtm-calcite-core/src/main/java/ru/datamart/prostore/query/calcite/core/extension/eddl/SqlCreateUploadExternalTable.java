@@ -23,28 +23,31 @@ import java.util.List;
 import java.util.Objects;
 
 public class SqlCreateUploadExternalTable extends SqlCreate {
+    private static final SqlOperator OPERATOR_TABLE =
+            new SqlSpecialOperator("CREATE UPLOAD EXTERNAL TABLE", SqlKind.OTHER_DDL);
 
     private final SqlIdentifier name;
     private final SqlNodeList columnList;
     private final LocationOperator locationOperator;
     private final FormatOperator formatOperator;
     private final MessageLimitOperator messageLimitOperator;
-
-    private static final SqlOperator OPERATOR_TABLE =
-            new SqlSpecialOperator("CREATE UPLOAD EXTERNAL TABLE", SqlKind.OTHER_DDL);
+    private final OptionsOperator options;
 
     public SqlCreateUploadExternalTable(SqlParserPos pos, boolean ifNotExists, SqlIdentifier name,
-                                        SqlNodeList columnList, SqlNode location, SqlNode format, SqlNode chunkSize) {
+                                        SqlNodeList columnList, SqlNode location, SqlNode format, SqlNode chunkSize,
+                                        SqlNode options) {
         super(OPERATOR_TABLE, pos, false, ifNotExists);
         this.name = Objects.requireNonNull(name);
         this.columnList = columnList;
         this.locationOperator = new LocationOperator(pos, (SqlCharStringLiteral) location);
         this.formatOperator = new FormatOperator(pos, (SqlCharStringLiteral) format);
         this.messageLimitOperator = new MessageLimitOperator(pos, (SqlNumericLiteral) chunkSize);
+        this.options = new OptionsOperator(pos, options);
     }
 
+    @Override
     public List<SqlNode> getOperandList() {
-        return ImmutableList.of(this.name, this.columnList, this.locationOperator, this.formatOperator, this.messageLimitOperator);
+        return ImmutableList.of(this.name, this.columnList, this.locationOperator, this.formatOperator, this.messageLimitOperator, this.options);
     }
 
     @Override
@@ -63,6 +66,7 @@ public class SqlCreateUploadExternalTable extends SqlCreate {
         this.locationOperator.unparse(writer, leftPrec, rightPrec);
         this.formatOperator.unparse(writer, leftPrec, rightPrec);
         this.messageLimitOperator.unparse(writer, leftPrec, rightPrec);
+        this.options.unparse(writer, leftPrec, rightPrec);
     }
 
     public SqlIdentifier getName() {
@@ -83,5 +87,9 @@ public class SqlCreateUploadExternalTable extends SqlCreate {
 
     public MessageLimitOperator getMassageLimitOperator() {
         return messageLimitOperator;
+    }
+
+    public OptionsOperator getOptions() {
+        return options;
     }
 }

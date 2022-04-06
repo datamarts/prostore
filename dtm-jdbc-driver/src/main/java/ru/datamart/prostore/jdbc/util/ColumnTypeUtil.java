@@ -21,6 +21,9 @@ import static java.sql.Types.*;
 
 public class ColumnTypeUtil {
 
+    private ColumnTypeUtil() {
+    }
+
     public static ColumnType getColumnType(int sqlType) throws DtmSqlException {
         switch (sqlType) {
             case SMALLINT:

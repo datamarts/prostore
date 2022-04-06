@@ -15,6 +15,19 @@
  */
 package ru.datamart.prostore.query.execution.core.ddl.service.impl.view;
 
+import io.vertx.core.Future;
+import lombok.Builder;
+import lombok.Data;
+import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.calcite.sql.SqlBasicCall;
+import org.apache.calcite.sql.SqlDialect;
+import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlNode;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Component;
 import ru.datamart.prostore.cache.service.CacheService;
 import ru.datamart.prostore.common.dto.QueryParserRequest;
 import ru.datamart.prostore.common.dto.QueryParserResponse;
@@ -36,38 +49,19 @@ import ru.datamart.prostore.query.execution.core.base.exception.entity.EntityAlr
 import ru.datamart.prostore.query.execution.core.base.exception.entity.EntityNotExistsException;
 import ru.datamart.prostore.query.execution.core.base.exception.view.ViewDisalowedOrDirectiveException;
 import ru.datamart.prostore.query.execution.core.base.repository.ServiceDbFacade;
-import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.EntityDao;
 import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.SetEntityState;
 import ru.datamart.prostore.query.execution.core.base.service.metadata.InformationSchemaService;
 import ru.datamart.prostore.query.execution.core.base.service.metadata.LogicalSchemaProvider;
 import ru.datamart.prostore.query.execution.core.base.service.metadata.MetadataExecutor;
-import ru.datamart.prostore.query.execution.core.base.utils.InformationSchemaUtils;
 import ru.datamart.prostore.query.execution.core.ddl.dto.DdlRequestContext;
-import ru.datamart.prostore.query.execution.core.ddl.service.QueryResultDdlExecutor;
+import ru.datamart.prostore.query.execution.core.ddl.service.AbstractCreateViewExecutor;
 import ru.datamart.prostore.query.execution.core.ddl.utils.SqlPreparer;
 import ru.datamart.prostore.query.execution.core.delta.dto.OkDelta;
 import ru.datamart.prostore.query.execution.core.dml.service.ColumnMetadataService;
 import ru.datamart.prostore.query.execution.model.metadata.ColumnMetadata;
 import ru.datamart.prostore.query.execution.model.metadata.Datamart;
-import io.vertx.core.CompositeFuture;
-import io.vertx.core.Future;
-import lombok.Builder;
-import lombok.Data;
-import lombok.SneakyThrows;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.apache.calcite.sql.SqlBasicCall;
-import org.apache.calcite.sql.SqlDialect;
-import org.apache.calcite.sql.SqlKind;
-import org.apache.calcite.sql.SqlNode;
-import org.jetbrains.annotations.NotNull;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -76,18 +70,11 @@ import static ru.datamart.prostore.query.execution.core.ddl.utils.ValidationUtil
 
 @Slf4j
 @Component
-public class CreateViewExecutor extends QueryResultDdlExecutor {
-    private static final SqlPredicates VIEW_AND_TABLE_PREDICATE = SqlPredicates.builder()
-            .anyOf(SqlPredicatePart.eqWithNum(SqlKind.JOIN), SqlPredicatePart.eq(SqlKind.SELECT))
-            .maybeOf(SqlPredicatePart.eq(SqlKind.AS))
-            .anyOf(SqlPredicatePart.eq(SqlKind.SNAPSHOT), SqlPredicatePart.eq(SqlKind.IDENTIFIER))
-            .build();
+public class CreateViewExecutor extends AbstractCreateViewExecutor {
     private static final SqlPredicates OTHER_PREDICATE = SqlPredicates.builder()
             .anyOf(SqlPredicatePart.eq(SqlKind.OTHER))
             .build();
     private static final String COLLATE = "COLLATE";
-    protected final EntityDao entityDao;
-    protected final CacheService<EntityKey, Entity> entityCacheService;
     protected final LogicalSchemaProvider logicalSchemaProvider;
     protected final QueryParserService parserService;
     private final ColumnMetadataService columnMetadataService;
@@ -104,11 +91,9 @@ public class CreateViewExecutor extends QueryResultDdlExecutor {
                               @Qualifier("coreCalciteDMLQueryParserService") QueryParserService parserService,
                               @Qualifier("coreRelToSqlConverter") DtmRelToSqlConverter relToSqlConverter,
                               InformationSchemaService informationSchemaService) {
-        super(metadataExecutor, serviceDbFacade, sqlDialect);
-        this.entityCacheService = entityCacheService;
+        super(metadataExecutor, serviceDbFacade, sqlDialect, serviceDbFacade.getServiceDbDao().getEntityDao(), entityCacheService);
         this.logicalSchemaProvider = logicalSchemaProvider;
         this.columnMetadataService = columnMetadataService;
-        this.entityDao = serviceDbFacade.getServiceDbDao().getEntityDao();
         this.parserService = parserService;
         this.relToSqlConverter = relToSqlConverter;
         this.informationSchemaService = informationSchemaService;
@@ -237,58 +222,6 @@ public class CreateViewExecutor extends QueryResultDdlExecutor {
                     "Unsupported 'COLLATE' clause in view's query"));
         }
         return Future.succeededFuture();
-    }
-
-    private Future<Void> checkSnapshotNotExist(SqlSelectTree selectTree) {
-        if (!selectTree.findSnapshots().isEmpty()) {
-            return Future.failedFuture(new ViewDisalowedOrDirectiveException(selectTree.getRoot().getNode().toSqlString(sqlDialect).getSql()));
-        }
-        return Future.succeededFuture();
-    }
-
-    private Future<Void> checkEntitiesType(SqlSelectTree selectTree, String contextDatamartName) {
-        return Future.future(promise -> {
-            final List<SqlTreeNode> nodes = selectTree.findNodes(VIEW_AND_TABLE_PREDICATE, true);
-            final List<Future> entityFutures = getEntitiesFutures(contextDatamartName, selectTree.getRoot().getNode(), nodes);
-            CompositeFuture.join(entityFutures)
-                    .onSuccess(result -> {
-                        final List<Entity> entities = result.list();
-                        if (entities.stream().anyMatch(entity -> entity.getEntityType() != EntityType.TABLE)) {
-                            promise.fail(new ViewDisalowedOrDirectiveException(
-                                    selectTree.getRoot().getNode().toSqlString(sqlDialect).getSql()));
-                        }
-                        promise.complete();
-                    })
-                    .onFailure(promise::fail);
-        });
-    }
-
-    @NotNull
-    private List<Future> getEntitiesFutures(String contextDatamartName, SqlNode sqlNode, List<SqlTreeNode> nodes) {
-        final List<Future> entityFutures = new ArrayList<>();
-        nodes.forEach(node -> {
-            String datamartName = contextDatamartName;
-            String tableName;
-            final Optional<String> schema = node.tryGetSchemaName();
-            final Optional<String> table = node.tryGetTableName();
-            if (schema.isPresent()) {
-                datamartName = schema.get();
-            }
-            if (table.isPresent()) {
-                tableName = table.get();
-            } else {
-                throw new DtmException(String.format("Can't extract table name from query %s",
-                        sqlNode.toSqlString(sqlDialect).toString()));
-            }
-
-            if (InformationSchemaUtils.INFORMATION_SCHEMA.equalsIgnoreCase(datamartName)) {
-                throw new DtmException(String.format("Using of INFORMATION_SCHEMA is forbidden [%s.%s]", datamartName, tableName));
-            }
-
-            entityCacheService.remove(new EntityKey(datamartName, tableName));
-            entityFutures.add(entityDao.getEntity(datamartName, tableName));
-        });
-        return entityFutures;
     }
 
     private Future<Entity> getEntityFuture(DdlRequestContext ctx, SqlNode viewQuery, List<Datamart> datamarts) {

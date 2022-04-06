@@ -84,7 +84,6 @@ import static org.mockito.Mockito.*;
 @ExtendWith({VertxExtension.class, MockitoExtension.class})
 class CreateViewExecutorTest {
 
-
     private final CalciteConfiguration calciteConfiguration = new CalciteConfiguration();
     private final CalciteCoreConfiguration calciteCoreConfiguration = new CalciteCoreConfiguration();
     private final SqlParser.Config parserConfig = calciteConfiguration
@@ -218,6 +217,12 @@ class CreateViewExecutorTest {
                             "SELECT id\n" +
                             "FROM shares.test_table", changeQueryCaptor.getValue());
                 }).completeNow());
+    }
+
+    @Test
+    void executeSuccessWithReadableExternalTable(VertxTestContext testContext) throws SqlParseException {
+        entityList.get(1).setEntityType(EntityType.READABLE_EXTERNAL_TABLE);
+        executeSuccess(testContext);
     }
 
     @Test

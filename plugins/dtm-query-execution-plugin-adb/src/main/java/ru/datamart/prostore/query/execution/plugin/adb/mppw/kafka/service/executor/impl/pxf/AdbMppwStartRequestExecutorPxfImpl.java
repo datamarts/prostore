@@ -15,23 +15,26 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.service.executor.impl.pxf;
 
-import ru.datamart.prostore.common.dto.KafkaBrokerInfo;
-import ru.datamart.prostore.common.model.ddl.*;
-import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.factory.KafkaMppwSqlFactory;
-import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.service.executor.AdbMppwRequestExecutor;
-import ru.datamart.prostore.query.execution.plugin.adb.query.service.DatabaseExecutor;
-import ru.datamart.prostore.query.execution.plugin.api.exception.MppwDatasourceException;
-import ru.datamart.prostore.query.execution.plugin.api.mppw.MppwRequest;
-import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
 import io.vertx.core.Future;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import ru.datamart.prostore.common.dto.KafkaBrokerInfo;
+import ru.datamart.prostore.common.model.ddl.*;
+import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.factory.KafkaMppwSqlFactory;
+import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.service.executor.AdbMppwRequestExecutor;
+import ru.datamart.prostore.query.execution.plugin.adb.mppw.kafka.service.executor.AdbMppwUtils;
+import ru.datamart.prostore.query.execution.plugin.adb.query.service.DatabaseExecutor;
+import ru.datamart.prostore.query.execution.plugin.api.exception.MppwDatasourceException;
+import ru.datamart.prostore.query.execution.plugin.api.mppw.MppwRequest;
+import ru.datamart.prostore.query.execution.plugin.api.mppw.kafka.MppwKafkaRequest;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @ConditionalOnProperty(
@@ -45,6 +48,7 @@ public class AdbMppwStartRequestExecutorPxfImpl implements AdbMppwRequestExecuto
     private static final String CAST_AS_TIME_TEMPLATE = "CAST(%s AS TIME)";
     private static final String SYS_OP = "sys_op";
     private static final String COLUMNS_DELIMITER = ", ";
+    private static final String SYS_OP_INT = "sys_op int";
 
     private final DatabaseExecutor adbQueryExecutor;
     private final KafkaMppwSqlFactory kafkaMppwSqlFactory;
@@ -75,7 +79,9 @@ public class AdbMppwStartRequestExecutorPxfImpl implements AdbMppwRequestExecuto
 
     private Future<Void> createReadableExternalTable(MppwKafkaRequest request, String requestId, String actualConsumerGroup) {
         val columns = kafkaMppwSqlFactory.getPxfColumnsFromEntity(request.getSourceEntity());
-        columns.add("sys_op int");
+        if (AdbMppwUtils.isWithSysOpField(request.getSourceEntity().getExternalTableOptions()) && !columns.contains(SYS_OP_INT)) {
+            columns.add(SYS_OP_INT);
+        }
         val brokersList = request.getBrokers().stream()
                 .map(KafkaBrokerInfo::getAddress)
                 .collect(Collectors.joining(","));
@@ -89,18 +95,24 @@ public class AdbMppwStartRequestExecutorPxfImpl implements AdbMppwRequestExecuto
     }
 
     private Future<Void> executeInsertIntoStaging(MppwKafkaRequest request, String requestId) {
-        val insertColumns = getColumnString(EntityFieldUtils.getFieldNames(request.getSourceEntity()));
-        val selectColumns = getColumnString(getColumnListWithTimeCast(request.getSourceEntity()));
-        return adbQueryExecutor.executeUpdate(kafkaMppwSqlFactory.insertIntoStagingTablePxfSqlQuery(request.getDestinationEntity().getSchema(),
+        val insertColumns = getColumnString(EntityFieldUtils.getFieldNames(request.getSourceEntity()), request.getSourceEntity().getExternalTableOptions());
+        val selectColumns = getColumnString(getColumnListWithTimeCast(request.getSourceEntity()), request.getSourceEntity().getExternalTableOptions());
+        val destinationEntity = request.getDestinationEntity();
+        val tableSchema = AdbMppwUtils.getTableSchema(destinationEntity);
+        val sql = kafkaMppwSqlFactory.insertIntoStagingTablePxfSqlQuery(tableSchema.getSchema(),
                 insertColumns,
                 selectColumns,
-                request.getDestinationEntity().getName(),
-                String.format("%s_%s_ext", request.getSourceEntity().getName(), requestId)));
+                tableSchema.getTable(),
+                String.format("%s_%s_ext", request.getSourceEntity().getName(), requestId));
+        return adbQueryExecutor.executeUpdate(sql);
     }
 
-    private String getColumnString(List<String> columns) {
-        columns.add(SYS_OP);
-        return String.join(COLUMNS_DELIMITER, columns);
+    private String getColumnString(List<String> columns, Map<String, String> options) {
+        val changedColumns = new ArrayList<>(columns);
+        if (AdbMppwUtils.isWithSysOpField(options) && !changedColumns.contains(SYS_OP)) {
+            changedColumns.add(SYS_OP);
+        }
+        return String.join(COLUMNS_DELIMITER, changedColumns);
     }
 
     private List<String> getColumnListWithTimeCast(Entity entity) {

@@ -15,6 +15,11 @@
  */
 package ru.datamart.prostore.query.execution.core.ddl.service.impl.matview;
 
+import io.vertx.core.Future;
+import lombok.val;
+import org.apache.calcite.sql.SqlDialect;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Component;
 import ru.datamart.prostore.cache.service.CacheService;
 import ru.datamart.prostore.cache.service.EvictQueryTemplateCacheService;
 import ru.datamart.prostore.common.model.ddl.Entity;
@@ -25,17 +30,13 @@ import ru.datamart.prostore.query.calcite.core.extension.OperationNames;
 import ru.datamart.prostore.query.calcite.core.extension.ddl.SqlDropMaterializedView;
 import ru.datamart.prostore.query.execution.core.base.dto.cache.EntityKey;
 import ru.datamart.prostore.query.execution.core.base.dto.cache.MaterializedViewCacheValue;
+import ru.datamart.prostore.query.execution.core.base.exception.entity.EntityNotExistsException;
 import ru.datamart.prostore.query.execution.core.base.repository.ServiceDbFacade;
-import ru.datamart.prostore.query.execution.core.base.service.hsql.HSQLClient;
 import ru.datamart.prostore.query.execution.core.base.service.metadata.MetadataExecutor;
 import ru.datamart.prostore.query.execution.core.ddl.dto.DdlRequestContext;
 import ru.datamart.prostore.query.execution.core.ddl.service.impl.table.DropTableExecutor;
+import ru.datamart.prostore.query.execution.core.ddl.service.impl.validate.RelatedViewChecker;
 import ru.datamart.prostore.query.execution.core.plugin.service.DataSourcePluginService;
-import io.vertx.core.Future;
-import lombok.val;
-import org.apache.calcite.sql.SqlDialect;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Component;
 
 @Component
 public class DropMaterializedViewExecutor extends DropTableExecutor {
@@ -48,15 +49,15 @@ public class DropMaterializedViewExecutor extends DropTableExecutor {
                                         @Qualifier("entityCacheService") CacheService<EntityKey, Entity> entityCacheService,
                                         DataSourcePluginService dataSourcePluginService,
                                         @Qualifier("materializedViewCacheService") CacheService<EntityKey, MaterializedViewCacheValue> materializedViewCacheService,
-                                        HSQLClient hsqlClient,
-                                        EvictQueryTemplateCacheService evictQueryTemplateCacheService) {
+                                        EvictQueryTemplateCacheService evictQueryTemplateCacheService,
+                                        RelatedViewChecker relatedViewChecker) {
         super(metadataExecutor,
                 serviceDbFacade,
                 sqlDialect,
                 entityCacheService,
                 dataSourcePluginService,
-                hsqlClient,
-                evictQueryTemplateCacheService);
+                evictQueryTemplateCacheService,
+                relatedViewChecker);
         this.materializedViewCacheService = materializedViewCacheService;
     }
 
@@ -86,6 +87,15 @@ public class DropMaterializedViewExecutor extends DropTableExecutor {
     @Override
     protected SourceType getSourceType(DdlRequestContext context) {
         return ((SqlDropMaterializedView) context.getSqlNode()).getDestination().getValue();
+    }
+
+    @Override
+    protected Entity checkEntityType(Entity entity) {
+        if (EntityType.MATERIALIZED_VIEW != entity.getEntityType()) {
+            throw new EntityNotExistsException(entity.getNameWithSchema());
+        }
+
+        return entity;
     }
 
     @Override

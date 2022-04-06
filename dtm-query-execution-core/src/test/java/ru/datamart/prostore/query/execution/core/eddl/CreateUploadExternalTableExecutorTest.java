@@ -15,6 +15,12 @@
  */
 package ru.datamart.prostore.query.execution.core.eddl;
 
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
+import org.apache.avro.Schema;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.common.model.ddl.*;
 import ru.datamart.prostore.common.plugin.exload.Type;
@@ -30,14 +36,9 @@ import ru.datamart.prostore.query.execution.core.base.service.avro.AvroSchemaGen
 import ru.datamart.prostore.query.execution.core.eddl.dto.CreateUploadExternalTableQuery;
 import ru.datamart.prostore.query.execution.core.eddl.service.EddlExecutor;
 import ru.datamart.prostore.query.execution.core.eddl.service.upload.CreateUploadExternalTableExecutor;
-import io.vertx.core.Future;
-import io.vertx.core.Promise;
-import org.apache.avro.Schema;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
 import java.util.Arrays;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -81,7 +82,8 @@ public class CreateUploadExternalTableExecutorTest {
                 locationPath,
                 ExternalTableFormat.AVRO,
                 avroSchema.toString(),
-                messageSize);
+                messageSize,
+                Collections.emptyMap());
 
     }
 

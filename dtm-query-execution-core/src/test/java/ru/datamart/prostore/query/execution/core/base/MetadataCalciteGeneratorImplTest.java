@@ -48,6 +48,7 @@ class MetadataCalciteGeneratorImplTest {
     private MetadataCalciteGenerator metadataCalciteGenerator;
     private Entity table;
     private Entity table2;
+    private Entity wrExtTable;
 
     @BeforeEach
     void setUp() {
@@ -59,6 +60,7 @@ class MetadataCalciteGeneratorImplTest {
         final List<EntityField> fields2 = createFieldsForTable();
         table = new Entity("uplexttab", null, fields);
         table2 = new Entity("accounts", "shares", fields2);
+        wrExtTable = new Entity("wrexttable", "test_datamart", fields);
     }
 
     private List<EntityField> createFieldsForTable() {
@@ -194,6 +196,30 @@ class MetadataCalciteGeneratorImplTest {
         table.setSchema("test_datamart");
         Entity entity = metadataCalciteGenerator.generateTableMetadata((SqlCreate) sqlNode);
         assertEquals(table, entity);
+    }
+
+    @Test
+    void generateStandaloneExternalTableMetadataWithSchema() throws SqlParseException {
+        String sql = "CREATE WRITABLE EXTERNAL TABLE test_datamart.wrExtTable (" +
+                " id integer not null," +
+                " name varchar(100)," +
+                " booleanValue boolean, " +
+                " charValue char, " +
+                " bgIntValue bigint, " +
+                " dbValue double, " +
+                " flValue float, " +
+                " dateValue date, " +
+                " timeValue time, " +
+                " tsValue timestamp(10), " +
+                " primary key (id)" +
+                ") " +
+                "distributed by (id) " +
+                "LOCATION 'core:adp://public.debit' " +
+                "OPTIONS ('auto.create.table.enable=true;option2=value2')";
+        SqlNode sqlNode = planner.parse(sql);
+        Entity entity = metadataCalciteGenerator.generateTableMetadata((SqlCreate) sqlNode);
+        wrExtTable.getFields().get(0).setShardingOrder(1);
+        assertEquals(wrExtTable, entity);
     }
 
     @Test

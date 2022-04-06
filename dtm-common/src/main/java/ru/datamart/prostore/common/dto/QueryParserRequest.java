@@ -15,14 +15,19 @@
  */
 package ru.datamart.prostore.common.dto;
 
-import ru.datamart.prostore.query.execution.model.metadata.Datamart;
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.RequiredArgsConstructor;
 import org.apache.calcite.sql.SqlNode;
+import ru.datamart.prostore.query.execution.model.metadata.Datamart;
 
 import java.util.List;
 
 @Data
+@AllArgsConstructor
+@RequiredArgsConstructor
 public class QueryParserRequest {
     private final SqlNode query;
     private final List<Datamart> schema;
+    private String env;
 }

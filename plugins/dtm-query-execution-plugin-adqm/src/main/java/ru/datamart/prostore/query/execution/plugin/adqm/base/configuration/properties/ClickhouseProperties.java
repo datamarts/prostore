@@ -27,4 +27,5 @@ public class ClickhouseProperties {
     private String password;
     private int socketTimeout = 30_000;
     private int dataTransferTimeout = 10_000;
+    private int bufferSize = 10_000;
 }

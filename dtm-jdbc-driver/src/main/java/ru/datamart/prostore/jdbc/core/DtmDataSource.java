@@ -31,7 +31,8 @@ import static ru.datamart.prostore.jdbc.util.DriverConstants.CONNECT_URL_PREFIX;
 @Slf4j
 public class DtmDataSource implements DataSource {
 
-    private String[] serverNames = new String[]{"localhost"};
+    private static final String LOCALHOST = "localhost";
+    private String[] serverNames = new String[]{LOCALHOST};
     private String databaseName = "";
     private String user;
     private String password;
@@ -67,13 +68,13 @@ public class DtmDataSource implements DataSource {
 
     public void setServerNames(String[] serverNames) {
         if (serverNames == null || serverNames.length == 0) {
-            this.serverNames = new String[]{"localhost"};
+            this.serverNames = new String[]{LOCALHOST};
         } else {
             serverNames = serverNames.clone();
             for (int i = 0; i < serverNames.length; i++) {
                 String serverName = serverNames[i];
                 if (serverName == null || serverName.equals("")) {
-                    serverNames[i] = "localhost";
+                    serverNames[i] = LOCALHOST;
                 }
             }
             this.serverNames = serverNames;
@@ -152,12 +153,12 @@ public class DtmDataSource implements DataSource {
 
     @Override
     public void setLogWriter(PrintWriter out) throws SQLException {
-
+        throw new SQLFeatureNotSupportedException();
     }
 
     @Override
     public void setLoginTimeout(int seconds) throws SQLException {
-
+        throw new SQLFeatureNotSupportedException();
     }
 
     @Override

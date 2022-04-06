@@ -15,14 +15,6 @@
  */
 package ru.datamart.prostore.query.execution.core.base.service.delta;
 
-import ru.datamart.prostore.common.delta.DeltaInformation;
-import ru.datamart.prostore.common.delta.DeltaInformationResult;
-import ru.datamart.prostore.common.delta.DeltaType;
-import ru.datamart.prostore.common.delta.SelectOnInterval;
-import ru.datamart.prostore.common.exception.DtmException;
-import ru.datamart.prostore.query.calcite.core.extension.snapshot.SqlDeltaSnapshot;
-import ru.datamart.prostore.query.calcite.core.node.SqlSelectTree;
-import ru.datamart.prostore.query.calcite.core.node.SqlTreeNode;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.apache.calcite.sql.SqlBasicCall;
@@ -31,10 +23,17 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.springframework.stereotype.Service;
+import ru.datamart.prostore.common.delta.DeltaInformation;
+import ru.datamart.prostore.common.delta.DeltaInformationResult;
+import ru.datamart.prostore.common.delta.DeltaType;
+import ru.datamart.prostore.common.delta.SelectOnInterval;
+import ru.datamart.prostore.common.exception.DtmException;
+import ru.datamart.prostore.query.calcite.core.extension.snapshot.SqlDeltaSnapshot;
+import ru.datamart.prostore.query.calcite.core.node.SqlSelectTree;
+import ru.datamart.prostore.query.calcite.core.node.SqlTreeNode;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -75,23 +74,17 @@ public class DeltaInformationExtractor {
     }
 
     public DeltaInformation getDeltaInformation(SqlSelectTree tree, SqlTreeNode tableOrSnapshot) {
-        Optional<SqlTreeNode> optParent = tree.getParentByChild(tableOrSnapshot);
-        if (optParent.isPresent()) {
-            SqlTreeNode parent = optParent.get();
-            if (parent.getNode() instanceof SqlBasicCall) {
-                return fromSqlBasicCall(parent.getNode(), false);
-            }
+        val parent = tree.getParentByChild(tableOrSnapshot);
+        if (parent != null && parent.getNode() instanceof SqlBasicCall) {
+            return fromSqlBasicCall(parent.getNode(), false);
         }
         return getDeltaInformation(tableOrSnapshot);
     }
 
     public DeltaInformation getDeltaInformationAndReplace(SqlSelectTree tree, SqlTreeNode tableOrSnapshot) {
-        Optional<SqlTreeNode> optParent = tree.getParentByChild(tableOrSnapshot);
-        if (optParent.isPresent()) {
-            SqlTreeNode parent = optParent.get();
-            if (parent.getNode() instanceof SqlBasicCall) {
-                return fromSqlBasicCall(parent.getNode(), true);
-            }
+        val parent = tree.getParentByChild(tableOrSnapshot);
+        if (parent != null && parent.getNode() instanceof SqlBasicCall) {
+            return fromSqlBasicCall(parent.getNode(), true);
         }
         return getDeltaInformation(tableOrSnapshot);
     }

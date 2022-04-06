@@ -19,6 +19,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
+import lombok.val;
 import org.apache.calcite.sql.SqlDialect;
 import org.apache.calcite.sql.SqlNode;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,7 +49,6 @@ import ru.datamart.prostore.query.execution.plugin.adb.calcite.service.AdbCalcit
 import ru.datamart.prostore.query.execution.plugin.adb.calcite.service.AdbCalciteDefinitionService;
 import ru.datamart.prostore.query.execution.plugin.adb.enrichment.service.AdbDmlQueryExtendWithoutHistoryService;
 import ru.datamart.prostore.query.execution.plugin.adb.enrichment.service.AdbQueryEnrichmentService;
-import ru.datamart.prostore.query.execution.plugin.adb.enrichment.service.AdbQueryGenerator;
 import ru.datamart.prostore.query.execution.plugin.adb.enrichment.service.AdbSchemaExtender;
 import ru.datamart.prostore.query.execution.plugin.adb.query.service.DatabaseExecutor;
 import ru.datamart.prostore.query.execution.plugin.adb.synchronize.service.PrepareQueriesOfChangesService;
@@ -102,8 +102,9 @@ class AdqmSynchronizeDestinationExecutorComplexTest {
 
     @BeforeEach
     void setUp(Vertx vertx) {
-        parserService = new AdbCalciteDMLQueryParserService(contextProvider, vertx);
-        queryEnrichmentService = new AdbQueryEnrichmentService(new AdbQueryGenerator(queryExtender, sqlDialect, relToSqlConverter), contextProvider, new AdbSchemaExtender());
+        val schemaExtender = new AdbSchemaExtender();
+        parserService = new AdbCalciteDMLQueryParserService(contextProvider, vertx, schemaExtender);
+        queryEnrichmentService = new AdbQueryEnrichmentService(queryExtender, sqlDialect, relToSqlConverter);
         prepareQueriesOfChangesService = new AdqmPrepareQueriesOfChangesService(parserService, adqmColumnsCastService, queryEnrichmentService);
         synchronizeSqlFactory = new AdqmConnectorSqlFactory(adqmSharedService);
         adqmSynchronizeDestinationExecutor = new AdqmSynchronizeDestinationExecutor(prepareQueriesOfChangesService, databaseExecutor, synchronizeSqlFactory, adqmSharedService);
@@ -114,7 +115,7 @@ class AdqmSynchronizeDestinationExecutorComplexTest {
         lenient().when(adqmSharedService.flushActualTable(any(), any(), any())).thenReturn(Future.succeededFuture());
         lenient().when(adqmSharedService.recreateBufferTables(any(), any(), any())).thenReturn(Future.succeededFuture());
         lenient().when(adqmSharedService.dropBufferTables(any(), any(), any())).thenReturn(Future.succeededFuture());
-        lenient().when(adqmSharedService.getSharedProperties()).thenReturn(new AdqmSharedProperties("adqm:1234", "user", "pass", 3001L, 3002L));
+        lenient().when(adqmSharedService.getSharedProperties()).thenReturn(new AdqmSharedProperties("adqm:1234", "user", "pass", 3001L, 3002L, 3003));
     }
 
     @Test
@@ -149,11 +150,11 @@ class AdqmSynchronizeDestinationExecutorComplexTest {
                         .isEqualToIgnoringNewLines("DROP EXTERNAL TABLE IF EXISTS datamart1.CLICKHOUSE_EXT_PK_matview");
                 assertThat(allInvocations.get(2))
                         .isEqualToIgnoringNewLines("CREATE WRITABLE EXTERNAL TABLE datamart1.CLICKHOUSE_EXT_matview\n" +
-                                "(id int8,col_varchar varchar,col_char varchar,col_bigint int8,col_int int8,col_int32 int4,col_double float8,col_float float4,col_date int8,col_time int8,col_timestamp int8,col_boolean int4,col_uuid varchar,col_link varchar,sys_from int8,sys_to int8,sys_op int4,sys_close_date int8,sign int4) LOCATION ('pxf://env__datamart1.matview_actual?PROFILE=clickhouse-insert&CLICKHOUSE_SERVERS=adqm:1234&USER=user&PASSWORD=pass&TIMEOUT_CONNECT=3001&TIMEOUT_REQUEST=3002')\n" +
+                                "(id int8,col_varchar varchar,col_char varchar,col_bigint int8,col_int int8,col_int32 int4,col_double float8,col_float float4,col_date int8,col_time int8,col_timestamp int8,col_boolean int4,col_uuid varchar,col_link varchar,sys_from int8,sys_to int8,sys_op int4,sys_close_date int8,sign int4) LOCATION ('pxf://env__datamart1.matview_actual?PROFILE=clickhouse-insert&CLICKHOUSE_SERVERS=adqm:1234&USER=user&PASSWORD=pass&TIMEOUT_CONNECT=3001&TIMEOUT_REQUEST=3002&BUFFER_SIZE=3003')\n" +
                                 "FORMAT 'CUSTOM' (FORMATTER = 'pxfwritable_export')");
                 assertThat(allInvocations.get(3))
                         .isEqualToIgnoringNewLines("CREATE WRITABLE EXTERNAL TABLE datamart1.CLICKHOUSE_EXT_PK_matview\n" +
-                                "(id int8) LOCATION ('pxf://env__datamart1.matview_buffer?PROFILE=clickhouse-insert&CLICKHOUSE_SERVERS=adqm:1234&USER=user&PASSWORD=pass&TIMEOUT_CONNECT=3001&TIMEOUT_REQUEST=3002')\n" +
+                                "(id int8) LOCATION ('pxf://env__datamart1.matview_buffer?PROFILE=clickhouse-insert&CLICKHOUSE_SERVERS=adqm:1234&USER=user&PASSWORD=pass&TIMEOUT_CONNECT=3001&TIMEOUT_REQUEST=3002&BUFFER_SIZE=3003')\n" +
                                 "FORMAT 'CUSTOM' (FORMATTER = 'pxfwritable_export')");
                 assertThat(allInvocations.get(4))
                         .isEqualToIgnoringNewLines("INSERT INTO datamart1.CLICKHOUSE_EXT_PK_matview (id) SELECT id FROM datamart1.tbl1_actual WHERE COALESCE(sys_to, 9223372036854775807) >= -1 AND (COALESCE(sys_to, 9223372036854775807) <= 1 AND sys_op = 1)");
@@ -200,11 +201,11 @@ class AdqmSynchronizeDestinationExecutorComplexTest {
                         .isEqualToIgnoringNewLines("DROP EXTERNAL TABLE IF EXISTS datamart1.CLICKHOUSE_EXT_PK_matview");
                 assertThat(allInvocations.get(2))
                         .isEqualToIgnoringNewLines("CREATE WRITABLE EXTERNAL TABLE datamart1.CLICKHOUSE_EXT_matview\n" +
-                                "(id int8,col_varchar varchar,col_char varchar,col_bigint int8,col_int int8,col_int32 int4,col_double float8,col_float float4,col_date int8,col_time int8,col_timestamp int8,col_boolean int4,col_uuid varchar,col_link varchar,sys_from int8,sys_to int8,sys_op int4,sys_close_date int8,sign int4) LOCATION ('pxf://env__datamart1.matview_actual?PROFILE=clickhouse-insert&CLICKHOUSE_SERVERS=adqm:1234&USER=user&PASSWORD=pass&TIMEOUT_CONNECT=3001&TIMEOUT_REQUEST=3002')\n" +
+                                "(id int8,col_varchar varchar,col_char varchar,col_bigint int8,col_int int8,col_int32 int4,col_double float8,col_float float4,col_date int8,col_time int8,col_timestamp int8,col_boolean int4,col_uuid varchar,col_link varchar,sys_from int8,sys_to int8,sys_op int4,sys_close_date int8,sign int4) LOCATION ('pxf://env__datamart1.matview_actual?PROFILE=clickhouse-insert&CLICKHOUSE_SERVERS=adqm:1234&USER=user&PASSWORD=pass&TIMEOUT_CONNECT=3001&TIMEOUT_REQUEST=3002&BUFFER_SIZE=3003')\n" +
                                 "FORMAT 'CUSTOM' (FORMATTER = 'pxfwritable_export')");
                 assertThat(allInvocations.get(3))
                         .isEqualToIgnoringNewLines("CREATE WRITABLE EXTERNAL TABLE datamart1.CLICKHOUSE_EXT_PK_matview\n" +
-                                "(id int8) LOCATION ('pxf://env__datamart1.matview_buffer?PROFILE=clickhouse-insert&CLICKHOUSE_SERVERS=adqm:1234&USER=user&PASSWORD=pass&TIMEOUT_CONNECT=3001&TIMEOUT_REQUEST=3002')\n" +
+                                "(id int8) LOCATION ('pxf://env__datamart1.matview_buffer?PROFILE=clickhouse-insert&CLICKHOUSE_SERVERS=adqm:1234&USER=user&PASSWORD=pass&TIMEOUT_CONNECT=3001&TIMEOUT_REQUEST=3002&BUFFER_SIZE=3003')\n" +
                                 "FORMAT 'CUSTOM' (FORMATTER = 'pxfwritable_export')");
                 assertThat(allInvocations.get(4))
                         .isEqualToIgnoringNewLines("INSERT INTO datamart1.CLICKHOUSE_EXT_PK_matview (id) SELECT t0.id FROM (SELECT id, col_varchar, col_char, col_bigint, col_int, col_int32, col_double, col_float, col_date, col_time, col_timestamp, col_boolean, col_uuid, col_link FROM datamart1.tbl1_actual WHERE sys_from <= -1 AND COALESCE(sys_to, 9223372036854775807) >= -1) AS t0 INNER JOIN (SELECT id, col_varchar, col_char, col_bigint, col_int, col_int32, col_double, col_float, col_date, col_time, col_timestamp, col_boolean, col_uuid, col_link FROM datamart1.tbl2_actual WHERE sys_from <= -1 AND COALESCE(sys_to, 9223372036854775807) >= -1) AS t2 ON t0.col_bigint = t2.col_bigint EXCEPT SELECT t0.id FROM (SELECT id, col_varchar, col_char, col_bigint, col_int, col_int32, col_double, col_float, col_date, col_time, col_timestamp, col_boolean, col_uuid, col_link FROM datamart1.tbl1_actual WHERE sys_from <= 2 AND COALESCE(sys_to, 9223372036854775807) >= 2) AS t0 INNER JOIN (SELECT id, col_varchar, col_char, col_bigint, col_int, col_int32, col_double, col_float, col_date, col_time, col_timestamp, col_boolean, col_uuid, col_link FROM datamart1.tbl2_actual WHERE sys_from <= 2 AND COALESCE(sys_to, 9223372036854775807) >= 2) AS t2 ON t0.col_bigint = t2.col_bigint");
@@ -267,11 +268,11 @@ class AdqmSynchronizeDestinationExecutorComplexTest {
                         .isEqualToIgnoringNewLines("DROP EXTERNAL TABLE IF EXISTS datamart1.CLICKHOUSE_EXT_PK_matview");
                 assertThat(allInvocations.get(2))
                         .isEqualToIgnoringNewLines("CREATE WRITABLE EXTERNAL TABLE datamart1.CLICKHOUSE_EXT_matview\n" +
-                                "(id int8,sum int8,sys_from int8,sys_to int8,sys_op int4,sys_close_date int8,sign int4) LOCATION ('pxf://env__datamart1.matview_actual?PROFILE=clickhouse-insert&CLICKHOUSE_SERVERS=adqm:1234&USER=user&PASSWORD=pass&TIMEOUT_CONNECT=3001&TIMEOUT_REQUEST=3002')\n" +
+                                "(id int8,sum int8,sys_from int8,sys_to int8,sys_op int4,sys_close_date int8,sign int4) LOCATION ('pxf://env__datamart1.matview_actual?PROFILE=clickhouse-insert&CLICKHOUSE_SERVERS=adqm:1234&USER=user&PASSWORD=pass&TIMEOUT_CONNECT=3001&TIMEOUT_REQUEST=3002&BUFFER_SIZE=3003')\n" +
                                 "FORMAT 'CUSTOM' (FORMATTER = 'pxfwritable_export')");
                 assertThat(allInvocations.get(3))
                         .isEqualToIgnoringNewLines("CREATE WRITABLE EXTERNAL TABLE datamart1.CLICKHOUSE_EXT_PK_matview\n" +
-                                "(id int8) LOCATION ('pxf://env__datamart1.matview_buffer?PROFILE=clickhouse-insert&CLICKHOUSE_SERVERS=adqm:1234&USER=user&PASSWORD=pass&TIMEOUT_CONNECT=3001&TIMEOUT_REQUEST=3002')\n" +
+                                "(id int8) LOCATION ('pxf://env__datamart1.matview_buffer?PROFILE=clickhouse-insert&CLICKHOUSE_SERVERS=adqm:1234&USER=user&PASSWORD=pass&TIMEOUT_CONNECT=3001&TIMEOUT_REQUEST=3002&BUFFER_SIZE=3003')\n" +
                                 "FORMAT 'CUSTOM' (FORMATTER = 'pxfwritable_export')");
                 assertThat(allInvocations.get(4))
                         .isEqualToIgnoringNewLines("INSERT INTO datamart1.CLICKHOUSE_EXT_PK_matview (id) SELECT 1 AS EXPR__0 FROM datamart1.tbl1_actual WHERE sys_from <= -1 AND COALESCE(sys_to, 9223372036854775807) >= -1 GROUP BY id EXCEPT SELECT 1 AS EXPR__0 FROM datamart1.tbl1_actual WHERE sys_from <= 2 AND COALESCE(sys_to, 9223372036854775807) >= 2 GROUP BY id");
@@ -334,11 +335,11 @@ class AdqmSynchronizeDestinationExecutorComplexTest {
                         .isEqualToIgnoringNewLines("DROP EXTERNAL TABLE IF EXISTS datamart1.CLICKHOUSE_EXT_PK_matview");
                 assertThat(allInvocations.get(2))
                         .isEqualToIgnoringNewLines("CREATE WRITABLE EXTERNAL TABLE datamart1.CLICKHOUSE_EXT_matview\n" +
-                                "(id int8,sum int8,sys_from int8,sys_to int8,sys_op int4,sys_close_date int8,sign int4) LOCATION ('pxf://env__datamart1.matview_actual?PROFILE=clickhouse-insert&CLICKHOUSE_SERVERS=adqm:1234&USER=user&PASSWORD=pass&TIMEOUT_CONNECT=3001&TIMEOUT_REQUEST=3002')\n" +
+                                "(id int8,sum int8,sys_from int8,sys_to int8,sys_op int4,sys_close_date int8,sign int4) LOCATION ('pxf://env__datamart1.matview_actual?PROFILE=clickhouse-insert&CLICKHOUSE_SERVERS=adqm:1234&USER=user&PASSWORD=pass&TIMEOUT_CONNECT=3001&TIMEOUT_REQUEST=3002&BUFFER_SIZE=3003')\n" +
                                 "FORMAT 'CUSTOM' (FORMATTER = 'pxfwritable_export')");
                 assertThat(allInvocations.get(3))
                         .isEqualToIgnoringNewLines("CREATE WRITABLE EXTERNAL TABLE datamart1.CLICKHOUSE_EXT_PK_matview\n" +
-                                "(id int8) LOCATION ('pxf://env__datamart1.matview_buffer?PROFILE=clickhouse-insert&CLICKHOUSE_SERVERS=adqm:1234&USER=user&PASSWORD=pass&TIMEOUT_CONNECT=3001&TIMEOUT_REQUEST=3002')\n" +
+                                "(id int8) LOCATION ('pxf://env__datamart1.matview_buffer?PROFILE=clickhouse-insert&CLICKHOUSE_SERVERS=adqm:1234&USER=user&PASSWORD=pass&TIMEOUT_CONNECT=3001&TIMEOUT_REQUEST=3002&BUFFER_SIZE=3003')\n" +
                                 "FORMAT 'CUSTOM' (FORMATTER = 'pxfwritable_export')");
                 assertThat(allInvocations.get(4))
                         .isEqualToIgnoringNewLines("INSERT INTO datamart1.CLICKHOUSE_EXT_PK_matview (id) SELECT 1 AS EXPR__0 FROM datamart1.tbl1_actual WHERE sys_from <= -1 AND COALESCE(sys_to, 9223372036854775807) >= -1 EXCEPT SELECT 1 AS EXPR__0 FROM datamart1.tbl1_actual WHERE sys_from <= 2 AND COALESCE(sys_to, 9223372036854775807) >= 2");

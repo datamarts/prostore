@@ -26,6 +26,7 @@ import org.springframework.stereotype.Component;
 import ru.datamart.prostore.common.dto.QueryParserRequest;
 import ru.datamart.prostore.common.exception.DtmException;
 import ru.datamart.prostore.common.model.ddl.Entity;
+import ru.datamart.prostore.common.model.ddl.EntityType;
 import ru.datamart.prostore.common.reader.QueryResult;
 import ru.datamart.prostore.query.calcite.core.extension.dml.DmlType;
 import ru.datamart.prostore.query.calcite.core.service.QueryParserService;
@@ -75,30 +76,42 @@ public class DeleteExecutor extends AbstractLlwExecutor {
 
     @Override
     public Future<QueryResult> execute(DmlRequestContext context) {
-        String datamart = context.getRequest().getQueryRequest().getDatamartMnemonic();
         return validate(context)
                 .compose(ignored -> getDestinationEntity(context))
                 .compose(this::validateEntityType)
                 .compose(this::checkConfiguration)
-                .compose(entity -> deltaServiceDao.getDeltaHot(datamart)
-                        .compose(ignored -> deltaServiceDao.getDeltaOk(datamart))
-                        .compose(okDelta -> {
-                            if (okDelta == null) {
-                                return handleDeleteWhenDatamartHasNoData();
-                            }
-                            return logicalSchemaProvider.getSchemaFromQuery(context.getSqlNode(), datamart)
-                                    .compose(datamarts -> produceOrResumeWriteOperation(context, entity)
-                                            .map(sysCn -> new ParameterHolder(entity, sysCn, okDelta.getCnTo(), datamarts)))
-                                    .compose(parameterHolder -> runDelete(context, parameterHolder));
-                        }))
+                .compose(entity -> entity.getEntityType() == EntityType.TABLE ?
+                        executeLogical(context, entity) : executeWriteableExternal(context, entity))
                 .map(QueryResult.emptyResult());
     }
 
+    private Future<Void> executeWriteableExternal(DmlRequestContext context, Entity entity) {
+        String datamart = context.getRequest().getQueryRequest().getDatamartMnemonic();
+        return logicalSchemaProvider.getSchemaFromQuery(context.getSqlNode(), datamart)
+                .compose(datamarts -> buildRequest(context, entity, null, null, datamarts))
+                .compose(request -> pluginService.delete(entity.getDestination().iterator().next(), context.getMetrics(), request));
+    }
+
+    private Future<Void> executeLogical(DmlRequestContext context, Entity entity) {
+        String datamart = context.getRequest().getQueryRequest().getDatamartMnemonic();
+        return deltaServiceDao.getDeltaHot(datamart)
+                .compose(ignored -> deltaServiceDao.getDeltaOk(datamart))
+                .compose(okDelta -> {
+                    if (okDelta == null) {
+                        return handleDeleteWhenDatamartHasNoData();
+                    }
+                    return logicalSchemaProvider.getSchemaFromQuery(context.getSqlNode(), datamart)
+                            .compose(datamarts -> produceOrRetryWriteOperation(context, entity)
+                                    .map(sysCn -> new ParameterHolder(entity, sysCn, okDelta.getCnTo(), datamarts)))
+                            .compose(parameterHolder -> runDelete(context, parameterHolder));
+                });
+    }
+
     private Future<DeleteRequest> buildRequest(DmlRequestContext context,
-                                                     Entity entity,
-                                                     Long sysCn,
-                                                     Long cnTo,
-                                                     List<Datamart> datamarts) {
+                                               Entity entity,
+                                               Long sysCn,
+                                               Long cnTo,
+                                               List<Datamart> datamarts) {
         val uuid = context.getRequest().getQueryRequest().getRequestId();
         val datamart = context.getRequest().getQueryRequest().getDatamartMnemonic();
         val env = context.getEnvName();

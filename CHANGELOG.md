@@ -1,3 +1,28 @@
+### Prostore 5.5.0, 2022-04-06
+
+#### New functionality
+* The capability to read from standalone tables and write to standalone tables:
+  * The entity `WRITABLE EXTERNAL TABLE` allowing writing data into a standalone table
+  * The entity `READABLE EXTERNAL TABLE` allowing reading data from a standalone table
+* The queries for the entities `WRITABLE EXTERNAL TABLE` and `READABLE EXTERNAL TABLE`
+  * `CREATE WRITABLE EXTERNAL TABLE`
+  * `DROP WRITABLE EXTERNAL TABLE`
+  * `CREATE READABLE EXTERNAL TABLE`
+  * `DROP READABLE EXTERNAL TABLE`
+* The `ERASE_CHANGE_OPERATION` query for managing a changelog
+* The `ERASE_WRITE_OPERATION` query for managing failed write operations
+* The new parameter `OPTIONS` for the `CREATE UPLOAD EXTERNAL TABLE` query
+
+#### Fixes
+* The error raised on dropping a table from one of the datasources while having connected views or materialized views in another datasources
+* The incorrect format of the changeDateTime field in the Kafka system topic
+* Wrong ordinal positions of the sharding key columns of the logical tables in the INFORMATION_SCHEMA
+* No error raised while executing `DROP TABLE` and `DROP MATERIALIZED VIEW` on the non-matching entity types `UPLOAD EXTERNAL TABLE`, `DOWNLOAD EXTERNAL TABLE`
+
+#### Changes
+* Refactoring of an input query parsing
+* Restarting LL-W queries is now done only via the `RETRY` option
+
 ### Prostore 5.4.0, 2022-02-21
 
 #### New functionality

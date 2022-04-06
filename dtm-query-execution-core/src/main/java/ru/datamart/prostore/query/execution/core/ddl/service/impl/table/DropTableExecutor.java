@@ -15,6 +15,13 @@
  */
 package ru.datamart.prostore.query.execution.core.ddl.service.impl.table;
 
+import io.vertx.core.Future;
+import lombok.extern.slf4j.Slf4j;
+import lombok.val;
+import org.apache.calcite.sql.SqlDialect;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Component;
 import ru.datamart.prostore.cache.service.CacheService;
 import ru.datamart.prostore.cache.service.EvictQueryTemplateCacheService;
 import ru.datamart.prostore.common.exception.DtmException;
@@ -30,21 +37,12 @@ import ru.datamart.prostore.query.execution.core.base.exception.entity.EntityNot
 import ru.datamart.prostore.query.execution.core.base.repository.ServiceDbFacade;
 import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.EntityDao;
 import ru.datamart.prostore.query.execution.core.base.repository.zookeeper.SetEntityState;
-import ru.datamart.prostore.query.execution.core.base.service.hsql.HSQLClient;
 import ru.datamart.prostore.query.execution.core.base.service.metadata.MetadataExecutor;
-import ru.datamart.prostore.query.execution.core.base.utils.InformationSchemaUtils;
 import ru.datamart.prostore.query.execution.core.ddl.dto.DdlRequestContext;
 import ru.datamart.prostore.query.execution.core.ddl.service.QueryResultDdlExecutor;
+import ru.datamart.prostore.query.execution.core.ddl.service.impl.validate.RelatedViewChecker;
 import ru.datamart.prostore.query.execution.core.delta.dto.OkDelta;
 import ru.datamart.prostore.query.execution.core.plugin.service.DataSourcePluginService;
-import io.vertx.core.Future;
-import io.vertx.core.json.JsonArray;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.apache.calcite.sql.SqlDialect;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -54,14 +52,13 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component
 public class DropTableExecutor extends QueryResultDdlExecutor {
-    private static final String MATERIALIZED_VIEW_PREFIX = "SYS_";
     private static final String IF_EXISTS = "if exists";
 
     private final DataSourcePluginService dataSourcePluginService;
     private final CacheService<EntityKey, Entity> entityCacheService;
     private final EntityDao entityDao;
-    private final HSQLClient hsqlClient;
     private final EvictQueryTemplateCacheService evictQueryTemplateCacheService;
+    private final RelatedViewChecker relatedViewChecker;
 
     @Autowired
     public DropTableExecutor(MetadataExecutor metadataExecutor,
@@ -69,14 +66,14 @@ public class DropTableExecutor extends QueryResultDdlExecutor {
                              @Qualifier("coreSqlDialect") SqlDialect sqlDialect,
                              @Qualifier("entityCacheService") CacheService<EntityKey, Entity> entityCacheService,
                              DataSourcePluginService dataSourcePluginService,
-                             HSQLClient hsqlClient,
-                             EvictQueryTemplateCacheService evictQueryTemplateCacheService) {
+                             EvictQueryTemplateCacheService evictQueryTemplateCacheService,
+                             RelatedViewChecker relatedViewChecker) {
         super(metadataExecutor, serviceDbFacade, sqlDialect);
         this.entityCacheService = entityCacheService;
         this.entityDao = serviceDbFacade.getServiceDbDao().getEntityDao();
         this.dataSourcePluginService = dataSourcePluginService;
-        this.hsqlClient = hsqlClient;
         this.evictQueryTemplateCacheService = evictQueryTemplateCacheService;
+        this.relatedViewChecker = relatedViewChecker;
     }
 
     @Override
@@ -125,6 +122,7 @@ public class DropTableExecutor extends QueryResultDdlExecutor {
             val datamartName = context.getDatamartName();
             val entityName = context.getEntity().getName();
             entityDao.getEntity(datamartName, entityName)
+                    .map(this::checkEntityType)
                     .onSuccess(entityPromise::complete)
                     .onFailure(error -> {
                         if (error instanceof EntityNotExistsException && ifExists) {
@@ -136,11 +134,19 @@ public class DropTableExecutor extends QueryResultDdlExecutor {
         });
     }
 
+    protected Entity checkEntityType(Entity entity) {
+        if (EntityType.TABLE != entity.getEntityType()) {
+            throw new EntityNotExistsException(entity.getNameWithSchema());
+        }
+
+        return entity;
+    }
+
     private Future<Void> checkViewsAndUpdateEntity(DdlRequestContext context, Entity entity, boolean ifExists) {
         val changeQuery = sqlNodeToString(context.getSqlNode());
-        return checkRelatedViews(entity)
-                .compose(e -> writeNewChangelogRecord(context.getDatamartName(), entity.getName(), changeQuery)
-                        .compose(delta -> updateEntity(context, e, ifExists, delta, changeQuery)));
+        return relatedViewChecker.checkRelatedViews(entity, context.getSourceType())
+                .compose(ignored -> writeNewChangelogRecord(context.getDatamartName(), entity.getName(), changeQuery)
+                        .compose(delta -> updateEntity(context, entity, ifExists, delta, changeQuery)));
     }
 
     private Future<Void> updateEntity(DdlRequestContext context, Entity entity, boolean ifExists, OkDelta deltaOk, String changeQuery) {
@@ -209,29 +215,6 @@ public class DropTableExecutor extends QueryResultDdlExecutor {
                     return v;
                 })
                 .compose(v -> entityDao.setEntityState(context.getEntity(), deltaOk, changeQuery, SetEntityState.DELETE));
-    }
-
-    private Future<Entity> checkRelatedViews(Entity entity) {
-        return Future.future(promise -> hsqlClient.getQueryResult(String.format(InformationSchemaUtils.CHECK_VIEW_BY_TABLE_NAME, entity.getSchema().toUpperCase(), entity.getName().toUpperCase()))
-                .onSuccess(resultSet -> {
-                    if (resultSet.getResults().isEmpty()) {
-                        promise.complete(entity);
-                    } else {
-                        JsonArray views = resultSet.getResults().get(0);
-                        List<String> viewNames = views
-                                .stream()
-                                .map(Object::toString)
-                                .map(view -> {
-                                    if (view.startsWith(MATERIALIZED_VIEW_PREFIX)) {
-                                        return view.substring(MATERIALIZED_VIEW_PREFIX.length());
-                                    }
-                                    return view;
-                                })
-                                .collect(Collectors.toList());
-                        promise.fail(new DtmException(String.format("Views %s using the '%s' must be dropped first", viewNames, entity.getName().toUpperCase())));
-                    }
-                })
-                .onFailure(promise::fail));
     }
 
     @Override

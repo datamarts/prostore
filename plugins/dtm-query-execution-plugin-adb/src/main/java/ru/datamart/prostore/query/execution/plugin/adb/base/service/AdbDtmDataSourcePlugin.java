@@ -37,6 +37,7 @@ public class AdbDtmDataSourcePlugin extends AbstractDtmDataSourcePlugin {
 
     public AdbDtmDataSourcePlugin(
             DdlService<Void> ddlService,
+            EddlService eddlService,
             LlrService<QueryResult> adbLlrService,
             InsertValuesService insertValuesService,
             InsertSelectService insertSelectService,
@@ -53,6 +54,7 @@ public class AdbDtmDataSourcePlugin extends AbstractDtmDataSourcePlugin {
             PluginInitializationService initializationService,
             SynchronizeService synchronizeService) {
         super(ddlService,
+                eddlService,
                 adbLlrService,
                 insertValuesService,
                 insertSelectService,

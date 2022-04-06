@@ -15,6 +15,18 @@
  */
 package ru.datamart.prostore.query.execution.plugin.adg.dml.service;
 
+import io.vertx.core.Future;
+import io.vertx.core.json.JsonArray;
+import io.vertx.junit5.VertxExtension;
+import io.vertx.junit5.VertxTestContext;
+import org.apache.calcite.avatica.util.Casing;
+import org.apache.calcite.sql.SqlDialect;
+import org.apache.calcite.sql.SqlNode;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import ru.datamart.prostore.cache.service.CacheService;
 import ru.datamart.prostore.common.cache.QueryTemplateKey;
 import ru.datamart.prostore.common.cache.QueryTemplateValue;
@@ -34,18 +46,6 @@ import ru.datamart.prostore.query.execution.plugin.api.request.LlrRequest;
 import ru.datamart.prostore.query.execution.plugin.api.service.LlrService;
 import ru.datamart.prostore.query.execution.plugin.api.service.LlrValidationService;
 import ru.datamart.prostore.query.execution.plugin.api.service.enrichment.service.QueryEnrichmentService;
-import io.vertx.core.Future;
-import io.vertx.core.json.JsonArray;
-import io.vertx.junit5.VertxExtension;
-import io.vertx.junit5.VertxTestContext;
-import org.apache.calcite.avatica.util.Casing;
-import org.apache.calcite.sql.SqlDialect;
-import org.apache.calcite.sql.SqlNode;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.*;
 
@@ -83,7 +83,7 @@ class AdgLlrServiceTest {
                 .thenReturn(Future.succeededFuture(new ArrayList<>()));
         when(queryTemplateResult.getTemplate()).thenReturn(template);
         SqlNode sqlNode = TestUtils.DEFINITION_SERVICE.processingQuery(template);
-        when(enrichmentService.getEnrichedSqlNode(any(), any()))
+        when(enrichmentService.getEnrichedSqlNode(any()))
                 .thenReturn(Future.succeededFuture(sqlNode));
         when(queryTemplateExtractor.extract(any(SqlNode.class))).thenReturn(queryTemplateResult);
         when(queryTemplateExtractor.enrichTemplate(any(), anyList())).thenReturn(sqlNode);

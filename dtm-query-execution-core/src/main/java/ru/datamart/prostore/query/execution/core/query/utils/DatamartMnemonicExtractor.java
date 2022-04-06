@@ -15,44 +15,39 @@
  */
 package ru.datamart.prostore.query.execution.core.query.utils;
 
-import ru.datamart.prostore.query.calcite.core.node.SqlSelectTree;
-import ru.datamart.prostore.query.execution.core.base.service.delta.DeltaInformationExtractor;
-import ru.datamart.prostore.common.exception.DtmException;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.apache.calcite.sql.SqlNode;
-import org.apache.logging.log4j.util.Strings;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
-
-import java.util.Objects;
-import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
+import ru.datamart.prostore.common.exception.DtmException;
+import ru.datamart.prostore.query.calcite.core.node.SqlSelectTree;
 
 @Slf4j
-@Component
-public class DatamartMnemonicExtractor {
+public final class DatamartMnemonicExtractor {
 
-    private final DeltaInformationExtractor deltaInformationExtractor;
-
-    @Autowired
-    public DatamartMnemonicExtractor(DeltaInformationExtractor deltaInformationExtractor) {
-        this.deltaInformationExtractor = deltaInformationExtractor;
+    private DatamartMnemonicExtractor() {
     }
 
-    public String extract(SqlNode sqlNode) {
-        val selectTree = new SqlSelectTree(sqlNode);
-        val tables = selectTree.findAllTableAndSnapshots().stream()
-                .map(node -> deltaInformationExtractor.getDeltaInformation(selectTree, node))
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+    public static String extract(SqlNode sqlNode) {
+        val tables = new SqlSelectTree(sqlNode).findAllTableAndSnapshots();
         if (tables.isEmpty()) {
             throw new DtmException("Tables or views not found in query");
-        } else if (tables.stream().anyMatch(d -> Strings.isEmpty(d.getSchemaName()))) {
-            throw new DtmException("Datamart must be specified for all tables and views");
-        } else {
-            val schemaName = tables.get(0).getSchemaName();
-            log.debug("Extracted datamart [{}] from sql [{}]", schemaName, sqlNode);
-            return schemaName;
         }
+
+        String result = null;
+        for (val table : tables) {
+            val schemaOptional = table.tryGetSchemaName().filter(StringUtils::isNotBlank);
+            if (!schemaOptional.isPresent()) {
+                throw new DtmException("Datamart must be specified for all tables and views");
+            }
+
+            if (result == null) {
+                val schema = schemaOptional.get();
+                result = schema;
+                log.debug("Extracted datamart [{}] from sql [{}]", schema, sqlNode);
+            }
+        }
+
+        return result;
     }
 }
