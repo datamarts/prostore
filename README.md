@@ -1,3 +1,5 @@
+Project is in active development and has been moved to https://repository.datamart.ru/datamarts/prostore
+
 # Prostore
 Prostore is an open-source integration system providing a temporal DB unified interface to the heterogenous data store. It’s purposed for a datamart implementation.
 
